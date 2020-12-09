@@ -74,7 +74,8 @@ export function GetActionsList(
           required: true,
           min: -0xFFFF,
           max: 0xFFFF,
-          default: 0
+          default: 0,
+          step: .001 // TODO - don't want this at all preferably
         }
       ],
       callback: setValue(self, emberClient, EmberModel.ParameterType.Real)

@@ -2,17 +2,6 @@ import InstanceSkel = require('../../../instance_skel')
 import { CompanionConfigField, CompanionSystem } from '../../../instance_skel_types'
 import { GetActionsList } from './actions'
 import { EmberPlusConfig, GetConfigFields } from './config'
-import { FeedbackId, GetFeedbacksList } from './feedback'
-import { GetPresetsList } from './presets'
-import { InitVariables, updateDeviceInfoVariables, updateNameVariables } from './variables'
-import { X32State, X32Subscriptions } from './state'
-import * as osc from 'osc'
-import { MainPath } from './paths'
-import { upgradeV2x0x0 } from './migrations'
-import { GetTargetChoices } from './choices'
-import * as debounceFn from 'debounce-fn'
-import PQueue from 'p-queue'
-import { X32Transitions } from './transitions'
 import { EmberClient } from 'emberplus-connection' // note - emberplus-conn is in parent repo, not sure if it needs to be defined as dependency
 
 /**
@@ -24,25 +13,18 @@ class EmberPlusInstance extends InstanceSkel<EmberPlusConfig> {
 
 
   /**
-   * Create an instance of an X32 module.
+   * Create an instance of an EmberPlus module.
    */
   constructor(system: CompanionSystem, id: string, config: EmberPlusConfig) {
     super(system, id, config)
 
-    // HACK: for testing upgrade script
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    // ;(config as any)._configIdx = -1
-
     this.emberClient = new EmberClient(config.host || '', config.port)
-
-    // this.addUpgradeScript(() => false) // Previous version had a script
-    // this.addUpgradeScript(upgradeV2x0x0)
 
     this.updateCompanionBits()
   }
 
   // Override base types to make types stricter
-  public checkFeedbacks(feedbackId?: FeedbackId): void {
+  public checkFeedbacks(feedbackId?: string): void { // todo - arg should be of type FeedbackId
     super.checkFeedbacks(feedbackId)
   }
 
