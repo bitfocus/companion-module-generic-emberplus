@@ -1,15 +1,44 @@
 import InstanceSkel = require('../../../instance_skel')
-import { CompanionAction, CompanionActions } from '../../../instance_skel_types'
+import { CompanionAction, CompanionActionEvent, CompanionActions, CompanionInputFieldTextInput } from '../../../instance_skel_types'
 import { Required as MakeRequired } from 'utility-types'
 import { EmberClient, Model as EmberModel } from 'emberplus-connection'
 import { EmberPlusConfig } from './config'
-import { setFlagsFromString } from 'v8'
 
 export enum ActionId {
-  SetValueInt = 'setValueInt'
+  SetValueInt = 'setValueInt',
+  SetValueReal = "setValueReal",
+  SetValueString = "setValueString",
+  SetValueBoolean = "setValueBoolean"
 }
 
 type CompanionActionWithCallback = MakeRequired<CompanionAction, 'callback'>
+
+const pathInput = {
+  type: 'textinput',
+  label: 'Path',
+  id: 'path',
+}
+const setValue = (
+  self: InstanceSkel<EmberPlusConfig>,
+  emberClient: EmberClient,
+  type: EmberModel.ParameterType
+) => ((action: CompanionActionEvent): void => {
+  emberClient.getElementByPath(action.options['path'] as string).then((node) => { // TODO - do we handle not found?
+    if (node && node.contents.type === EmberModel.ElementType.Parameter) {
+      if (node.contents.parameterType === type) {
+        self.debug('Got node on ' + action.options['path'])
+        emberClient.setValue(
+          node as EmberModel.NumberedTreeNode<EmberModel.Parameter>,
+          action.options['value'] as number,
+          false)
+      } else {
+        self.log('warn', 'Node ' + action.options['path'] + ' is not of type ' + type)
+      }
+    } else {
+      self.log('warn', 'Node ' + action.options['path'] + ' not found or not a parameter')
+    }
+  })
+})
 
 export function GetActionsList(
   self: InstanceSkel<EmberPlusConfig>,
@@ -20,11 +49,24 @@ export function GetActionsList(
     [ActionId.SetValueInt]: {
       label: 'Set Value Integer',
       options: [
+        pathInput as CompanionInputFieldTextInput,
         {
-          type: 'textinput',
-          label: 'Path',
-          id: 'path',
-        },
+          type: 'number',
+          label: 'Value',
+          id: 'value',
+          required: true,
+          min: -0xFFFF,
+          max: 0xFFFF,
+          default: 0,
+          step: 1
+        }
+      ],
+      callback: setValue(self, emberClient, EmberModel.ParameterType.Integer)
+    },
+    [ActionId.SetValueReal]: {
+      label: 'Set Value Real',
+      options: [
+        pathInput as CompanionInputFieldTextInput,
         {
           type: 'number',
           label: 'Value',
@@ -35,22 +77,33 @@ export function GetActionsList(
           default: 0
         }
       ],
-      callback: (action): void => {
-        emberClient.getElementByPath(action.options['path'] as string).then((node) => { // TODO - do we handle not found?
-          if (node && node.contents.type === EmberModel.ElementType.Parameter) {
-            self.debug('Got node on ' + action.options['path'])
-            // TODO - check for integer?
-            emberClient.setValue(
-              node as EmberModel.NumberedTreeNode<EmberModel.Parameter>,
-              action.options['value'] as number,
-              false)
-          } else {
-            self.log('warn', 'Node ' + action.options['path'] + ' not found or not a parameter')
-          }
-        })
-        
-      }
-    }
+      callback: setValue(self, emberClient, EmberModel.ParameterType.Real)
+    },
+    [ActionId.SetValueBoolean]: {
+      label: 'Set Value Boolean',
+      options: [
+        pathInput as CompanionInputFieldTextInput,
+        {
+          type: 'checkbox',
+          label: 'Value',
+          id: 'value',
+          default: false
+        }
+      ],
+      callback: setValue(self, emberClient, EmberModel.ParameterType.Boolean)
+    },
+    [ActionId.SetValueString]: {
+      label: 'Set Value String',
+      options: [
+        pathInput as CompanionInputFieldTextInput,
+        {
+          type: 'textinput',
+          label: 'Value',
+          id: 'value',
+        }
+      ],
+      callback: setValue(self, emberClient, EmberModel.ParameterType.Integer)
+    },
   }
 
   return actions
