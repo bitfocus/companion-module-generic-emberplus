@@ -26,8 +26,7 @@
     "traceResolution": false,
     "pretty": true,
     "lib": ["es6"],
-    "types": ["node", "jest"],
-    "typeRoots": ["./node_modules/@types", "./types"]
+    "types": ["node", "jest"]
   },
   "include": ["src/**/*.ts"],
   "compileOnSave": false,
