@@ -13,7 +13,7 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "yarn build:watch",
-    "build": "rimraf dist && yarn build:main",
+    "build": "npx rimraf dist && npx typescript@~3.6.3 -p tsconfig.build.json",
     "build:main": "tsc -p tsconfig.build.json",
     "build:watch": "tsc -p tsconfig.build.json --watch",
     "lint": "eslint . --ext .ts",
