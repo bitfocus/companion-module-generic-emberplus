@@ -46,7 +46,7 @@
   "dependencies": {
     "debounce-fn": "^3.0.1",
     "p-queue": "^6.4.0",
-    "emberplus-connection": "npm:@balte/emberplus-connection@^0.0.3"
+    "emberplus-connection": "0.0.5-nightly-hack-node8-20210406-163810-55f8165.0"
   },
   "devDependencies": {
     "@types/node": "^12.0.4",

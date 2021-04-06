@@ -246,7 +246,7 @@ array-union@^2.1.0:
   resolved "https://registry.yarnpkg.com/array-union/-/array-union-2.1.0.tgz#b798420adbeb1de828d84acd8a2e23d3efe85e8d"
   integrity sha512-HGyxoOTYUyCM6stUe6EJgnd4EoewAI7zMdfqO+kGjnlZmBDz/cR5pf8r/cR4Wq60sL/p0IkcjUEEPwS3GFrIyw==
 
-"asn1@github:evs-broadcast/node-asn1":
+asn1@evs-broadcast/node-asn1:
   version "0.5.4"
   resolved "https://codeload.github.com/evs-broadcast/node-asn1/tar.gz/0146823069e479e90595480dc90c72cafa161ba1"
   dependencies:
@@ -518,10 +518,10 @@ elegant-spinner@^1.0.1:
   resolved "https://registry.yarnpkg.com/elegant-spinner/-/elegant-spinner-1.0.1.tgz#db043521c95d7e303fd8f345bedc3349cfb0729e"
   integrity sha1-2wQ1IcldfjA/2PNFvtwzSc+wcp4=
 
-"emberplus-connection@npm:@balte/emberplus-connection@^0.0.3":
-  version "0.0.3"
-  resolved "https://registry.yarnpkg.com/@balte/emberplus-connection/-/emberplus-connection-0.0.3.tgz#9153eee83bfbe47127e5d3573e941b66de2687bc"
-  integrity sha512-KjyXXB7FBkv48VTMLq9hoH+GUBWzB20Iogqg35lS4NG/Bb08B6cQ4rlSHKeH8eb24KeReQGVZ2Hjnuw/vqBJcg==
+emberplus-connection@0.0.5-nightly-hack-node8-20210406-163810-55f8165.0:
+  version "0.0.5-nightly-hack-node8-20210406-163810-55f8165.0"
+  resolved "https://registry.yarnpkg.com/emberplus-connection/-/emberplus-connection-0.0.5-nightly-hack-node8-20210406-163810-55f8165.0.tgz#531c1cf1a3abe2f8c0cc947e23df688fe9bcf610"
+  integrity sha512-vokBTz2zfLSRcX8nS1fcGbA4m9C7It2ahQk/UKqRfhf/ySO889MvPoYtpzvzNMUb0NSKdqj1ppRi2pH2yYkiFA==
   dependencies:
     asn1 evs-broadcast/node-asn1
     enum "^2.4.0"
