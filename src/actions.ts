@@ -1,17 +1,23 @@
 import InstanceSkel = require('../../../instance_skel')
-import { CompanionAction, CompanionActionEvent, CompanionActions, CompanionInputFieldNumber, CompanionInputFieldTextInput } from '../../../instance_skel_types'
+import {
+  CompanionAction,
+  CompanionActionEvent,
+  CompanionActions,
+  CompanionInputFieldNumber,
+  CompanionInputFieldTextInput
+} from '../../../instance_skel_types'
 import { Required as MakeRequired } from 'utility-types'
 import { EmberClient, Model as EmberModel } from 'emberplus-connection'
 import { EmberPlusConfig } from './config'
 
 export enum ActionId {
   SetValueInt = 'setValueInt',
-  SetValueReal = "setValueReal",
-  SetValueString = "setValueString",
-  SetValueBoolean = "setValueBoolean",
-  MatrixConnect = "matrixConnect",
-  MatrixDisconnect = "matrixDisconnect",
-  MatrixSetConnection = "matrixSetConnection",
+  SetValueReal = 'setValueReal',
+  SetValueString = 'setValueString',
+  SetValueBoolean = 'setValueBoolean',
+  MatrixConnect = 'matrixConnect',
+  MatrixDisconnect = 'matrixDisconnect',
+  MatrixSetConnection = 'matrixSetConnection'
 }
 
 type CompanionActionWithCallback = MakeRequired<CompanionAction, 'callback'>
@@ -19,7 +25,7 @@ type CompanionActionWithCallback = MakeRequired<CompanionAction, 'callback'>
 const pathInput: CompanionInputFieldTextInput = {
   type: 'textinput',
   label: 'Path',
-  id: 'path',
+  id: 'path'
 }
 const matrixInputs: Array<CompanionInputFieldTextInput | CompanionInputFieldNumber> = [
   pathInput,
@@ -29,7 +35,7 @@ const matrixInputs: Array<CompanionInputFieldTextInput | CompanionInputFieldNumb
     id: 'target',
     required: true,
     min: 0,
-    max: 0xFFFF,
+    max: 0xffff,
     default: 0,
     step: 1
   },
@@ -38,22 +44,22 @@ const matrixInputs: Array<CompanionInputFieldTextInput | CompanionInputFieldNumb
     label: 'Sources',
     id: 'sources',
     regex: '/^((\\s*\\d+,)*(\\s*\\d+)$)|$/' // comma separated list
-  },
+  }
 ]
 
-const setValue = (
-  self: InstanceSkel<EmberPlusConfig>,
-  emberClient: EmberClient,
-  type: EmberModel.ParameterType
-) => ((action: CompanionActionEvent): void => {
-  emberClient.getElementByPath(action.options['path'] as string).then((node) => { // TODO - do we handle not found?
+const setValue = (self: InstanceSkel<EmberPlusConfig>, emberClient: EmberClient, type: EmberModel.ParameterType) => (
+  action: CompanionActionEvent
+): void => {
+  emberClient.getElementByPath(action.options['path'] as string).then(node => {
+    // TODO - do we handle not found?
     if (node && node.contents.type === EmberModel.ElementType.Parameter) {
       if (node.contents.parameterType === type) {
         self.debug('Got node on ' + action.options['path'])
         emberClient.setValue(
           node as EmberModel.NumberedTreeNode<EmberModel.Parameter>,
           action.options['value'] as number,
-          false)
+          false
+        )
       } else {
         self.log('warn', 'Node ' + action.options['path'] + ' is not of type ' + type)
       }
@@ -61,31 +67,31 @@ const setValue = (
       self.log('warn', 'Parameter ' + action.options['path'] + ' not found or not a parameter')
     }
   })
-})
+}
 
 const doMatrixAction = (
   self: InstanceSkel<EmberPlusConfig>,
   emberClient: EmberClient,
   method: EmberClient['matrixConnect'] | EmberClient['matrixDisconnect'] | EmberClient['matrixSetConnection']
-) => ((action: CompanionActionEvent): void => {
+) => (action: CompanionActionEvent): void => {
   self.debug('Get node ' + action.options['path'])
-  emberClient.getElementByPath(action.options['path'] as string).then((node) => { // TODO - do we handle not found?
+  emberClient.getElementByPath(action.options['path'] as string).then(node => {
+    // TODO - do we handle not found?
     if (node && node.contents.type === EmberModel.ElementType.Matrix) {
       self.debug('Got node on ' + action.options['path'])
       const target = Number(action.options['target'])
-      const sources = (action.options['sources'] as string).split(',').filter(v => v !== '').map(s => Number(s))
+      const sources = (action.options['sources'] as string)
+        .split(',')
+        .filter(v => v !== '')
+        .map(s => Number(s))
       method(node as EmberModel.NumberedTreeNode<EmberModel.Matrix>, target, sources)
     } else {
       self.log('warn', 'Matrix ' + action.options['path'] + ' not found or not a parameter')
     }
   })
-})
+}
 
-export function GetActionsList(
-  self: InstanceSkel<EmberPlusConfig>,
-  emberClient: EmberClient
-): CompanionActions {
-
+export function GetActionsList(self: InstanceSkel<EmberPlusConfig>, emberClient: EmberClient): CompanionActions {
   const actions: { [id in ActionId]: CompanionActionWithCallback | undefined } = {
     [ActionId.SetValueInt]: {
       label: 'Set Value Integer',
@@ -96,8 +102,8 @@ export function GetActionsList(
           label: 'Value',
           id: 'value',
           required: true,
-          min: -0xFFFF,
-          max: 0xFFFF,
+          min: -0xffff,
+          max: 0xffff,
           default: 0,
           step: 1
         }
@@ -113,10 +119,10 @@ export function GetActionsList(
           label: 'Value',
           id: 'value',
           required: true,
-          min: -0xFFFF,
-          max: 0xFFFF,
+          min: -0xffff,
+          max: 0xffff,
           default: 0,
-          step: .001 // TODO - don't want this at all preferably
+          step: 0.001 // TODO - don't want this at all preferably
         }
       ],
       callback: setValue(self, emberClient, EmberModel.ParameterType.Real)
@@ -141,30 +147,24 @@ export function GetActionsList(
         {
           type: 'textinput',
           label: 'Value',
-          id: 'value',
+          id: 'value'
         }
       ],
       callback: setValue(self, emberClient, EmberModel.ParameterType.Integer)
     },
     [ActionId.MatrixConnect]: {
       label: 'Matrix Connect',
-      options: [
-        ...matrixInputs
-      ],
+      options: [...matrixInputs],
       callback: doMatrixAction(self, emberClient, (...args) => emberClient.matrixConnect(...args))
     },
     [ActionId.MatrixDisconnect]: {
       label: 'Matrix Disconnect',
-      options: [
-        ...matrixInputs
-      ],
+      options: [...matrixInputs],
       callback: doMatrixAction(self, emberClient, (...args) => emberClient.matrixDisconnect(...args))
     },
     [ActionId.MatrixSetConnection]: {
       label: 'Matrix Set Connection',
-      options: [
-        ...matrixInputs
-      ],
+      options: [...matrixInputs],
       callback: doMatrixAction(self, emberClient, (...args) => emberClient.matrixSetConnection(...args))
     }
   }

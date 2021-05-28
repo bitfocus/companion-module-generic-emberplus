@@ -8,9 +8,7 @@ import { EmberClient } from 'emberplus-connection' // note - emberplus-conn is i
  * Companion instance class for the Behringer X32 Mixers.
  */
 class EmberPlusInstance extends InstanceSkel<EmberPlusConfig> {
-
   private emberClient: EmberClient
-
 
   /**
    * Create an instance of an EmberPlus module.
@@ -24,8 +22,9 @@ class EmberPlusInstance extends InstanceSkel<EmberPlusConfig> {
   }
 
   // Override base types to make types stricter
-  public checkFeedbacks(feedbackId?: string): void { // todo - arg should be of type FeedbackId
-    super.checkFeedbacks(feedbackId)
+  public checkFeedbacks(...feedbackTypes: string[]): void {
+    // todo - arg should be of type FeedbackId
+    super.checkFeedbacks(...feedbackTypes)
   }
 
   /**
@@ -81,7 +80,7 @@ class EmberPlusInstance extends InstanceSkel<EmberPlusConfig> {
     this.status(this.STATUS_WARNING, 'Connecting')
 
     this.emberClient = new EmberClient(this.config.host || '', this.config.port)
-    this.emberClient.on('error', (e) => {
+    this.emberClient.on('error', e => {
       this.log('error', 'Error ' + e)
     })
     this.emberClient.on('connected', () => {
@@ -93,7 +92,6 @@ class EmberPlusInstance extends InstanceSkel<EmberPlusConfig> {
     })
     this.emberClient.connect()
   }
-
 }
 
 export = EmberPlusInstance
