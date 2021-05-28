@@ -4,7 +4,6 @@ import { CompanionPreset } from '../../../instance_skel_types'
 import { ActionId } from './actions'
 import { EmberPlusConfig } from './config'
 import { FeedbackId } from './feedback'
-import { ValuesType, NonUndefined } from 'utility-types'
 
 interface CompanionPresetExt extends CompanionPreset {
   feedbacks: Array<
@@ -20,7 +19,7 @@ interface CompanionPresetExt extends CompanionPreset {
   release_actions?: Array<
     {
       action: ActionId
-    } & ValuesType<NonUndefined<CompanionPreset['release_actions']>>
+    } & NonNullable<CompanionPreset['release_actions']>[0]
   >
 }
 

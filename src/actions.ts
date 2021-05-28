@@ -6,7 +6,7 @@ import {
   CompanionInputFieldNumber,
   CompanionInputFieldTextInput
 } from '../../../instance_skel_types'
-import { Required as MakeRequired } from 'utility-types'
+import { SetRequired } from 'type-fest'
 import { EmberClient, Model as EmberModel } from 'emberplus-connection'
 import { EmberPlusConfig } from './config'
 
@@ -20,7 +20,7 @@ export enum ActionId {
   MatrixSetConnection = 'matrixSetConnection'
 }
 
-type CompanionActionWithCallback = MakeRequired<CompanionAction, 'callback'>
+type CompanionActionWithCallback = SetRequired<CompanionAction, 'callback'>
 
 const pathInput: CompanionInputFieldTextInput = {
   type: 'textinput',
