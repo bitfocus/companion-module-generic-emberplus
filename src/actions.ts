@@ -150,7 +150,7 @@ export function GetActionsList(self: InstanceSkel<EmberPlusConfig>, emberClient:
           id: 'value'
         }
       ],
-      callback: setValue(self, emberClient, EmberModel.ParameterType.Integer)
+      callback: setValue(self, emberClient, EmberModel.ParameterType.String)
     },
     [ActionId.MatrixConnect]: {
       label: 'Matrix Connect',
