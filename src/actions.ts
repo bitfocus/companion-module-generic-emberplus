@@ -35,7 +35,7 @@ const matrixInputs: Array<CompanionInputFieldTextInput | CompanionInputFieldNumb
     id: 'target',
     required: true,
     min: 0,
-    max: 0xffff,
+    max: 0xffffffff,
     default: 0,
     step: 1
   },
