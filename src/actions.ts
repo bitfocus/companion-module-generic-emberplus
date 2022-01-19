@@ -102,8 +102,8 @@ export function GetActionsList(self: InstanceSkel<EmberPlusConfig>, emberClient:
           label: 'Value',
           id: 'value',
           required: true,
-          min: -0xffff,
-          max: 0xffff,
+          min: -0xffffffff,
+          max: 0xffffffff,
           default: 0,
           step: 1
         }
@@ -119,8 +119,8 @@ export function GetActionsList(self: InstanceSkel<EmberPlusConfig>, emberClient:
           label: 'Value',
           id: 'value',
           required: true,
-          min: -0xffff,
-          max: 0xffff,
+          min: -0xffffffff,
+          max: 0xffffffff,
           default: 0,
           step: 0.001 // TODO - don't want this at all preferably
         }
