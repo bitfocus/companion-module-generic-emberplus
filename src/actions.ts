@@ -15,6 +15,7 @@ export enum ActionId {
   SetValueReal = 'setValueReal',
   SetValueString = 'setValueString',
   SetValueBoolean = 'setValueBoolean',
+  SetValueEnum = 'setValueEnum',
   MatrixConnect = 'matrixConnect',
   MatrixDisconnect = 'matrixDisconnect',
   MatrixSetConnection = 'matrixSetConnection'
@@ -61,7 +62,7 @@ const setValue = (self: InstanceSkel<EmberPlusConfig>, emberClient: EmberClient,
           false
         )
       } else {
-        self.log('warn', 'Node ' + action.options['path'] + ' is not of type ' + type)
+        self.log('warn', 'Node ' + action.options['path'] + ' is not of type ' + type + ' (is ' + node.contents.parameterType + ')')
       }
     } else {
       self.log('warn', 'Parameter ' + action.options['path'] + ' not found or not a parameter')
@@ -139,6 +140,23 @@ export function GetActionsList(self: InstanceSkel<EmberPlusConfig>, emberClient:
         }
       ],
       callback: setValue(self, emberClient, EmberModel.ParameterType.Boolean)
+    },
+    [ActionId.SetValueEnum]: {
+      label: 'Set Value ENUM (as Integer)',
+      options: [
+        pathInput as CompanionInputFieldTextInput,
+        {
+          type: 'number',
+          label: 'Value',
+          id: 'value',
+          required: true,
+          min: 0x00000000,
+          max: 0xffffffff,
+          default: 0,
+          step: 1
+        }
+      ],
+      callback: setValue(self, emberClient, EmberModel.ParameterType.Enum)
     },
     [ActionId.SetValueString]: {
       label: 'Set Value String',
