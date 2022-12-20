@@ -90,7 +90,10 @@ class EmberPlusInstance extends InstanceSkel<EmberPlusConfig> {
     this.emberClient.on('disconnected', () => {
       this.status(this.STATUS_WARNING, 'Reconnecting')
     })
-    this.emberClient.connect()
+    this.emberClient.connect().catch(e => {
+      this.status(this.STATUS_ERROR, 'Connection failed')
+      this.log('error', 'Error ' + e)
+    })
   }
 }
 
