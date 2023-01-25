@@ -1,5 +1,4 @@
-import InstanceSkel = require('../../../instance_skel')
-import { SomeCompanionConfigField } from '../../../instance_skel_types'
+import { Regex, SomeCompanionConfigField } from '@companion-module/base'
 
 export const portDefault = 9000
 
@@ -8,7 +7,7 @@ export interface EmberPlusConfig {
   port?: number
 }
 
-export function GetConfigFields(self: InstanceSkel<EmberPlusConfig>): SomeCompanionConfigField[] {
+export function GetConfigFields(): SomeCompanionConfigField[] {
   return [
     {
       type: 'textinput',
@@ -16,7 +15,7 @@ export function GetConfigFields(self: InstanceSkel<EmberPlusConfig>): SomeCompan
       label: 'Target IP',
       tooltip: 'The IP of the ember+ provider',
       width: 6,
-      regex: self.REGEX_IP
+      regex: Regex.IP,
     },
     {
       type: 'number',
@@ -27,7 +26,7 @@ export function GetConfigFields(self: InstanceSkel<EmberPlusConfig>): SomeCompan
       min: 1,
       max: 0xffff,
       step: 1,
-      default: portDefault
-    }
+      default: portDefault,
+    },
   ]
 }

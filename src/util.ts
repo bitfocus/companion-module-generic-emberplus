@@ -1,4 +1,4 @@
-import { InputValue } from '../../../instance_skel_types'
+import { InputValue } from '@companion-module/base'
 
 export const MEDIA_PLAYER_SOURCE_CLIP_OFFSET = 1000
 
@@ -18,7 +18,7 @@ export enum NumberComparitor {
   LessThan = 'lt',
   LessThanEqual = 'lte',
   GreaterThan = 'gt',
-  GreaterThanEqual = 'gte'
+  GreaterThanEqual = 'gte',
 }
 
 export function compareNumber(

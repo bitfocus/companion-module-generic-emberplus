@@ -1,15 +1,14 @@
-import { CompanionFeedback, CompanionFeedbacks } from '../../../instance_skel_types'
-import InstanceSkel = require('../../../instance_skel')
+import { CompanionFeedbackDefinition, CompanionFeedbackDefinitions, InstanceBase } from '@companion-module/base'
 import { EmberPlusConfig } from './config'
 import { EmberClient } from 'emberplus-connection'
 
-type CompanionFeedbackWithCallback = CompanionFeedback &
-  Required<Pick<CompanionFeedback, 'callback' | 'subscribe' | 'unsubscribe'>>
-
 export enum FeedbackId {}
 
-export function GetFeedbacksList(_self: InstanceSkel<EmberPlusConfig>, _emberClient: EmberClient): CompanionFeedbacks {
-  const feedbacks: { [id in FeedbackId]: CompanionFeedbackWithCallback | undefined } = {}
+export function GetFeedbacksList(
+  _self: InstanceBase<EmberPlusConfig>,
+  _emberClient: EmberClient
+): CompanionFeedbackDefinitions {
+  const feedbacks: { [id in FeedbackId]: CompanionFeedbackDefinition | undefined } = {}
 
   return feedbacks
 }
