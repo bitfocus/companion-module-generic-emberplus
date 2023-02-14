@@ -1,4 +1,4 @@
-import { InstanceBase, InstanceStatus, SomeCompanionConfigField } from '@companion-module/base'
+import { InstanceBase, InstanceStatus, SomeCompanionConfigField, runEntrypoint } from '@companion-module/base'
 import { GetActionsList } from './actions'
 import { EmberPlusConfig, GetConfigFields } from './config'
 import { EmberClient } from 'emberplus-connection' // note - emberplus-conn is in parent repo, not sure if it needs to be defined as dependency
@@ -87,4 +87,4 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
   }
 }
 
-export = EmberPlusInstance
+runEntrypoint(EmberPlusInstance, [])
