@@ -52,11 +52,12 @@ const setValue =
     if (node && node.contents.type === EmberModel.ElementType.Parameter) {
       if (node.contents.parameterType === type) {
         self.log('debug', 'Got node on ' + action.options['path'])
-        await emberClient.setValue(
+        const request = await emberClient.setValue(
           node as EmberModel.NumberedTreeNode<EmberModel.Parameter>,
           action.options['value'] as number,
           false
         )
+        request.response?.catch(() => null) // Ensure the response is 'handled'
       } else {
         self.log('warn', 'Node ' + action.options['path'] + ' is not of type ' + type)
       }

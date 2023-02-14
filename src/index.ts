@@ -71,10 +71,15 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
       this.log('error', 'Error ' + e)
     })
     this.emberClient.on('connected', () => {
-      this.emberClient.getDirectory(this.emberClient.tree).catch((e) => {
-        // get root
-        this.log('error', 'Failed to discover root: ' + e)
-      })
+      Promise.resolve()
+        .then(async () => {
+          const request = await this.emberClient.getDirectory(this.emberClient.tree)
+          await request.response
+        })
+        .catch((e) => {
+          // get root
+          this.log('error', 'Failed to discover root: ' + e)
+        })
       this.updateStatus(InstanceStatus.Ok)
     })
     this.emberClient.on('disconnected', () => {
