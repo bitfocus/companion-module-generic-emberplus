@@ -146,7 +146,7 @@ export function GetActionsList(
       callback: setValue(self, emberClient, EmberModel.ParameterType.Boolean),
     },
     [ActionId.SetValueEnum]: {
-      label: 'Set Value ENUM (as Integer)',
+      name: 'Set Value ENUM (as Integer)',
       options: [
         pathInput,
         {
