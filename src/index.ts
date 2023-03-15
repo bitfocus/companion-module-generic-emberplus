@@ -4,7 +4,7 @@ import { EmberPlusConfig, GetConfigFields } from './config'
 import { EmberClient } from 'emberplus-connection' // note - emberplus-conn is in parent repo, not sure if it needs to be defined as dependency
 
 /**
- * Companion instance class for the Behringer X32 Mixers.
+ * Companion instance class for generic EmBER+ Devices
  */
 class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
   private emberClient!: EmberClient
