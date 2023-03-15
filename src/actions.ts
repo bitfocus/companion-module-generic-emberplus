@@ -8,6 +8,7 @@ import {
 } from '@companion-module/base'
 import { EmberClient, Model as EmberModel } from 'emberplus-connection'
 import { EmberPlusConfig } from './config'
+import { FeedbackId } from './feedback'
 
 export enum ActionId {
   SetValueInt = 'setValueInt',
@@ -162,7 +163,7 @@ const setSelectedSource =
     }
     self.log('debug', 'Take is: ' + config.take)
     if (config.take) doMatrixActionFunction(self, emberClient, config, Number(action.options['matrix']))
-    //self.checkFeedbacks(FeedbackId.SourceBackgroundSelected)
+    self.checkFeedbacks(FeedbackId.SourceBackgroundSelected)
     self.log('debug', 'setSelectedSource: ' + action.options['source'] + ' on Matrix: ' + action.options['matrix'])
   }
 
@@ -172,7 +173,7 @@ const setSelectedTarget =
     if (action.options['target'] != -1 && action.options['matrix'] != -1 && config.selectedDestination) {
       config.selectedDestination[Number(action.options['matrix'])] = Number(action.options['target'])
     }
-    //self.checkFeedbacks(FeedbackId.TargetBackgroundSelected)
+    self.checkFeedbacks(FeedbackId.TargetBackgroundSelected)
     self.log('debug', 'setSelectedTarget: ' + action.options['target'] + ' on Matrix: ' + action.options['matrix'])
   }
 
