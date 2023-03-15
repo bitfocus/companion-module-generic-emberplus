@@ -24,6 +24,7 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
     this.config = config
 
     this.setupEmberConnection()
+    this.setupMatrices()
 
     this.updateCompanionBits()
   }
@@ -89,6 +90,26 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
       this.updateStatus(InstanceStatus.ConnectionFailure)
       this.log('error', 'Error ' + e)
     })
+  }
+
+  private setupMatrices(): void {
+    this.config.selectedSource = []
+    this.config.selectedDestination = []
+
+    if (this.config.matricesString) {
+      this.config.matrices = this.config.matricesString.split(',')
+    }
+
+    if (this.config.matrices) {
+      for (let i = 0; i < this.config.matrices.length; i++) {
+        this.config.selectedSource[i] = -1
+      }
+    }
+    if (this.config.matrices) {
+      for (let i = 0; i < this.config.matrices.length; i++) {
+        this.config.selectedDestination[i] = -1
+      }
+    }
   }
 }
 
