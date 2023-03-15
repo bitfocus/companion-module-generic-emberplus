@@ -56,7 +56,7 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
   }
 
   private updateCompanionBits(): void {
-    this.setActionDefinitions(GetActionsList(this, this.client))
+    this.setActionDefinitions(GetActionsList(this, this.client, this.config))
   }
 
   private get client(): EmberClient {
