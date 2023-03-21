@@ -21,6 +21,7 @@ export enum ActionId {
   MatrixDisconnect = 'matrixDisconnect',
   MatrixSetConnection = 'matrixSetConnection',
   Take = 'take',
+  Clear = 'clear',
   SetSelectedSource = 'setSelectedSource',
   SetSelectedTarget = 'setSelectedTarget',
 }
@@ -165,6 +166,21 @@ const doTake =
     }
   }
 
+/**
+ * Clear the current selected Source and Target
+ * @param self reference to the BaseInstance
+ * @param state reference to the modules state
+ */
+const doClear = (self: InstanceBase<EmberPlusConfig>, state: EmberPlusState) => (): void => {
+  state.selected.matrix = state.selected.source = state.selected.target = -1
+  self.checkFeedbacks(
+    FeedbackId.SourceBackgroundSelected,
+    FeedbackId.TargetBackgroundSelected,
+    FeedbackId.Take,
+    FeedbackId.Clear
+  )
+}
+
 const setSelectedSource =
   (self: InstanceBase<EmberPlusConfig>, emberClient: EmberClient, config: EmberPlusConfig, state: EmberPlusState) =>
   (action: CompanionActionEvent): void => {
@@ -296,6 +312,11 @@ export function GetActionsList(
       name: 'Take',
       options: [],
       callback: doTake(self, emberClient, config, state),
+    },
+    [ActionId.Clear]: {
+      name: 'Clear',
+      options: [],
+      callback: doClear(self, state),
     },
     [ActionId.SetSelectedSource]: {
       name: 'Set Selected Source',
