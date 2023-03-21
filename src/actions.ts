@@ -9,6 +9,7 @@ import {
 import { EmberClient, Model as EmberModel } from 'emberplus-connection'
 import { EmberPlusConfig } from './config'
 import { FeedbackId } from './feedback'
+import { EmberPlusState } from './state'
 
 export enum ActionId {
   SetValueInt = 'setValueInt',
@@ -20,6 +21,7 @@ export enum ActionId {
   MatrixDisconnect = 'matrixDisconnect',
   MatrixSetConnection = 'matrixSetConnection',
   Take = 'take',
+  Clear = 'clear',
   SetSelectedSource = 'setSelectedSource',
   SetSelectedTarget = 'setSelectedTarget',
 }
@@ -97,90 +99,150 @@ const doMatrixAction =
     }
   }
 
+/**
+ * Performes a connection on a specified matrix.
+ * @param self reference to the BaseInstance
+ * @param emberClient reference to the emberClient
+ * @param config reference to the config of the module
+ * @param state reference to the state of the module
+ */
 const doMatrixActionFunction = function (
   self: InstanceBase<EmberPlusConfig>,
   emberClient: EmberClient,
   config: EmberPlusConfig,
-  selMatrix: number
+  state: EmberPlusState
 ) {
   if (
-    config.selectedSource &&
-    config.selectedDestination &&
+    state.selected.source !== -1 &&
+    state.selected.target !== -1 &&
+    state.selected.matrix !== -1 &&
     config.matrices &&
-    config.selectedSource[selMatrix] !== -1 &&
-    config.selectedDestination[selMatrix] !== -1
+    config.matrices[state.selected.matrix]
   ) {
-    self.log('debug', 'Get node ' + config.matrices[selMatrix])
+    self.log('debug', 'Get node ' + state.selected.matrix)
     emberClient
-      .getElementByPath(config.matrices[selMatrix])
+      .getElementByPath(config.matrices[state.selected.matrix])
       .then((node) => {
         // TODO - do we handle not found?
         if (node && node.contents.type === EmberModel.ElementType.Matrix) {
-          self.log('debug', 'Got node on ' + selMatrix)
-          const target = config.selectedDestination[selMatrix]
-          const sources = [config.selectedSource[selMatrix]]
+          self.log('debug', 'Got node on ' + state.selected.matrix)
+          const target = state.selected.target
+          const sources = [state.selected.source]
           emberClient
             .matrixConnect(node as EmberModel.NumberedTreeNode<EmberModel.Matrix>, target, sources)
             .then((r) => self.log('debug', String(r)))
             .catch((r) => self.log('debug', r))
         } else {
-          self.log('warn', 'Matrix ' + selMatrix + ' not found or not a parameter')
+          self.log('warn', 'Matrix ' + state.selected.matrix + ' not found or not a parameter')
         }
       })
       .catch((reason) => self.log('debug', reason))
+      .finally(() => {
+        state.selected.matrix = state.selected.source = state.selected.target = -1
+        self.checkFeedbacks(
+          FeedbackId.TargetBackgroundSelected,
+          FeedbackId.SourceBackgroundSelected,
+          FeedbackId.Take,
+          FeedbackId.Take
+        )
+      })
   }
 }
 
+/**
+ * Gets called, when take is not on Auto-Take.
+ * Performes a connect on the wanted matrix
+ * @param self reference to the BaseInstance
+ * @param emberClient reference to the emberClient
+ * @param config reference to the config of the module
+ * @param state reference to the state of the module
+ */
 const doTake =
-  (self: InstanceBase<EmberPlusConfig>, emberClient: EmberClient, config: EmberPlusConfig) =>
+  (self: InstanceBase<EmberPlusConfig>, emberClient: EmberClient, config: EmberPlusConfig, state: EmberPlusState) =>
   (action: CompanionActionEvent): void => {
-    if (config.selectedDestination && config.selectedSource && config.matrices) {
-      if (
-        config.selectedDestination[Number(action.options['matrix'])] !== -1 &&
-        config.selectedSource[Number(action.options['matrix'])] !== -1
-      ) {
-        doMatrixActionFunction(self, emberClient, config, Number(action.options['matrix']))
-      } else {
-        self.log('debug', 'TAKE went wrong.')
-      }
+    if (
+      state.selected.target !== -1 &&
+      state.selected.source !== -1 &&
+      state.selected.matrix !== -1 &&
+      config.matrices
+    ) {
       self.log(
         'debug',
         'TAKE: selectedDest: ' +
-          config.selectedDestination[Number(action.options['matrix'])] +
-          ' selectedSource: ' +
-          config.selectedSource[Number(action.options['matrix'])] +
+          state.selected.target +
+          ' selected.source: ' +
+          state.selected.source +
           ' on matrix ' +
           Number(action.options['matrix'])
       )
+      doMatrixActionFunction(self, emberClient, config, state)
+    } else {
+      self.log('debug', 'TAKE went wrong.')
     }
   }
 
+/**
+ * Clear the current selected Source and Target
+ * @param self reference to the BaseInstance
+ * @param state reference to the modules state
+ */
+const doClear = (self: InstanceBase<EmberPlusConfig>, state: EmberPlusState) => (): void => {
+  state.selected.matrix = state.selected.source = state.selected.target = -1
+  self.checkFeedbacks(
+    FeedbackId.SourceBackgroundSelected,
+    FeedbackId.TargetBackgroundSelected,
+    FeedbackId.Take,
+    FeedbackId.Clear
+  )
+}
+
+/**
+ * Selects a source on a specific matrix.
+ * When Auto-Take is enabled the source is routed to the selected target.
+ * @param self reference to the BaseInstance
+ * @param emberClient reference to the emberClient
+ * @param config reference to the config of the module
+ * @param state reference to the state of the module
+ */
 const setSelectedSource =
-  (self: InstanceBase<EmberPlusConfig>, emberClient: EmberClient, config: EmberPlusConfig) =>
+  (self: InstanceBase<EmberPlusConfig>, emberClient: EmberClient, config: EmberPlusConfig, state: EmberPlusState) =>
   (action: CompanionActionEvent): void => {
-    if (action.options['source'] != -1 && action.options['matrix'] != -1 && config.selectedSource) {
-      config.selectedSource[Number(action.options['matrix'])] = Number(action.options['source'])
+    if (action.options['source'] != -1 && Number(action.options['matrix']) == state.selected.matrix) {
+      state.selected.source = Number(action.options['source'])
+      self.log('debug', 'Take is: ' + config.take)
+      if (config.take) doMatrixActionFunction(self, emberClient, config, state)
+      self.checkFeedbacks(FeedbackId.SourceBackgroundSelected, FeedbackId.Clear, FeedbackId.Take)
+      self.log('debug', 'setSelectedSource: ' + action.options['source'] + ' on Matrix: ' + state.selected.matrix)
     }
-    self.log('debug', 'Take is: ' + config.take)
-    if (config.take) doMatrixActionFunction(self, emberClient, config, Number(action.options['matrix']))
-    self.checkFeedbacks(FeedbackId.SourceBackgroundSelected)
-    self.log('debug', 'setSelectedSource: ' + action.options['source'] + ' on Matrix: ' + action.options['matrix'])
   }
 
+/**
+ * Selects a target on a specified matrix.
+ * @param self reference to the BaseInstance
+ * @param state reference to the state of the module
+ */
 const setSelectedTarget =
-  (self: InstanceBase<EmberPlusConfig>, config: EmberPlusConfig) =>
+  (self: InstanceBase<EmberPlusConfig>, state: EmberPlusState) =>
   (action: CompanionActionEvent): void => {
-    if (action.options['target'] != -1 && action.options['matrix'] != -1 && config.selectedDestination) {
-      config.selectedDestination[Number(action.options['matrix'])] = Number(action.options['target'])
+    if (action.options['target'] != -1) {
+      state.selected.target = Number(action.options['target'])
+      state.selected.matrix = Number(action.options['matrix'])
     }
-    self.checkFeedbacks(FeedbackId.TargetBackgroundSelected)
-    self.log('debug', 'setSelectedTarget: ' + action.options['target'] + ' on Matrix: ' + action.options['matrix'])
+    state.selected.source = -1
+    self.checkFeedbacks(
+      FeedbackId.SourceBackgroundSelected,
+      FeedbackId.TargetBackgroundSelected,
+      FeedbackId.Take,
+      FeedbackId.Clear
+    )
+    self.log('debug', 'setSelectedTarget: ' + action.options['target'] + ' on Matrix: ' + state.selected.matrix)
   }
 
 export function GetActionsList(
   self: InstanceBase<EmberPlusConfig>,
   emberClient: EmberClient,
-  config: EmberPlusConfig
+  config: EmberPlusConfig,
+  state: EmberPlusState
 ): CompanionActionDefinitions {
   const actions: { [id in ActionId]: CompanionActionDefinition | undefined } = {
     [ActionId.SetValueInt]: {
@@ -276,18 +338,13 @@ export function GetActionsList(
     },
     [ActionId.Take]: {
       name: 'Take',
-      options: [
-        {
-          type: 'number',
-          label: 'Matrix Number',
-          id: 'matrix',
-          required: true,
-          min: 0,
-          max: 0xffffffff,
-          default: 0,
-        },
-      ],
-      callback: doTake(self, emberClient, config),
+      options: [],
+      callback: doTake(self, emberClient, config, state),
+    },
+    [ActionId.Clear]: {
+      name: 'Clear',
+      options: [],
+      callback: doClear(self, state),
     },
     [ActionId.SetSelectedSource]: {
       name: 'Set Selected Source',
@@ -311,7 +368,7 @@ export function GetActionsList(
           default: 0,
         },
       ],
-      callback: setSelectedSource(self, emberClient, config),
+      callback: setSelectedSource(self, emberClient, config, state),
     },
     [ActionId.SetSelectedTarget]: {
       name: 'Set Selected Target',
@@ -335,7 +392,7 @@ export function GetActionsList(
           default: 0,
         },
       ],
-      callback: setSelectedTarget(self, config),
+      callback: setSelectedTarget(self, state),
     },
   }
 
