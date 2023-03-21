@@ -99,6 +99,13 @@ const doMatrixAction =
     }
   }
 
+/**
+ * Performes a connection on a specified matrix.
+ * @param self reference to the BaseInstance
+ * @param emberClient reference to the emberClient
+ * @param config reference to the config of the module
+ * @param state reference to the state of the module
+ */
 const doMatrixActionFunction = function (
   self: InstanceBase<EmberPlusConfig>,
   emberClient: EmberClient,
@@ -142,6 +149,14 @@ const doMatrixActionFunction = function (
   }
 }
 
+/**
+ * Gets called, when take is not on Auto-Take.
+ * Performes a connect on the wanted matrix
+ * @param self reference to the BaseInstance
+ * @param emberClient reference to the emberClient
+ * @param config reference to the config of the module
+ * @param state reference to the state of the module
+ */
 const doTake =
   (self: InstanceBase<EmberPlusConfig>, emberClient: EmberClient, config: EmberPlusConfig, state: EmberPlusState) =>
   (action: CompanionActionEvent): void => {
@@ -181,6 +196,14 @@ const doClear = (self: InstanceBase<EmberPlusConfig>, state: EmberPlusState) => 
   )
 }
 
+/**
+ * Selects a source on a specific matrix.
+ * When Auto-Take is enabled the source is routed to the selected target.
+ * @param self reference to the BaseInstance
+ * @param emberClient reference to the emberClient
+ * @param config reference to the config of the module
+ * @param state reference to the state of the module
+ */
 const setSelectedSource =
   (self: InstanceBase<EmberPlusConfig>, emberClient: EmberClient, config: EmberPlusConfig, state: EmberPlusState) =>
   (action: CompanionActionEvent): void => {
@@ -193,6 +216,11 @@ const setSelectedSource =
     }
   }
 
+/**
+ * Selects a target on a specified matrix.
+ * @param self reference to the BaseInstance
+ * @param state reference to the state of the module
+ */
 const setSelectedTarget =
   (self: InstanceBase<EmberPlusConfig>, state: EmberPlusState) =>
   (action: CompanionActionEvent): void => {
