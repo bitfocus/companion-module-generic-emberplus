@@ -1,6 +1,7 @@
 import { InstanceBase, InstanceStatus, SomeCompanionConfigField, runEntrypoint } from '@companion-module/base'
 import { GetActionsList } from './actions'
 import { EmberPlusConfig, GetConfigFields } from './config'
+import { GetPresetsList } from './presets'
 import { GetFeedbacksList } from './feedback'
 import { EmberPlusState } from './state'
 import { EmberClient } from 'emberplus-connection' // note - emberplus-conn is in parent repo, not sure if it needs to be defined as dependency
@@ -62,6 +63,7 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
   private updateCompanionBits(): void {
     this.setActionDefinitions(GetActionsList(this, this.client, this.config, this.state))
     this.setFeedbackDefinitions(GetFeedbacksList(this, this.client, this.state))
+    this.setPresetDefinitions(GetPresetsList())
   }
 
   private get client(): EmberClient {
