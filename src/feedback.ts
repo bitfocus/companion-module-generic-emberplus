@@ -6,8 +6,11 @@ import {
 } from '@companion-module/base'
 import { EmberClient } from 'emberplus-connection'
 import { EmberPlusConfig } from './config'
+import { EmberPlusState } from './state'
 
 export enum FeedbackId {
+  Take = 'take',
+  Clear = 'clear',
   SourceBackgroundSelected = 'sourceBackgroundSelected',
   TargetBackgroundSelected = 'targetBackgroundSelected',
 }
@@ -15,9 +18,35 @@ export enum FeedbackId {
 export function GetFeedbacksList(
   _self: InstanceBase<EmberPlusConfig>,
   _emberClient: EmberClient,
-  config: EmberPlusConfig
+  state: EmberPlusState
 ): CompanionFeedbackDefinitions {
   const feedbacks: { [id in FeedbackId]: CompanionFeedbackDefinition | undefined } = {
+    [FeedbackId.Take]: {
+      name: 'Take is possible',
+      description: 'Shows if there is take possible',
+      type: 'boolean',
+      defaultStyle: {
+        bgcolor: combineRgb(255, 255, 255),
+        color: combineRgb(255, 0, 0),
+      },
+      options: [],
+      callback: () => {
+        return state.selected.target != -1 && state.selected.source != -1 && state.selected.matrix != -1
+      },
+    },
+    [FeedbackId.Clear]: {
+      name: 'Clear is possible',
+      description: 'Changes when a selection is made.',
+      type: 'boolean',
+      defaultStyle: {
+        bgcolor: combineRgb(255, 255, 255),
+        color: combineRgb(255, 0, 0),
+      },
+      options: [],
+      callback: () => {
+        return state.selected.target != -1 || state.selected.source != -1 || state.selected.matrix != -1
+      },
+    },
     [FeedbackId.SourceBackgroundSelected]: {
       name: 'Source Background If Selected',
       description: 'Change Background of Source, when it is currently selected.',
@@ -49,7 +78,9 @@ export function GetFeedbacksList(
         },
       ],
       callback: (feedback) => {
-        return config.selectedSource[Number(feedback.options['matrix'])] == feedback.options['source']
+        return (
+          state.selected.source == feedback.options['source'] && state.selected.matrix == feedback.options['matrix']
+        )
       },
     },
     [FeedbackId.TargetBackgroundSelected]: {
@@ -83,7 +114,9 @@ export function GetFeedbacksList(
         },
       ],
       callback: (feedback) => {
-        return config.selectedDestination[Number(feedback.options['matrix'])] == feedback.options['target']
+        return (
+          state.selected.target == feedback.options['target'] && state.selected.matrix == feedback.options['matrix']
+        )
       },
     },
   }

@@ -2,6 +2,7 @@ import { InstanceBase, InstanceStatus, SomeCompanionConfigField, runEntrypoint }
 import { GetActionsList } from './actions'
 import { EmberPlusConfig, GetConfigFields } from './config'
 import { GetFeedbacksList } from './feedback'
+import { EmberPlusState } from './state'
 import { EmberClient } from 'emberplus-connection' // note - emberplus-conn is in parent repo, not sure if it needs to be defined as dependency
 
 /**
@@ -10,6 +11,7 @@ import { EmberClient } from 'emberplus-connection' // note - emberplus-conn is i
 class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
   private emberClient!: EmberClient
   private config!: EmberPlusConfig
+  private state!: EmberPlusState
 
   // Override base types to make types stricter
   public checkFeedbacks(...feedbackTypes: string[]): void {
@@ -23,6 +25,7 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
    */
   public async init(config: EmberPlusConfig): Promise<void> {
     this.config = config
+    this.state = new EmberPlusState()
 
     this.setupEmberConnection()
     this.setupMatrices()
@@ -57,8 +60,8 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
   }
 
   private updateCompanionBits(): void {
-    this.setActionDefinitions(GetActionsList(this, this.client, this.config))
-    this.setFeedbackDefinitions(GetFeedbacksList(this, this.client, this.config))
+    this.setActionDefinitions(GetActionsList(this, this.client, this.config, this.state))
+    this.setFeedbackDefinitions(GetFeedbacksList(this, this.client, this.state))
   }
 
   private get client(): EmberClient {
@@ -95,22 +98,15 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
   }
 
   private setupMatrices(): void {
-    this.config.selectedSource = []
-    this.config.selectedDestination = []
-
     if (this.config.matricesString) {
       this.config.matrices = this.config.matricesString.split(',')
     }
 
     if (this.config.matrices) {
-      for (let i = 0; i < this.config.matrices.length; i++) {
-        this.config.selectedSource[i] = -1
-      }
+      this.state.selected.source = -1
     }
     if (this.config.matrices) {
-      for (let i = 0; i < this.config.matrices.length; i++) {
-        this.config.selectedDestination[i] = -1
-      }
+      this.state.selected.target = -1
     }
   }
 }

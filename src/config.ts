@@ -6,8 +6,6 @@ export interface EmberPlusConfig {
   host?: string
   port?: number
   take?: boolean
-  selectedSource: number[]
-  selectedDestination: number[]
   matrices?: string[]
   matricesString?: string
 }
