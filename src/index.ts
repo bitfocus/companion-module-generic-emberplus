@@ -1,14 +1,18 @@
 import { InstanceBase, InstanceStatus, SomeCompanionConfigField, runEntrypoint } from '@companion-module/base'
 import { GetActionsList } from './actions'
 import { EmberPlusConfig, GetConfigFields } from './config'
+import { GetPresetsList } from './presets'
+import { GetFeedbacksList } from './feedback'
+import { EmberPlusState } from './state'
 import { EmberClient } from 'emberplus-connection' // note - emberplus-conn is in parent repo, not sure if it needs to be defined as dependency
 
 /**
- * Companion instance class for the Behringer X32 Mixers.
+ * Companion instance class for generic EmBER+ Devices
  */
 class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
   private emberClient!: EmberClient
   private config!: EmberPlusConfig
+  private state!: EmberPlusState
 
   // Override base types to make types stricter
   public checkFeedbacks(...feedbackTypes: string[]): void {
@@ -22,8 +26,10 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
    */
   public async init(config: EmberPlusConfig): Promise<void> {
     this.config = config
+    this.state = new EmberPlusState()
 
     this.setupEmberConnection()
+    this.setupMatrices()
 
     this.updateCompanionBits()
   }
@@ -55,7 +61,9 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
   }
 
   private updateCompanionBits(): void {
-    this.setActionDefinitions(GetActionsList(this, this.client))
+    this.setActionDefinitions(GetActionsList(this, this.client, this.config, this.state))
+    this.setFeedbackDefinitions(GetFeedbacksList(this, this.client, this.state))
+    this.setPresetDefinitions(GetPresetsList())
   }
 
   private get client(): EmberClient {
@@ -89,6 +97,19 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
       this.updateStatus(InstanceStatus.ConnectionFailure)
       this.log('error', 'Error ' + e)
     })
+  }
+
+  private setupMatrices(): void {
+    if (this.config.matricesString) {
+      this.config.matrices = this.config.matricesString.split(',')
+    }
+
+    if (this.config.matrices) {
+      this.state.selected.source = -1
+    }
+    if (this.config.matrices) {
+      this.state.selected.target = -1
+    }
   }
 }
 
