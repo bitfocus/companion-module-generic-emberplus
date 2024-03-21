@@ -8,6 +8,8 @@ export interface EmberPlusConfig {
   take?: boolean
   matrices?: string[]
   matricesString?: string
+  feedbackParametersString?: string
+  feedbackParameters?: string[]
 }
 
 export function GetConfigFields(): SomeCompanionConfigField[] {
@@ -43,6 +45,13 @@ export function GetConfigFields(): SomeCompanionConfigField[] {
       id: 'matricesString',
       label: 'Paths to matrices',
       tooltip: 'Please seperate by comma',
+      width: 12,
+    },
+    {
+      type: 'textinput',
+      id: 'feedbackParametersString',
+      label: 'Paths to parameters to monitor',
+      tooltip: 'Please seperate by coma',
       width: 12,
     },
   ]

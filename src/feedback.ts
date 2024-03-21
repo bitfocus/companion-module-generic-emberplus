@@ -3,12 +3,14 @@ import {
   CompanionFeedbackDefinitions,
   combineRgb,
   InstanceBase,
+  DropdownChoice,
 } from '@companion-module/base'
 import { EmberClient } from 'emberplus-connection'
 import { EmberPlusConfig } from './config'
 import { EmberPlusState } from './state'
 
 export enum FeedbackId {
+  Parameter = 'parameter',
   Take = 'take',
   Clear = 'clear',
   SourceBackgroundSelected = 'sourceBackgroundSelected',
@@ -18,9 +20,40 @@ export enum FeedbackId {
 export function GetFeedbacksList(
   _self: InstanceBase<EmberPlusConfig>,
   _emberClient: EmberClient,
+  config: EmberPlusConfig,
   state: EmberPlusState
 ): CompanionFeedbackDefinitions {
   const feedbacks: { [id in FeedbackId]: CompanionFeedbackDefinition | undefined } = {
+    [FeedbackId.Parameter]: {
+      name: 'Parameter Equals',
+      description: 'Checks the current value of a paramter',
+      type: 'boolean',
+      defaultStyle: {
+        bgcolor: combineRgb(255, 255, 255),
+        color: combineRgb(0, 0, 0),
+      },
+      options: [
+        {
+          type: 'dropdown',
+          label: 'Select registered path',
+          id: 'path',
+          choices: config.feedbackParameters?.map((item) => <DropdownChoice>{ id: item, label: item }) ?? [],
+          default: config.feedbackParameters?.find(() => true) ?? 'No paths configured!',
+        },
+        {
+          type: 'number',
+          label: 'Value',
+          id: 'value',
+          required: true,
+          min: -0,
+          max: 0xffffffff,
+          default: 0,
+        },
+      ],
+      callback: (feedback) => {
+        return state.parameters.get(feedback.options['path']?.toString() ?? '') == feedback.options['value']?.toString()
+      },
+    },
     [FeedbackId.Take]: {
       name: 'Take is possible',
       description: 'Shows if there is take possible',
