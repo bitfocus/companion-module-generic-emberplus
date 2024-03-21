@@ -27,7 +27,7 @@
 	"dependencies": {
 		"@companion-module/base": "~1.1.1",
 		"@types/node": "^18.13.0",
-		"emberplus-connection": "^0.1.2"
+		"emberplus-connection": "^0.2.1"
 	},
 	"devDependencies": {
 		"@companion-module/tools": "^1.0.0",

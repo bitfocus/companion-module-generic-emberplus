@@ -5,7 +5,7 @@ import { GetPresetsList } from './presets'
 import { FeedbackId, GetFeedbacksList } from './feedback'
 import { EmberPlusState } from './state'
 import { EmberClient } from 'emberplus-connection' // note - emberplus-conn is in parent repo, not sure if it needs to be defined as dependency
-import { ElementType } from 'emberplus-connection/dist/model'
+import { ElementType, TreeElement, EmberElement } from 'emberplus-connection/dist/model'
 
 /**
  * Companion instance class for generic EmBER+ Devices
@@ -124,19 +124,23 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
   private async registerParameters() {
     for (const path of this.config.feedbackParameters ?? []) {
       try {
-        const elem = await this.emberClient.getElementByPath(path)
-        if (elem) {
-          await this.emberClient.subscribe(elem, (node) => {
-            if (node.contents.type == ElementType.Parameter) {
-              this.log('debug', 'Got parameter value for ' + path + ': ' + (node.contents.value?.toString() ?? ''))
-              this.state.parameters.set(path, node.contents.value?.toString() ?? '')
-              this.checkFeedbacks(FeedbackId.Parameter)
-            }
-          })
+        const initial_node = await this.emberClient.getElementByPath(path, (node) => {
+          this.handleChangedValue(path, node).catch((e) => this.log('error', 'Error handling parameter ' + e))
+        })
+        if (initial_node) {
+          this.log('debug', 'Registered for path "' + path + '"')
+          await this.handleChangedValue(path, initial_node)
         }
       } catch (e) {
         this.log('error', 'Failed to subscribe to path "' + path + '": ' + e)
       }
+    }
+  }
+  private async handleChangedValue(path: string, node: TreeElement<EmberElement>) {
+    if (node.contents.type == ElementType.Parameter) {
+      this.log('debug', 'Got parameter value for ' + path + ': ' + (node.contents.value?.toString() ?? ''))
+      this.state.parameters.set(path, node.contents.value?.toString() ?? '')
+      this.checkFeedbacks(FeedbackId.Parameter)
     }
   }
 }
