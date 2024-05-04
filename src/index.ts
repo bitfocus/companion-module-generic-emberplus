@@ -6,6 +6,7 @@ import { FeedbackId, GetFeedbacksList } from './feedback'
 import { EmberPlusState } from './state'
 import { EmberClient } from 'emberplus-connection' // note - emberplus-conn is in parent repo, not sure if it needs to be defined as dependency
 import { ElementType, TreeElement, EmberElement } from 'emberplus-connection/dist/model'
+import { GetVariablesList } from './variables'
 
 /**
  * Companion instance class for generic EmBER+ Devices
@@ -31,7 +32,7 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 
     this.setupEmberConnection()
     this.setupMatrices()
-    this.setupFeedbackParams()
+    this.setupMonitoredParams()
 
     this.updateCompanionBits()
   }
@@ -45,6 +46,8 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
     this.emberClient.discard()
     this.emberClient.removeAllListeners()
 
+    this.setupMonitoredParams()
+    this.updateCompanionBits()
     this.setupEmberConnection()
   }
 
@@ -65,6 +68,7 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
   private updateCompanionBits(): void {
     this.setActionDefinitions(GetActionsList(this, this.client, this.config, this.state))
     this.setFeedbackDefinitions(GetFeedbacksList(this, this.client, this.config, this.state))
+    this.setVariableDefinitions(GetVariablesList(this.config))
     this.setPresetDefinitions(GetPresetsList())
   }
 
@@ -115,14 +119,16 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
     }
   }
 
-  private setupFeedbackParams(): void {
-    if (this.config.feedbackParametersString) {
-      this.config.feedbackParameters = this.config.feedbackParametersString.split(',')
+  private setupMonitoredParams(): void {
+    if (this.config.monitoredParametersString) {
+      this.config.monitoredParameters = this.config.monitoredParametersString.split(',')
     }
   }
 
   private async registerParameters() {
-    for (const path of this.config.feedbackParameters ?? []) {
+    this.log('debug', 'Start parameter registration')
+    for (const path of this.config.monitoredParameters ?? []) {
+      this.log('debug', 'Attempt to subscribe to ' + path)
       try {
         const initial_node = await this.emberClient.getElementByPath(path, (node) => {
           this.handleChangedValue(path, node).catch((e) => this.log('error', 'Error handling parameter ' + e))
@@ -141,6 +147,8 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
       this.log('debug', 'Got parameter value for ' + path + ': ' + (node.contents.value?.toString() ?? ''))
       this.state.parameters.set(path, node.contents.value?.toString() ?? '')
       this.checkFeedbacks(FeedbackId.Parameter)
+
+      this.setVariableValues(Object.fromEntries(this.state.parameters.entries()))
     }
   }
 }

@@ -37,8 +37,8 @@ export function GetFeedbacksList(
           type: 'dropdown',
           label: 'Select registered path',
           id: 'path',
-          choices: config.feedbackParameters?.map((item) => <DropdownChoice>{ id: item, label: item }) ?? [],
-          default: config.feedbackParameters?.find(() => true) ?? 'No paths configured!',
+          choices: config.monitoredParameters?.map((item) => <DropdownChoice>{ id: item, label: item }) ?? [],
+          default: config.monitoredParameters?.find(() => true) ?? 'No paths configured!',
         },
         {
           type: 'number',

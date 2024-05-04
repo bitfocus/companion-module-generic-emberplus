@@ -24,6 +24,9 @@
 			"yarn lint:raw --fix"
 		]
 	},
+	"engines": {
+		"node": "^18.12"
+	},
 	"dependencies": {
 		"@companion-module/base": "~1.1.1",
 		"@types/node": "^18.13.0",
