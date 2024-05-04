@@ -2,9 +2,10 @@ import { InstanceBase, InstanceStatus, SomeCompanionConfigField, runEntrypoint }
 import { GetActionsList } from './actions'
 import { EmberPlusConfig, GetConfigFields } from './config'
 import { GetPresetsList } from './presets'
-import { GetFeedbacksList } from './feedback'
+import { FeedbackId, GetFeedbacksList } from './feedback'
 import { EmberPlusState } from './state'
 import { EmberClient } from 'emberplus-connection' // note - emberplus-conn is in parent repo, not sure if it needs to be defined as dependency
+import { ElementType, TreeElement, EmberElement } from 'emberplus-connection/dist/model'
 
 /**
  * Companion instance class for generic EmBER+ Devices
@@ -30,6 +31,7 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 
     this.setupEmberConnection()
     this.setupMatrices()
+    this.setupFeedbackParams()
 
     this.updateCompanionBits()
   }
@@ -62,7 +64,7 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 
   private updateCompanionBits(): void {
     this.setActionDefinitions(GetActionsList(this, this.client, this.config, this.state))
-    this.setFeedbackDefinitions(GetFeedbacksList(this, this.client, this.state))
+    this.setFeedbackDefinitions(GetFeedbacksList(this, this.client, this.config, this.state))
     this.setPresetDefinitions(GetPresetsList())
   }
 
@@ -83,10 +85,11 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
         .then(async () => {
           const request = await this.emberClient.getDirectory(this.emberClient.tree)
           await request.response
+          await this.registerParameters()
         })
         .catch((e) => {
           // get root
-          this.log('error', 'Failed to discover root: ' + e)
+          this.log('error', 'Failed to discover root or subscribe to path: ' + e)
         })
       this.updateStatus(InstanceStatus.Ok)
     })
@@ -109,6 +112,35 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
     }
     if (this.config.matrices) {
       this.state.selected.target = -1
+    }
+  }
+
+  private setupFeedbackParams(): void {
+    if (this.config.feedbackParametersString) {
+      this.config.feedbackParameters = this.config.feedbackParametersString.split(',')
+    }
+  }
+
+  private async registerParameters() {
+    for (const path of this.config.feedbackParameters ?? []) {
+      try {
+        const initial_node = await this.emberClient.getElementByPath(path, (node) => {
+          this.handleChangedValue(path, node).catch((e) => this.log('error', 'Error handling parameter ' + e))
+        })
+        if (initial_node) {
+          this.log('debug', 'Registered for path "' + path + '"')
+          await this.handleChangedValue(path, initial_node)
+        }
+      } catch (e) {
+        this.log('error', 'Failed to subscribe to path "' + path + '": ' + e)
+      }
+    }
+  }
+  private async handleChangedValue(path: string, node: TreeElement<EmberElement>) {
+    if (node.contents.type == ElementType.Parameter) {
+      this.log('debug', 'Got parameter value for ' + path + ': ' + (node.contents.value?.toString() ?? ''))
+      this.state.parameters.set(path, node.contents.value?.toString() ?? '')
+      this.checkFeedbacks(FeedbackId.Parameter)
     }
   }
 }
