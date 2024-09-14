@@ -10,7 +10,7 @@ import { ElementType } from 'emberplus-connection/dist/model'
 import type { TreeElement, EmberElement } from 'emberplus-connection/dist/model'
 import { GetVariablesList } from './variables'
 
-const ReconnectInterval = 10000
+const ReconnectInterval = 5000
 
 /**
  * Companion instance class for generic EmBER+ Devices
@@ -92,7 +92,11 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 			this.emberClient.discard()
 			this.emberClient.removeAllListeners()
 		}
-		this.log('debug', 'connecting ' + (this.config.host || '') + ':' + this.config.port)
+		if (this.config.host === undefined) {
+			this.updateStatus(InstanceStatus.BadConfig, 'No Host')
+			return
+		}
+		this.log('debug', 'Connecting ' + (this.config.host || '') + ':' + this.config.port)
 		this.updateStatus(InstanceStatus.Connecting)
 
 		this.emberClient = new EmberClient(this.config.host || '', this.config.port)
@@ -109,12 +113,13 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 					const request = await this.emberClient.getDirectory(this.emberClient.tree)
 					await request.response
 					await this.registerParameters()
+					this.updateStatus(InstanceStatus.Ok)
 				})
 				.catch((e) => {
 					// get root
 					this.log('error', 'Failed to discover root or subscribe to path: ' + e)
+					this.updateStatus(InstanceStatus.UnknownWarning)
 				})
-			this.updateStatus(InstanceStatus.Ok)
 		})
 		this.emberClient.on('disconnected', () => {
 			this.updateStatus(InstanceStatus.Connecting)
