@@ -3,3 +3,5 @@ dist/
 *.log
 /pkg
 /pkg.tgz
+/.vscode
+DEBUG-*
