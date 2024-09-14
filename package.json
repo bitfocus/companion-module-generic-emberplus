@@ -21,7 +21,7 @@
 		"*.{js,json,md}": [
 			"prettier --write"
 		],
-		"*.{ts}": [
+		"*.ts": [
 			"yarn lint:raw --fix"
 		]
 	},
