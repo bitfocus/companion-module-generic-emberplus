@@ -10,6 +10,8 @@ import { ElementType } from 'emberplus-connection/dist/model'
 import type { TreeElement, EmberElement } from 'emberplus-connection/dist/model'
 import { GetVariablesList } from './variables'
 
+const ReconnectInterval = 10000
+
 /**
  * Companion instance class for generic EmBER+ Devices
  */
@@ -17,6 +19,7 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	private emberClient!: EmberClient
 	private config!: EmberPlusConfig
 	private state!: EmberPlusState
+	private reconnectTimer!: ReturnType<typeof setTimeout>
 
 	// Override base types to make types stricter
 	public checkFeedbacks(...feedbackTypes: string[]): void {
@@ -65,6 +68,9 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	 */
 	public async destroy(): Promise<void> {
 		this.emberClient.discard()
+		if (this.reconnectTimer !== undefined) {
+			clearTimeout(this.reconnectTimer)
+		}
 	}
 
 	private updateCompanionBits(): void {
@@ -79,12 +85,23 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	}
 
 	private setupEmberConnection(): void {
+		if (this.reconnectTimer !== undefined) {
+			clearTimeout(this.reconnectTimer)
+		}
+		if (this.emberClient !== undefined) {
+			this.emberClient.discard()
+			this.emberClient.removeAllListeners()
+		}
 		this.log('debug', 'connecting ' + (this.config.host || '') + ':' + this.config.port)
 		this.updateStatus(InstanceStatus.Connecting)
 
 		this.emberClient = new EmberClient(this.config.host || '', this.config.port)
 		this.emberClient.on('error', (e) => {
 			this.log('error', 'Error ' + e)
+			this.updateStatus(InstanceStatus.UnknownError)
+			this.reconnectTimer = setTimeout(() => {
+				this.setupEmberConnection()
+			}, ReconnectInterval)
 		})
 		this.emberClient.on('connected', () => {
 			Promise.resolve()
@@ -101,10 +118,16 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 		})
 		this.emberClient.on('disconnected', () => {
 			this.updateStatus(InstanceStatus.Connecting)
+			this.reconnectTimer = setTimeout(() => {
+				this.setupEmberConnection()
+			}, ReconnectInterval)
 		})
 		this.emberClient.connect().catch((e) => {
 			this.updateStatus(InstanceStatus.ConnectionFailure)
 			this.log('error', 'Error ' + e)
+			this.reconnectTimer = setTimeout(() => {
+				this.setupEmberConnection()
+			}, ReconnectInterval)
 		})
 	}
 
