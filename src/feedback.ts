@@ -40,7 +40,7 @@ export function GetFeedbacksList(
 					label: 'Value',
 					id: 'value',
 					required: true,
-					min: -0,
+					min: -0xffffffff,
 					max: 0xffffffff,
 					default: 0,
 				},

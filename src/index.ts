@@ -48,12 +48,13 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	public async configUpdated(config: EmberPlusConfig): Promise<void> {
 		this.config = config
 
-		this.emberClient.discard()
-		this.emberClient.removeAllListeners()
+		//this.emberClient.discard()
+		//this.emberClient.removeAllListeners()
 
+		this.setupEmberConnection()
+		this.setupMatrices()
 		this.setupMonitoredParams()
 		this.updateCompanionBits()
-		this.setupEmberConnection()
 	}
 
 	/**
@@ -90,9 +91,10 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 		}
 		if (this.emberClient !== undefined) {
 			this.emberClient.discard()
-			this.emberClient.removeAllListeners()
+			//this.emberClient.removeAllListeners()
 		}
-		if (this.config.host === undefined) {
+		if (this.config.host === undefined || this.config.host === '') {
+			this.log('warn', `No Host`)
 			this.updateStatus(InstanceStatus.BadConfig, 'No Host')
 			return
 		}
