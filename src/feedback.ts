@@ -6,6 +6,7 @@ import { EmberPlusState } from './state'
 
 export enum FeedbackId {
 	Parameter = 'parameter',
+	Variable = 'variable',
 	Take = 'take',
 	Clear = 'clear',
 	SourceBackgroundSelected = 'sourceBackgroundSelected',
@@ -47,6 +48,36 @@ export function GetFeedbacksList(
 			],
 			callback: (feedback) => {
 				return state.parameters.get(feedback.options['path']?.toString() ?? '') == feedback.options['value']?.toString()
+			},
+		},
+		[FeedbackId.Variable]: {
+			name: 'Parameter Equals (Variable)',
+			description: 'Checks the current value of a paramter against a variable',
+			type: 'boolean',
+			defaultStyle: {
+				bgcolor: combineRgb(255, 255, 255),
+				color: combineRgb(0, 0, 0),
+			},
+			options: [
+				{
+					type: 'dropdown',
+					label: 'Select registered path',
+					id: 'path',
+					choices: config.monitoredParameters?.map((item) => <DropdownChoice>{ id: item, label: item }) ?? [],
+					default: config.monitoredParameters?.find(() => true) ?? 'No paths configured!',
+				},
+				{
+					type: 'textinput',
+					label: 'Value',
+					id: 'value',
+					required: true,
+					useVariables: true,
+					default: '0',
+				},
+			],
+			callback: async (feedback, context) => {
+				const value: string = await context.parseVariablesInString(feedback.options['value']?.toString() ?? '')
+				return state.parameters.get(feedback.options['path']?.toString() ?? '') == value
 			},
 		},
 		[FeedbackId.Take]: {
