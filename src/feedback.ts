@@ -6,7 +6,7 @@ import { EmberPlusState } from './state'
 
 export enum FeedbackId {
 	Parameter = 'parameter',
-	Variable = 'variable',
+	String = 'string',
 	Take = 'take',
 	Clear = 'clear',
 	SourceBackgroundSelected = 'sourceBackgroundSelected',
@@ -50,9 +50,9 @@ export function GetFeedbacksList(
 				return state.parameters.get(feedback.options['path']?.toString() ?? '') == feedback.options['value']?.toString()
 			},
 		},
-		[FeedbackId.Variable]: {
-			name: 'Parameter Equals (Variable)',
-			description: 'Checks the current value of a paramter against a variable',
+		[FeedbackId.String]: {
+			name: 'Parameter Equals String',
+			description: 'Checks the current value of a paramter against a String',
 			type: 'boolean',
 			defaultStyle: {
 				bgcolor: combineRgb(255, 255, 255),

@@ -13,6 +13,7 @@ import { EmberPlusState } from './state'
 
 export enum ActionId {
 	SetValueInt = 'setValueInt',
+	SetValueIntVariable = 'setValueIntVariable',
 	SetValueReal = 'setValueReal',
 	SetValueString = 'setValueString',
 	SetValueBoolean = 'setValueBoolean',
@@ -30,6 +31,7 @@ const pathInput: CompanionInputFieldTextInput = {
 	type: 'textinput',
 	label: 'Path',
 	id: 'path',
+	useVariables: true,
 }
 const matrixInputs: Array<CompanionInputFieldTextInput | CompanionInputFieldNumber> = [
 	pathInput,
@@ -54,17 +56,39 @@ const matrixInputs: Array<CompanionInputFieldTextInput | CompanionInputFieldNumb
 const setValue =
 	(self: InstanceBase<EmberPlusConfig>, emberClient: EmberClient, type: EmberModel.ParameterType) =>
 	async (action: CompanionActionEvent): Promise<void> => {
-		const node = await emberClient.getElementByPath(action.options['path'] as string)
+		const path = await self.parseVariablesInString(action.options['path']?.toString() ?? '')
+		const node = await emberClient.getElementByPath(path)
 		// TODO - do we handle not found?
 		if (node && node.contents.type === EmberModel.ElementType.Parameter) {
 			if (node.contents.parameterType === type) {
-				self.log('debug', 'Got node on ' + action.options['path'])
-				const request = await emberClient.setValue(
-					node as EmberModel.NumberedTreeNode<EmberModel.Parameter>,
-					action.options['value'] as number,
-					false,
-				)
-				request.response?.catch(() => null) // Ensure the response is 'handled'
+				self.log('debug', 'Got node on ' + path)
+				if (type === EmberModel.ParameterType.String) {
+					const value: string = await self.parseVariablesInString(action.options['value']?.toString() ?? '')
+					const request = await emberClient.setValue(
+						node as EmberModel.NumberedTreeNode<EmberModel.Parameter>,
+						value,
+						false,
+					)
+					request.response?.catch(() => null) // Ensure the response is 'handled'
+				} else if (type === EmberModel.ParameterType.Integer) {
+					const value: number = parseInt(await self.parseVariablesInString(action.options['value']?.toString() ?? ''))
+					if (isNaN(value)) {
+						return
+					}
+					const request = await emberClient.setValue(
+						node as EmberModel.NumberedTreeNode<EmberModel.Parameter>,
+						value,
+						false,
+					)
+					request.response?.catch(() => null) // Ensure the response is 'handled'
+				} else {
+					const request = await emberClient.setValue(
+						node as EmberModel.NumberedTreeNode<EmberModel.Parameter>,
+						action.options['value'] as number,
+						false,
+					)
+					request.response?.catch(() => null) // Ensure the response is 'handled'
+				}
 			} else {
 				self.log(
 					'warn',
@@ -83,11 +107,12 @@ const doMatrixAction =
 		method: EmberClient['matrixConnect'] | EmberClient['matrixDisconnect'] | EmberClient['matrixSetConnection'],
 	) =>
 	async (action: CompanionActionEvent): Promise<void> => {
-		self.log('debug', 'Get node ' + action.options['path'])
-		const node = await emberClient.getElementByPath(action.options['path'] as string)
+		const path = await self.parseVariablesInString(action.options['path']?.toString() ?? '')
+		self.log('debug', 'Get node ' + path)
+		const node = await emberClient.getElementByPath(path)
 		// TODO - do we handle not found?
 		if (node && node.contents.type === EmberModel.ElementType.Matrix) {
-			self.log('debug', 'Got node on ' + action.options['path'])
+			self.log('debug', 'Got node on ' + path)
 			const target = Number(action.options['target'])
 			const sources = (action.options['sources'] as string)
 				.split(',')
@@ -262,6 +287,21 @@ export function GetActionsList(
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.Integer),
 		},
+		[ActionId.SetValueIntVariable]: {
+			name: 'Set Value Integer from Variable',
+			options: [
+				pathInput,
+				{
+					type: 'textinput',
+					label: 'Value',
+					id: 'value',
+					required: true,
+					useVariables: true,
+					default: '0',
+				},
+			],
+			callback: setValue(self, emberClient, EmberModel.ParameterType.Integer),
+		},
 		[ActionId.SetValueReal]: {
 			name: 'Set Value Real',
 			options: [
@@ -317,6 +357,7 @@ export function GetActionsList(
 					type: 'textinput',
 					label: 'Value',
 					id: 'value',
+					useVariables: true,
 				},
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.String),
