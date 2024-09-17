@@ -18,6 +18,7 @@ export enum ActionId {
 	SetValueString = 'setValueString',
 	SetValueBoolean = 'setValueBoolean',
 	SetValueEnum = 'setValueEnum',
+	SetValueEnumVariable = 'setValueEnumVariable',
 	MatrixConnect = 'matrixConnect',
 	MatrixDisconnect = 'matrixDisconnect',
 	MatrixSetConnection = 'matrixSetConnection',
@@ -32,6 +33,7 @@ const pathInput: CompanionInputFieldTextInput = {
 	label: 'Path',
 	id: 'path',
 	useVariables: true,
+	tooltip: `Path may be supplied in decimals: 1.2.3, or with a descriptor and the decimals wrapped in brackets: path/to/ember/element[1.2.3.4]`,
 }
 const matrixInputs: Array<CompanionInputFieldTextInput | CompanionInputFieldNumber> = [
 	pathInput,
@@ -53,10 +55,18 @@ const matrixInputs: Array<CompanionInputFieldTextInput | CompanionInputFieldNumb
 	},
 ]
 
+async function resolvePath(self: InstanceBase<EmberPlusConfig>, path: string): Promise<string> {
+	const pathString: string = await self.parseVariablesInString(path)
+	if (pathString.includes('[') && pathString.includes(']')) {
+		return pathString.substring(pathString.indexOf('[') + 1, pathString.indexOf(']'))
+	}
+	return pathString
+}
+
 const setValue =
 	(self: InstanceBase<EmberPlusConfig>, emberClient: EmberClient, type: EmberModel.ParameterType) =>
 	async (action: CompanionActionEvent): Promise<void> => {
-		const path = await self.parseVariablesInString(action.options['path']?.toString() ?? '')
+		const path = await resolvePath(self, action.options['path']?.toString() ?? '')
 		const node = await emberClient.getElementByPath(path)
 		// TODO - do we handle not found?
 		if (node && node.contents.type === EmberModel.ElementType.Parameter) {
@@ -72,7 +82,18 @@ const setValue =
 					request.response?.catch(() => null) // Ensure the response is 'handled'
 				} else if (type === EmberModel.ParameterType.Integer) {
 					const value: number = parseInt(await self.parseVariablesInString(action.options['value']?.toString() ?? ''))
-					if (isNaN(value)) {
+					if (isNaN(value) || value > 4294967295 || value < -4294967295) {
+						return
+					}
+					const request = await emberClient.setValue(
+						node as EmberModel.NumberedTreeNode<EmberModel.Parameter>,
+						value,
+						false,
+					)
+					request.response?.catch(() => null) // Ensure the response is 'handled'
+				} else if (type === EmberModel.ParameterType.Enum) {
+					const value: number = parseInt(await self.parseVariablesInString(action.options['value']?.toString() ?? ''))
+					if (isNaN(value) || value > 4294967295 || value < 0) {
 						return
 					}
 					const request = await emberClient.setValue(
@@ -107,7 +128,7 @@ const doMatrixAction =
 		method: EmberClient['matrixConnect'] | EmberClient['matrixDisconnect'] | EmberClient['matrixSetConnection'],
 	) =>
 	async (action: CompanionActionEvent): Promise<void> => {
-		const path = await self.parseVariablesInString(action.options['path']?.toString() ?? '')
+		const path = await resolvePath(self, action.options['path']?.toString() ?? '')
 		self.log('debug', 'Get node ' + path)
 		const node = await emberClient.getElementByPath(path)
 		// TODO - do we handle not found?
@@ -345,6 +366,22 @@ export function GetActionsList(
 					max: 0xffffffff,
 					default: 0,
 					step: 1,
+				},
+			],
+			callback: setValue(self, emberClient, EmberModel.ParameterType.Enum),
+		},
+		[ActionId.SetValueEnumVariable]: {
+			name: 'Set Value ENUM from Variable (as Integer)',
+			options: [
+				pathInput,
+				{
+					type: 'textinput',
+					label: 'Value',
+					id: 'value',
+					required: true,
+					useVariables: true,
+					default: '0',
+					tooltip: 'Return an integer between 0 and 4294967295',
 				},
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.Enum),
