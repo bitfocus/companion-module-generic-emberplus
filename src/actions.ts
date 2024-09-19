@@ -7,6 +7,7 @@ import type {
 	InstanceBase,
 } from '@companion-module/base'
 import { EmberClient, Model as EmberModel } from 'emberplus-connection'
+import type PQueue from 'p-queue'
 import type { EmberPlusConfig } from './config'
 import { FeedbackId } from './feedback'
 import { EmberPlusState } from './state'
@@ -64,7 +65,7 @@ async function resolvePath(self: InstanceBase<EmberPlusConfig>, path: string): P
 }
 
 const setValue =
-	(self: InstanceBase<EmberPlusConfig>, emberClient: EmberClient, type: EmberModel.ParameterType) =>
+	(self: InstanceBase<EmberPlusConfig>, emberClient: EmberClient, type: EmberModel.ParameterType, queue: PQueue) =>
 	async (action: CompanionActionEvent): Promise<void> => {
 		const path = await resolvePath(self, action.options['path']?.toString() ?? '')
 		const node = await emberClient.getElementByPath(path)
@@ -72,44 +73,54 @@ const setValue =
 		if (node && node.contents.type === EmberModel.ElementType.Parameter) {
 			if (node.contents.parameterType === type) {
 				self.log('debug', 'Got node on ' + path)
-				if (type === EmberModel.ParameterType.String) {
-					const value: string = await self.parseVariablesInString(action.options['value']?.toString() ?? '')
-					const request = await emberClient.setValue(
-						node as EmberModel.NumberedTreeNode<EmberModel.Parameter>,
-						value,
-						false,
-					)
-					request.response?.catch(() => null) // Ensure the response is 'handled'
-				} else if (type === EmberModel.ParameterType.Integer) {
-					const value: number = parseInt(await self.parseVariablesInString(action.options['value']?.toString() ?? ''))
-					if (isNaN(value) || value > 4294967295 || value < -4294967295) {
-						return
-					}
-					const request = await emberClient.setValue(
-						node as EmberModel.NumberedTreeNode<EmberModel.Parameter>,
-						value,
-						false,
-					)
-					request.response?.catch(() => null) // Ensure the response is 'handled'
-				} else if (type === EmberModel.ParameterType.Enum) {
-					const value: number = parseInt(await self.parseVariablesInString(action.options['value']?.toString() ?? ''))
-					if (isNaN(value) || value > 4294967295 || value < 0) {
-						return
-					}
-					const request = await emberClient.setValue(
-						node as EmberModel.NumberedTreeNode<EmberModel.Parameter>,
-						value,
-						false,
-					)
-					request.response?.catch(() => null) // Ensure the response is 'handled'
-				} else {
-					const request = await emberClient.setValue(
-						node as EmberModel.NumberedTreeNode<EmberModel.Parameter>,
-						action.options['value'] as number,
-						false,
-					)
-					request.response?.catch(() => null) // Ensure the response is 'handled'
-				}
+				queue
+					.add(async () => {
+						if (type === EmberModel.ParameterType.String) {
+							const value: string = await self.parseVariablesInString(action.options['value']?.toString() ?? '')
+							const request = await emberClient.setValue(
+								node as EmberModel.NumberedTreeNode<EmberModel.Parameter>,
+								value,
+								false,
+							)
+							request.response?.catch(() => null) // Ensure the response is 'handled'
+						} else if (type === EmberModel.ParameterType.Integer) {
+							const value: number = parseInt(
+								await self.parseVariablesInString(action.options['value']?.toString() ?? ''),
+							)
+							if (isNaN(value) || value > 4294967295 || value < -4294967295) {
+								return
+							}
+							const request = await emberClient.setValue(
+								node as EmberModel.NumberedTreeNode<EmberModel.Parameter>,
+								value,
+								false,
+							)
+							request.response?.catch(() => null) // Ensure the response is 'handled'
+						} else if (type === EmberModel.ParameterType.Enum) {
+							const value: number = parseInt(
+								await self.parseVariablesInString(action.options['value']?.toString() ?? ''),
+							)
+							if (isNaN(value) || value > 4294967295 || value < 0) {
+								return
+							}
+							const request = await emberClient.setValue(
+								node as EmberModel.NumberedTreeNode<EmberModel.Parameter>,
+								value,
+								false,
+							)
+							request.response?.catch(() => null) // Ensure the response is 'handled'
+						} else {
+							const request = await emberClient.setValue(
+								node as EmberModel.NumberedTreeNode<EmberModel.Parameter>,
+								action.options['value'] as number,
+								false,
+							)
+							request.response?.catch(() => null) // Ensure the response is 'handled'
+						}
+					})
+					.catch((e: any) => {
+						self.log('debug', `Failed to set value: ${e.toString()}`)
+					})
 			} else {
 				self.log(
 					'warn',
@@ -126,23 +137,30 @@ const doMatrixAction =
 		self: InstanceBase<EmberPlusConfig>,
 		emberClient: EmberClient,
 		method: EmberClient['matrixConnect'] | EmberClient['matrixDisconnect'] | EmberClient['matrixSetConnection'],
+		queue: PQueue,
 	) =>
 	async (action: CompanionActionEvent): Promise<void> => {
 		const path = await resolvePath(self, action.options['path']?.toString() ?? '')
 		self.log('debug', 'Get node ' + path)
-		const node = await emberClient.getElementByPath(path)
-		// TODO - do we handle not found?
-		if (node && node.contents.type === EmberModel.ElementType.Matrix) {
-			self.log('debug', 'Got node on ' + path)
-			const target = Number(action.options['target'])
-			const sources = (action.options['sources'] as string)
-				.split(',')
-				.filter((v) => v !== '')
-				.map((s) => Number(s))
-			await method(node as EmberModel.NumberedTreeNode<EmberModel.Matrix>, target, sources)
-		} else {
-			self.log('warn', 'Matrix ' + action.options['path'] + ' not found or not a parameter')
-		}
+		queue
+			.add(async () => {
+				const node = await emberClient.getElementByPath(path)
+				// TODO - do we handle not found?
+				if (node && node.contents.type === EmberModel.ElementType.Matrix) {
+					self.log('debug', 'Got node on ' + path)
+					const target = Number(action.options['target'])
+					const sources = (action.options['sources'] as string)
+						.split(',')
+						.filter((v) => v !== '')
+						.map((s) => Number(s))
+					await method(node as EmberModel.NumberedTreeNode<EmberModel.Matrix>, target, sources)
+				} else {
+					self.log('warn', 'Matrix ' + action.options['path'] + ' not found or not a parameter')
+				}
+			})
+			.catch((e: any) => {
+				self.log('debug', `Failed to doMatrixAction: ${e.toString()}`)
+			})
 	}
 
 /**
@@ -157,42 +175,49 @@ const doMatrixActionFunction = function (
 	emberClient: EmberClient,
 	config: EmberPlusConfig,
 	state: EmberPlusState,
+	queue: PQueue,
 ) {
-	if (
-		state.selected.source !== -1 &&
-		state.selected.target !== -1 &&
-		state.selected.matrix !== -1 &&
-		config.matrices &&
-		config.matrices[state.selected.matrix]
-	) {
-		self.log('debug', 'Get node ' + state.selected.matrix)
-		emberClient
-			.getElementByPath(config.matrices[state.selected.matrix])
-			.then((node) => {
-				// TODO - do we handle not found?
-				if (node && node.contents.type === EmberModel.ElementType.Matrix) {
-					self.log('debug', 'Got node on ' + state.selected.matrix)
-					const target = state.selected.target
-					const sources = [state.selected.source]
-					emberClient
-						.matrixConnect(node as EmberModel.NumberedTreeNode<EmberModel.Matrix>, target, sources)
-						.then((r) => self.log('debug', String(r)))
-						.catch((r) => self.log('debug', r))
-				} else {
-					self.log('warn', 'Matrix ' + state.selected.matrix + ' not found or not a parameter')
-				}
-			})
-			.catch((reason) => self.log('debug', reason))
-			.finally(() => {
-				state.selected.matrix = state.selected.source = state.selected.target = -1
-				self.checkFeedbacks(
-					FeedbackId.TargetBackgroundSelected,
-					FeedbackId.SourceBackgroundSelected,
-					FeedbackId.Take,
-					FeedbackId.Take,
-				)
-			})
-	}
+	self.log('debug', 'Get node ' + state.selected.matrix)
+	queue
+		.add(async () => {
+			if (
+				state.selected.source !== -1 &&
+				state.selected.target !== -1 &&
+				state.selected.matrix !== -1 &&
+				config.matrices &&
+				config.matrices[state.selected.matrix]
+			) {
+				emberClient
+					.getElementByPath(config.matrices[state.selected.matrix])
+					.then((node) => {
+						// TODO - do we handle not found?
+						if (node && node.contents.type === EmberModel.ElementType.Matrix) {
+							self.log('debug', 'Got node on ' + state.selected.matrix)
+							const target = state.selected.target
+							const sources = [state.selected.source]
+							emberClient
+								.matrixConnect(node as EmberModel.NumberedTreeNode<EmberModel.Matrix>, target, sources)
+								.then((r) => self.log('debug', String(r)))
+								.catch((r) => self.log('debug', r))
+						} else {
+							self.log('warn', 'Matrix ' + state.selected.matrix + ' not found or not a parameter')
+						}
+					})
+					.catch((reason) => self.log('debug', reason))
+					.finally(() => {
+						state.selected.matrix = state.selected.source = state.selected.target = -1
+						self.checkFeedbacks(
+							FeedbackId.TargetBackgroundSelected,
+							FeedbackId.SourceBackgroundSelected,
+							FeedbackId.Take,
+							FeedbackId.Take,
+						)
+					})
+			}
+		})
+		.catch((e: any) => {
+			self.log('debug', `Failed to doMatrixActionFunction: ${e.toString()}`)
+		})
 }
 
 /**
@@ -204,7 +229,13 @@ const doMatrixActionFunction = function (
  * @param state reference to the state of the module
  */
 const doTake =
-	(self: InstanceBase<EmberPlusConfig>, emberClient: EmberClient, config: EmberPlusConfig, state: EmberPlusState) =>
+	(
+		self: InstanceBase<EmberPlusConfig>,
+		emberClient: EmberClient,
+		config: EmberPlusConfig,
+		state: EmberPlusState,
+		queue: PQueue,
+	) =>
 	(action: CompanionActionEvent): void => {
 		if (
 			state.selected.target !== -1 &&
@@ -221,7 +252,7 @@ const doTake =
 					' on matrix ' +
 					Number(action.options['matrix']),
 			)
-			doMatrixActionFunction(self, emberClient, config, state)
+			doMatrixActionFunction(self, emberClient, config, state, queue)
 		} else {
 			self.log('debug', 'TAKE went wrong.')
 		}
@@ -251,12 +282,18 @@ const doClear = (self: InstanceBase<EmberPlusConfig>, state: EmberPlusState) => 
  * @param state reference to the state of the module
  */
 const setSelectedSource =
-	(self: InstanceBase<EmberPlusConfig>, emberClient: EmberClient, config: EmberPlusConfig, state: EmberPlusState) =>
+	(
+		self: InstanceBase<EmberPlusConfig>,
+		emberClient: EmberClient,
+		config: EmberPlusConfig,
+		state: EmberPlusState,
+		queue: PQueue,
+	) =>
 	(action: CompanionActionEvent): void => {
 		if (action.options['source'] != -1 && Number(action.options['matrix']) == state.selected.matrix) {
 			state.selected.source = Number(action.options['source'])
 			self.log('debug', 'Take is: ' + config.take)
-			if (config.take) doMatrixActionFunction(self, emberClient, config, state)
+			if (config.take) doMatrixActionFunction(self, emberClient, config, state, queue)
 			self.checkFeedbacks(FeedbackId.SourceBackgroundSelected, FeedbackId.Clear, FeedbackId.Take)
 			self.log('debug', 'setSelectedSource: ' + action.options['source'] + ' on Matrix: ' + state.selected.matrix)
 		}
@@ -289,6 +326,7 @@ export function GetActionsList(
 	emberClient: EmberClient,
 	config: EmberPlusConfig,
 	state: EmberPlusState,
+	queue: PQueue,
 ): CompanionActionDefinitions {
 	const actions: { [id in ActionId]: CompanionActionDefinition | undefined } = {
 		[ActionId.SetValueInt]: {
@@ -306,7 +344,7 @@ export function GetActionsList(
 					step: 1,
 				},
 			],
-			callback: setValue(self, emberClient, EmberModel.ParameterType.Integer),
+			callback: setValue(self, emberClient, EmberModel.ParameterType.Integer, queue),
 		},
 		[ActionId.SetValueIntVariable]: {
 			name: 'Set Value Integer from Variable',
@@ -321,7 +359,7 @@ export function GetActionsList(
 					default: '0',
 				},
 			],
-			callback: setValue(self, emberClient, EmberModel.ParameterType.Integer),
+			callback: setValue(self, emberClient, EmberModel.ParameterType.Integer, queue),
 		},
 		[ActionId.SetValueReal]: {
 			name: 'Set Value Real',
@@ -338,7 +376,7 @@ export function GetActionsList(
 					step: 0.001, // TODO - don't want this at all preferably
 				},
 			],
-			callback: setValue(self, emberClient, EmberModel.ParameterType.Real),
+			callback: setValue(self, emberClient, EmberModel.ParameterType.Real, queue),
 		},
 		[ActionId.SetValueBoolean]: {
 			name: 'Set Value Boolean',
@@ -351,7 +389,7 @@ export function GetActionsList(
 					default: false,
 				},
 			],
-			callback: setValue(self, emberClient, EmberModel.ParameterType.Boolean),
+			callback: setValue(self, emberClient, EmberModel.ParameterType.Boolean, queue),
 		},
 		[ActionId.SetValueEnum]: {
 			name: 'Set Value ENUM (as Integer)',
@@ -368,7 +406,7 @@ export function GetActionsList(
 					step: 1,
 				},
 			],
-			callback: setValue(self, emberClient, EmberModel.ParameterType.Enum),
+			callback: setValue(self, emberClient, EmberModel.ParameterType.Enum, queue),
 		},
 		[ActionId.SetValueEnumVariable]: {
 			name: 'Set Value ENUM from Variable (as Integer)',
@@ -384,7 +422,7 @@ export function GetActionsList(
 					tooltip: 'Return an integer between 0 and 4294967295',
 				},
 			],
-			callback: setValue(self, emberClient, EmberModel.ParameterType.Enum),
+			callback: setValue(self, emberClient, EmberModel.ParameterType.Enum, queue),
 		},
 		[ActionId.SetValueString]: {
 			name: 'Set Value String',
@@ -397,27 +435,27 @@ export function GetActionsList(
 					useVariables: true,
 				},
 			],
-			callback: setValue(self, emberClient, EmberModel.ParameterType.String),
+			callback: setValue(self, emberClient, EmberModel.ParameterType.String, queue),
 		},
 		[ActionId.MatrixConnect]: {
 			name: 'Matrix Connect',
 			options: [...matrixInputs],
-			callback: doMatrixAction(self, emberClient, async (...args) => emberClient.matrixConnect(...args)),
+			callback: doMatrixAction(self, emberClient, async (...args) => emberClient.matrixConnect(...args), queue),
 		},
 		[ActionId.MatrixDisconnect]: {
 			name: 'Matrix Disconnect',
 			options: [...matrixInputs],
-			callback: doMatrixAction(self, emberClient, async (...args) => emberClient.matrixDisconnect(...args)),
+			callback: doMatrixAction(self, emberClient, async (...args) => emberClient.matrixDisconnect(...args), queue),
 		},
 		[ActionId.MatrixSetConnection]: {
 			name: 'Matrix Set Connection',
 			options: [...matrixInputs],
-			callback: doMatrixAction(self, emberClient, async (...args) => emberClient.matrixSetConnection(...args)),
+			callback: doMatrixAction(self, emberClient, async (...args) => emberClient.matrixSetConnection(...args), queue),
 		},
 		[ActionId.Take]: {
 			name: 'Take',
 			options: [],
-			callback: doTake(self, emberClient, config, state),
+			callback: doTake(self, emberClient, config, state, queue),
 		},
 		[ActionId.Clear]: {
 			name: 'Clear',
@@ -446,7 +484,7 @@ export function GetActionsList(
 					default: 0,
 				},
 			],
-			callback: setSelectedSource(self, emberClient, config, state),
+			callback: setSelectedSource(self, emberClient, config, state, queue),
 		},
 		[ActionId.SetSelectedTarget]: {
 			name: 'Set Selected Target',
