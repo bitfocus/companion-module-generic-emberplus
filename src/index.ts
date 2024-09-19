@@ -11,7 +11,7 @@ import type { TreeElement, EmberElement } from 'emberplus-connection/dist/model'
 import { GetVariablesList } from './variables'
 import PQueue from 'p-queue'
 
-const reconnectInterval: number = 300 //emberplus-connection destroys socket after 5 minutes
+const reconnectInterval: number = 300000 //emberplus-connection destroys socket after 5 minutes
 
 /**
  * Companion instance class for generic EmBER+ Devices
@@ -21,7 +21,7 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	private config!: EmberPlusConfig
 	private state!: EmberPlusState
 	private emberQueue!: PQueue
-	private reconnectTimer!: ReturnType<typeof setTimeout>
+	private reconnectTimer!: ReturnType<typeof setTimeout> | undefined
 
 	// Override base types to make types stricter
 	public checkFeedbacks(...feedbackTypes: string[]): void {
@@ -70,7 +70,7 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	 * Clean up the instance before it is destroyed.
 	 */
 	public async destroy(): Promise<void> {
-		clearTimeout(this.reconnectTimer)
+		this.reconnectTimerStop()
 		this.emberQueue.clear()
 		this.emberClient.discard()
 	}
@@ -86,9 +86,21 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 		return this.emberClient
 	}
 
+	private reconnectTimerStart(): void {
+		if (this.reconnectTimer) return
+		this.reconnectTimer = setTimeout(() => this.setupEmberConnection(), reconnectInterval)
+	}
+
+	private reconnectTimerStop(): void {
+		if (this.reconnectTimer) {
+			clearTimeout(this.reconnectTimer)
+			delete this.reconnectTimer
+		}
+	}
+
 	private setupEmberConnection(): void {
 		this.emberQueue.clear()
-		clearTimeout(this.reconnectTimer)
+		this.reconnectTimerStop()
 		if (this.emberClient !== undefined) {
 			this.emberClient.discard()
 			//this.emberClient.removeAllListeners()
@@ -103,11 +115,13 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 
 		this.emberClient = new EmberClient(this.config.host || '', this.config.port)
 		this.emberClient.on('error', (e) => {
-			this.log('error', 'Error ' + e)
+			this.log('error', 'Connection Error ' + e)
 			this.updateStatus(InstanceStatus.UnknownError)
-			this.reconnectTimer = setTimeout(() => this.setupEmberConnection(), reconnectInterval)
+			this.reconnectTimerStart()
 		})
 		this.emberClient.on('connected', () => {
+			this.reconnectTimerStop()
+			this.log('info', `Connected to ${this.config.host}:${this.config.port}`)
 			Promise.resolve()
 				.then(async () => {
 					const request = await this.emberClient.getDirectory(this.emberClient.tree)
@@ -123,10 +137,13 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 		})
 		this.emberClient.on('disconnected', () => {
 			this.updateStatus(InstanceStatus.Connecting)
+			this.log('warn', `Disconnected from ${this.config.host}:${this.config.port}`)
+			this.reconnectTimerStart()
 		})
 		this.emberClient.connect().catch((e) => {
 			this.updateStatus(InstanceStatus.ConnectionFailure)
-			this.log('error', 'Error ' + e)
+			this.log('error', 'Connection Failure: ' + e)
+			this.reconnectTimerStart()
 		})
 	}
 
