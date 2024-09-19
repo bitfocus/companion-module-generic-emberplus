@@ -67,14 +67,14 @@ async function resolvePath(self: InstanceBase<EmberPlusConfig>, path: string): P
 const setValue =
 	(self: InstanceBase<EmberPlusConfig>, emberClient: EmberClient, type: EmberModel.ParameterType, queue: PQueue) =>
 	async (action: CompanionActionEvent): Promise<void> => {
-		const path = await resolvePath(self, action.options['path']?.toString() ?? '')
-		const node = await emberClient.getElementByPath(path)
-		// TODO - do we handle not found?
-		if (node && node.contents.type === EmberModel.ElementType.Parameter) {
-			if (node.contents.parameterType === type) {
-				self.log('debug', 'Got node on ' + path)
-				queue
-					.add(async () => {
+		queue
+			.add(async () => {
+				const path = await resolvePath(self, action.options['path']?.toString() ?? '')
+				const node = await emberClient.getElementByPath(path)
+				// TODO - do we handle not found?
+				if (node && node.contents.type === EmberModel.ElementType.Parameter) {
+					if (node.contents.parameterType === type) {
+						self.log('debug', 'Got node on ' + path)
 						if (type === EmberModel.ParameterType.String) {
 							const value: string = await self.parseVariablesInString(action.options['value']?.toString() ?? '')
 							const request = await emberClient.setValue(
@@ -117,19 +117,25 @@ const setValue =
 							)
 							request.response?.catch(() => null) // Ensure the response is 'handled'
 						}
-					})
-					.catch((e: any) => {
-						self.log('debug', `Failed to set value: ${e.toString()}`)
-					})
-			} else {
-				self.log(
-					'warn',
-					'Node ' + action.options['path'] + ' is not of type ' + type + ' (is ' + node.contents.parameterType + ')',
-				)
-			}
-		} else {
-			self.log('warn', 'Parameter ' + action.options['path'] + ' not found or not a parameter')
-		}
+					} else {
+						self.log(
+							'warn',
+							'Node ' +
+								action.options['path'] +
+								' is not of type ' +
+								type +
+								' (is ' +
+								node.contents.parameterType +
+								')',
+						)
+					}
+				} else {
+					self.log('warn', 'Parameter ' + action.options['path'] + ' not found or not a parameter')
+				}
+			})
+			.catch((e: any) => {
+				self.log('debug', `Failed to set value: ${e.toString()}`)
+			})
 	}
 
 const doMatrixAction =
