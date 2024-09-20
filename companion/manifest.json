@@ -26,5 +26,13 @@
 	},
 	"manufacturer": "Generic",
 	"products": ["Ember+"],
-	"keywords": ["ember", "emberplus"]
+	"keywords": ["ember", "emberplus"],
+	"bonjourQueries": {
+		"bonjourHost": [
+			{
+				"type": "ember",
+				"protocol": "tcp"
+			}
+		]
+	}
 }
