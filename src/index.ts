@@ -5,7 +5,7 @@ import { type EmberPlusConfig, GetConfigFields } from './config'
 import { GetPresetsList } from './presets'
 import { FeedbackId, GetFeedbacksList } from './feedback'
 import { EmberPlusState } from './state'
-import { EmberClient } from 'emberplus-connection' // note - emberplus-conn is in parent repo, not sure if it needs to be defined as dependency
+import { EmberClient, Model as EmberModel } from 'emberplus-connection' // note - emberplus-conn is in parent repo, not sure if it needs to be defined as dependency
 import { ElementType } from 'emberplus-connection/dist/model'
 import type { TreeElement, EmberElement } from 'emberplus-connection/dist/model'
 import { GetVariablesList } from './variables'
@@ -22,6 +22,7 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	private state!: EmberPlusState
 	private emberQueue!: PQueue
 	private reconnectTimer!: ReturnType<typeof setTimeout> | undefined
+	private isRecordingActions!: boolean
 
 	// Override base types to make types stricter
 	public checkFeedbacks(...feedbackTypes: string[]): void {
@@ -196,6 +197,10 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 				})
 		}
 	}
+	// Track whether actions are being recorded
+	public handleStartStopRecordActions(isRecording: boolean) {
+		this.isRecordingActions = isRecording
+	}
 	private async handleChangedValue(path: string, node: TreeElement<EmberElement>) {
 		if (node.contents.type == ElementType.Parameter) {
 			this.log('debug', 'Got parameter value for ' + path + ': ' + (node.contents.value?.toString() ?? ''))
@@ -203,6 +208,38 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 			this.checkFeedbacks(FeedbackId.Parameter, FeedbackId.String)
 
 			this.setVariableValues(Object.fromEntries(this.state.parameters.entries()))
+			if (this.isRecordingActions) {
+				let actionType: string
+				let actionValue: any
+				if (node.contents.parameterType === EmberModel.ParameterType.Integer) {
+					actionType = 'setValueInt'
+					actionValue = Number(node.contents.value)
+					if (isNaN(actionValue)) return
+				} else if (node.contents.parameterType === EmberModel.ParameterType.Boolean) {
+					actionType = 'setValueBoolean'
+					actionValue = !!node.contents.value
+				} else if (node.contents.parameterType === EmberModel.ParameterType.Enum) {
+					actionType = 'setValueEnum'
+					actionValue = Number(node.contents.value)
+					if (isNaN(actionValue)) return
+				} else if (node.contents.parameterType === EmberModel.ParameterType.Real) {
+					actionType = 'setValueReal'
+					actionValue = Number(node.contents.value)
+					if (isNaN(actionValue)) return
+				} else if (node.contents.parameterType === EmberModel.ParameterType.String) {
+					actionType = 'setValueString'
+					actionValue = node.contents.value?.toString()
+				} else {
+					return
+				}
+				this.recordAction(
+					{
+						actionId: actionType,
+						options: { path: path, value: actionValue },
+					},
+					`${path}`,
+				)
+			}
 		}
 	}
 }
