@@ -4,6 +4,7 @@ import type { SomeCompanionConfigField } from '@companion-module/base'
 export const portDefault = 9000
 
 export interface EmberPlusConfig {
+	bonjourHost?: string
 	host?: string
 	port?: number
 	take?: boolean
@@ -16,12 +17,27 @@ export interface EmberPlusConfig {
 export function GetConfigFields(): SomeCompanionConfigField[] {
 	return [
 		{
+			type: 'bonjour-device',
+			id: 'bonjourHost',
+			label: 'Device',
+			width: 6,
+		},
+		{
 			type: 'textinput',
 			id: 'host',
 			label: 'Target IP',
 			tooltip: 'The IP of the ember+ provider',
 			width: 6,
 			regex: Regex.IP,
+			isVisible: (options) => !options['bonjourHost'],
+		},
+		{
+			type: 'static-text',
+			id: 'host-filler',
+			width: 6,
+			label: '',
+			isVisible: (options) => !!options['bonjourHost'],
+			value: '',
 		},
 		{
 			type: 'number',
@@ -33,6 +49,15 @@ export function GetConfigFields(): SomeCompanionConfigField[] {
 			max: 0xffff,
 			step: 1,
 			default: portDefault,
+			isVisible: (options) => !options['bonjourHost'],
+		},
+		{
+			type: 'static-text',
+			id: 'port-filler',
+			width: 6,
+			label: '',
+			isVisible: (options) => !!options['bonjourHost'],
+			value: '',
 		},
 		{
 			type: 'checkbox',

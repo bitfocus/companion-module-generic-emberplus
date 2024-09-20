@@ -35,6 +35,10 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	 */
 	public async init(config: EmberPlusConfig): Promise<void> {
 		this.config = config
+		if (this.config.bonjourHost) {
+			this.config.host = config.bonjourHost?.split(':')[0]
+			this.config.port = Number(config.bonjourHost?.split(':')[1])
+		}
 		this.state = new EmberPlusState()
 		this.emberQueue = new PQueue({ concurrency: 1 })
 		this.setupEmberConnection()
@@ -49,7 +53,10 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	 */
 	public async configUpdated(config: EmberPlusConfig): Promise<void> {
 		this.config = config
-
+		if (this.config.bonjourHost) {
+			this.config.host = config.bonjourHost?.split(':')[0]
+			this.config.port = Number(config.bonjourHost?.split(':')[1])
+		}
 		//this.emberClient.discard()
 		//this.emberClient.removeAllListeners()
 
