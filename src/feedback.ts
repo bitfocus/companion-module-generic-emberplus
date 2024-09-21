@@ -54,8 +54,7 @@ export function GetFeedbacksList(
 				return state.parameters.get(path) == feedback.options['value']?.toString()
 			},
 			subscribe: async (feedback, context) => {
-				const path = await resolvePath(context, feedback.options['path']?.toString() ?? '')
-				await _self.registerNewParameter(path)
+				await _self.registerNewParameter(await resolvePath(context, feedback.options['path']?.toString() ?? ''))
 			},
 		},
 		[FeedbackId.String]: {
@@ -93,8 +92,7 @@ export function GetFeedbacksList(
 				return state.parameters.get(path) == value
 			},
 			subscribe: async (feedback, context) => {
-				const path = await resolvePath(context, feedback.options['path']?.toString() ?? '')
-				await _self.registerNewParameter(path)
+				await _self.registerNewParameter(await resolvePath(context, feedback.options['path']?.toString() ?? ''))
 			},
 		},
 		[FeedbackId.Take]: {
