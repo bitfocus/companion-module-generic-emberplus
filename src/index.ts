@@ -1,6 +1,6 @@
 import { InstanceBase, InstanceStatus, runEntrypoint } from '@companion-module/base'
 import type { SomeCompanionConfigField } from '@companion-module/base'
-import { GetActionsList } from './actions'
+import { GetActionsList, ActionId } from './actions'
 import { type EmberPlusConfig, GetConfigFields } from './config'
 import { GetPresetsList } from './presets'
 import { FeedbackId, GetFeedbacksList } from './feedback'
@@ -212,22 +212,22 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 				let actionType: string
 				let actionValue: any
 				if (node.contents.parameterType === EmberModel.ParameterType.Integer) {
-					actionType = 'setValueInt'
+					actionType = ActionId.SetValueInt
 					actionValue = Number(node.contents.value)
 					if (isNaN(actionValue)) return
 				} else if (node.contents.parameterType === EmberModel.ParameterType.Boolean) {
-					actionType = 'setValueBoolean'
+					actionType = ActionId.SetValueBoolean
 					actionValue = !!node.contents.value
 				} else if (node.contents.parameterType === EmberModel.ParameterType.Enum) {
-					actionType = 'setValueEnum'
+					actionType = ActionId.SetValueEnum
 					actionValue = Number(node.contents.value)
 					if (isNaN(actionValue)) return
 				} else if (node.contents.parameterType === EmberModel.ParameterType.Real) {
-					actionType = 'setValueReal'
+					actionType = ActionId.SetValueReal
 					actionValue = Number(node.contents.value)
 					if (isNaN(actionValue)) return
 				} else if (node.contents.parameterType === EmberModel.ParameterType.String) {
-					actionType = 'setValueString'
+					actionType = ActionId.SetValueString
 					actionValue = node.contents.value?.toString()
 				} else {
 					return
