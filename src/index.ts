@@ -16,13 +16,14 @@ const reconnectInterval: number = 300000 //emberplus-connection destroys socket 
 /**
  * Companion instance class for generic EmBER+ Devices
  */
-class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
+export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	private emberClient!: EmberClient
 	private config!: EmberPlusConfig
 	private state!: EmberPlusState
 	private emberQueue!: PQueue
 	private reconnectTimer!: ReturnType<typeof setTimeout> | undefined
 	private isRecordingActions!: boolean
+	public handleValueChange!: ReturnType<typeof this.handleChangedValue>
 
 	// Override base types to make types stricter
 	public checkFeedbacks(...feedbackTypes: string[]): void {
@@ -46,7 +47,7 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 		this.setupMatrices()
 		this.setupMonitoredParams()
 
-		this.updateCompanionBits()
+		this.updateCompanionBits(true)
 	}
 
 	/**
@@ -64,7 +65,7 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 		this.setupEmberConnection()
 		this.setupMatrices()
 		this.setupMonitoredParams()
-		this.updateCompanionBits()
+		this.updateCompanionBits(true)
 	}
 
 	/**
@@ -83,10 +84,11 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 		this.emberClient.discard()
 	}
 
-	private updateCompanionBits(): void {
-		this.setActionDefinitions(GetActionsList(this, this.client, this.config, this.state, this.emberQueue))
-		this.setFeedbackDefinitions(GetFeedbacksList(this, this.client, this.config, this.state))
+	public updateCompanionBits(updateAll: boolean): void {
+		this.setFeedbackDefinitions(GetFeedbacksList(this, this.client, this.config, this.state, this.emberQueue))
 		this.setVariableDefinitions(GetVariablesList(this.config))
+		if (!updateAll) return
+		this.setActionDefinitions(GetActionsList(this, this.client, this.config, this.state, this.emberQueue))
 		this.setPresetDefinitions(GetPresetsList())
 	}
 
@@ -197,11 +199,36 @@ class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 				})
 		}
 	}
+
+	public async registerNewParameter(path: string): Promise<void> {
+		if (this.config.monitoredParameters?.includes(path) === true) return
+		this.emberQueue
+			.add(async () => {
+				try {
+					const initial_node = await this.emberClient.getElementByPath(path, (node) => {
+						this.handleValueChange(path, node).catch((e: any) => this.log('error', 'Error handling parameter ' + e))
+					})
+					if (initial_node) {
+						this.log('debug', 'Registered for path "' + path + '"')
+						if (this.config.monitoredParameters) {
+							this.config.monitoredParameters.push(path)
+							this.updateCompanionBits(false)
+						}
+						await this.handleChangedValue(path, initial_node)
+					}
+				} catch (e) {
+					this.log('error', 'Failed to subscribe to path "' + path + '": ' + e)
+				}
+			})
+			.catch((e) => {
+				this.log('debug', `Failed to register parameter: ${e.toString()}`)
+			})
+	}
 	// Track whether actions are being recorded
-	public handleStartStopRecordActions(isRecording: boolean) {
+	public handleStartStopRecordActions(isRecording: boolean): void {
 		this.isRecordingActions = isRecording
 	}
-	private async handleChangedValue(path: string, node: TreeElement<EmberElement>) {
+	public async handleChangedValue(path: string, node: TreeElement<EmberElement>): Promise<void> {
 		if (node.contents.type == ElementType.Parameter) {
 			this.log('debug', 'Got parameter value for ' + path + ': ' + (node.contents.value?.toString() ?? ''))
 			this.state.parameters.set(path, node.contents.value?.toString() ?? '')

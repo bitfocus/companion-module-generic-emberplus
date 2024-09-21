@@ -1,6 +1,7 @@
 import type {
 	CompanionActionDefinition,
 	CompanionActionDefinitions,
+	CompanionFeedbackContext,
 	CompanionActionEvent,
 	CompanionInputFieldNumber,
 	CompanionInputFieldTextInput,
@@ -56,7 +57,10 @@ const matrixInputs: Array<CompanionInputFieldTextInput | CompanionInputFieldNumb
 	},
 ]
 
-async function resolvePath(self: InstanceBase<EmberPlusConfig>, path: string): Promise<string> {
+export async function resolvePath(
+	self: InstanceBase<EmberPlusConfig> | CompanionFeedbackContext,
+	path: string,
+): Promise<string> {
 	const pathString: string = await self.parseVariablesInString(path)
 	if (pathString.includes('[') && pathString.includes(']')) {
 		return pathString.substring(pathString.indexOf('[') + 1, pathString.indexOf(']'))
