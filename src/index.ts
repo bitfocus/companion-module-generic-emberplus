@@ -23,7 +23,6 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	private emberQueue!: PQueue
 	private reconnectTimer!: ReturnType<typeof setTimeout> | undefined
 	private isRecordingActions!: boolean
-	public handleValueChange!: ReturnType<typeof this.handleChangedValue>
 
 	// Override base types to make types stricter
 	public checkFeedbacks(...feedbackTypes: string[]): void {
@@ -84,8 +83,8 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 		this.emberClient.discard()
 	}
 
-	public updateCompanionBits(updateAll: boolean): void {
-		this.setFeedbackDefinitions(GetFeedbacksList(this, this.client, this.config, this.state, this.emberQueue))
+	private updateCompanionBits(updateAll: boolean): void {
+		this.setFeedbackDefinitions(GetFeedbacksList(this, this.client, this.config, this.state))
 		this.setVariableDefinitions(GetVariablesList(this.config))
 		if (!updateAll) return
 		this.setActionDefinitions(GetActionsList(this, this.client, this.config, this.state, this.emberQueue))
