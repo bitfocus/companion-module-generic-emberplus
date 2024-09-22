@@ -15,6 +15,17 @@ export enum FeedbackId {
 	TargetBackgroundSelected = 'targetBackgroundSelected',
 }
 
+const styles = {
+	blackOnWhite: {
+		bgcolor: combineRgb(255, 255, 255),
+		color: combineRgb(0, 0, 0),
+	},
+	blackOnRed: {
+		bgcolor: combineRgb(255, 0, 0),
+		color: combineRgb(0, 0, 0),
+	},
+}
+
 export function GetFeedbacksList(
 	_self: EmberPlusInstance, //InstanceBase<EmberPlusConfig>,
 	_emberClient: EmberClient,
@@ -26,10 +37,7 @@ export function GetFeedbacksList(
 			name: 'Parameter Equals',
 			description: 'Checks the current value of a paramter',
 			type: 'boolean',
-			defaultStyle: {
-				bgcolor: combineRgb(255, 255, 255),
-				color: combineRgb(0, 0, 0),
-			},
+			defaultStyle: styles.blackOnWhite,
 			options: [
 				{
 					type: 'dropdown',
@@ -61,10 +69,7 @@ export function GetFeedbacksList(
 			name: 'Parameter Equals String',
 			description: 'Checks the current value of a paramter against a String',
 			type: 'boolean',
-			defaultStyle: {
-				bgcolor: combineRgb(255, 255, 255),
-				color: combineRgb(0, 0, 0),
-			},
+			defaultStyle: styles.blackOnWhite,
 			options: [
 				{
 					type: 'dropdown',
@@ -84,11 +89,8 @@ export function GetFeedbacksList(
 				},
 			],
 			callback: async (feedback, context) => {
-				const path = await resolvePath(
-					_self,
-					await context.parseVariablesInString(feedback.options['path']?.toString() ?? ''),
-				)
-				const value: string = await context.parseVariablesInString(feedback.options['value']?.toString() ?? '')
+				const path = await resolvePath(context, feedback.options['path']?.toString() ?? '')
+				const value = await context.parseVariablesInString(feedback.options['value']?.toString() ?? '')
 				return state.parameters.get(path) == value
 			},
 			subscribe: async (feedback, context) => {
@@ -99,10 +101,7 @@ export function GetFeedbacksList(
 			name: 'Take is possible',
 			description: 'Shows if there is take possible',
 			type: 'boolean',
-			defaultStyle: {
-				bgcolor: combineRgb(255, 255, 255),
-				color: combineRgb(255, 0, 0),
-			},
+			defaultStyle: styles.blackOnWhite,
 			options: [],
 			callback: () => {
 				return state.selected.target != -1 && state.selected.source != -1 && state.selected.matrix != -1
@@ -112,10 +111,7 @@ export function GetFeedbacksList(
 			name: 'Clear is possible',
 			description: 'Changes when a selection is made.',
 			type: 'boolean',
-			defaultStyle: {
-				bgcolor: combineRgb(255, 255, 255),
-				color: combineRgb(255, 0, 0),
-			},
+			defaultStyle: styles.blackOnRed,
 			options: [],
 			callback: () => {
 				return state.selected.target != -1 || state.selected.source != -1 || state.selected.matrix != -1
@@ -125,12 +121,7 @@ export function GetFeedbacksList(
 			name: 'Source Background If Selected',
 			description: 'Change Background of Source, when it is currently selected.',
 			type: 'boolean',
-			defaultStyle: {
-				// The default style change for a boolean feedback
-				// The user will be able to customise these values as well as the fields that will be changed
-				bgcolor: combineRgb(255, 0, 0),
-				color: combineRgb(0, 0, 0),
-			},
+			defaultStyle: styles.blackOnRed,
 			options: [
 				{
 					type: 'number',
@@ -161,12 +152,7 @@ export function GetFeedbacksList(
 			name: 'Target Background if Selected',
 			description: 'Change Background of Target, when it is currently selected.',
 			type: 'boolean',
-			defaultStyle: {
-				// The default style change for a boolean feedback
-				// The user will be able to customise these values as well as the fields that will be changed
-				bgcolor: combineRgb(255, 0, 0),
-				color: combineRgb(0, 0, 0),
-			},
+			defaultStyle: styles.blackOnRed,
 			options: [
 				{
 					type: 'number',
