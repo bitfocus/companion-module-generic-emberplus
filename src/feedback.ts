@@ -1,6 +1,8 @@
-import { combineRgb, InstanceBase } from '@companion-module/base'
+import { combineRgb /*InstanceBase*/ } from '@companion-module/base'
 import type { CompanionFeedbackDefinition, CompanionFeedbackDefinitions, DropdownChoice } from '@companion-module/base'
+import type { EmberPlusInstance } from './index'
 import { EmberClient } from 'emberplus-connection'
+import { resolvePath } from './actions'
 import type { EmberPlusConfig } from './config'
 import { EmberPlusState } from './state'
 
@@ -14,7 +16,7 @@ export enum FeedbackId {
 }
 
 export function GetFeedbacksList(
-	_self: InstanceBase<EmberPlusConfig>,
+	_self: EmberPlusInstance, //InstanceBase<EmberPlusConfig>,
 	_emberClient: EmberClient,
 	config: EmberPlusConfig,
 	state: EmberPlusState,
@@ -35,6 +37,7 @@ export function GetFeedbacksList(
 					id: 'path',
 					choices: config.monitoredParameters?.map((item) => <DropdownChoice>{ id: item, label: item }) ?? [],
 					default: config.monitoredParameters?.find(() => true) ?? 'No paths configured!',
+					allowCustom: true,
 				},
 				{
 					type: 'number',
@@ -46,8 +49,12 @@ export function GetFeedbacksList(
 					default: 0,
 				},
 			],
-			callback: (feedback) => {
-				return state.parameters.get(feedback.options['path']?.toString() ?? '') == feedback.options['value']?.toString()
+			callback: async (feedback, context) => {
+				const path = await resolvePath(context, feedback.options['path']?.toString() ?? '')
+				return state.parameters.get(path) == feedback.options['value']?.toString()
+			},
+			subscribe: async (feedback, context) => {
+				await _self.registerNewParameter(await resolvePath(context, feedback.options['path']?.toString() ?? ''))
 			},
 		},
 		[FeedbackId.String]: {
@@ -65,6 +72,7 @@ export function GetFeedbacksList(
 					id: 'path',
 					choices: config.monitoredParameters?.map((item) => <DropdownChoice>{ id: item, label: item }) ?? [],
 					default: config.monitoredParameters?.find(() => true) ?? 'No paths configured!',
+					allowCustom: true,
 				},
 				{
 					type: 'textinput',
@@ -76,8 +84,15 @@ export function GetFeedbacksList(
 				},
 			],
 			callback: async (feedback, context) => {
+				const path = await resolvePath(
+					_self,
+					await context.parseVariablesInString(feedback.options['path']?.toString() ?? ''),
+				)
 				const value: string = await context.parseVariablesInString(feedback.options['value']?.toString() ?? '')
-				return state.parameters.get(feedback.options['path']?.toString() ?? '') == value
+				return state.parameters.get(path) == value
+			},
+			subscribe: async (feedback, context) => {
+				await _self.registerNewParameter(await resolvePath(context, feedback.options['path']?.toString() ?? ''))
 			},
 		},
 		[FeedbackId.Take]: {
