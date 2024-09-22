@@ -1,6 +1,6 @@
 {
 	"name": "generic-emberplus",
-	"version": "2.4.0",
+	"version": "2.4.2",
 	"main": "dist/index.js",
 	"scripts": {
 		"prepare": "husky",
