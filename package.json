@@ -1,6 +1,6 @@
 {
 	"name": "generic-emberplus",
-	"version": "2.4.2",
+	"version": "2.4.3",
 	"main": "dist/index.js",
 	"scripts": {
 		"prepare": "husky",
@@ -36,7 +36,7 @@
 	},
 	"devDependencies": {
 		"@companion-module/tools": "^2.0.4",
-		"eslint": "^9.10.0",
+		"eslint": "^9.11.0",
 		"husky": "^9.1.6",
 		"lint-staged": "^15.2.10",
 		"prettier": "^3.3.3",
@@ -45,5 +45,5 @@
 		"typescript-eslint": "^8.6.0"
 	},
 	"prettier": "@companion-module/tools/.prettierrc.json",
-	"packageManager": "yarn@4.4.1"
+	"packageManager": "yarn@4.5.0"
 }
