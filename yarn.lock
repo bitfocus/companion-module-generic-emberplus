@@ -1034,6 +1034,13 @@ asn1@evs-broadcast/node-asn1:
   languageName: node
   linkType: hard
 
+"delay@npm:^6.0.0":
+  version: 6.0.0
+  resolution: "delay@npm:6.0.0"
+  checksum: 10c0/5175e887512d65b2bfe9e1168b5ce7a488de99c1d0af52cb4f799bb13dd7cb0bbbba8a4f5c500a5b03fb42bec8621d6ab59244bd8dfbe9a2bf7b173f25621a10
+  languageName: node
+  linkType: hard
+
 "eastasianwidth@npm:^0.2.0":
   version: 0.2.0
   resolution: "eastasianwidth@npm:0.2.0"
@@ -1542,6 +1549,7 @@ asn1@evs-broadcast/node-asn1:
     "@companion-module/base": "npm:~1.10.0"
     "@companion-module/tools": "npm:^2.0.4"
     "@types/node": "npm:^18.19.45"
+    delay: "npm:^6.0.0"
     emberplus-connection: "npm:^0.2.1"
     eslint: "npm:^9.11.0"
     husky: "npm:^9.1.6"

@@ -31,6 +31,7 @@
 	"dependencies": {
 		"@companion-module/base": "~1.10.0",
 		"@types/node": "^18.19.45",
+		"delay": "^6.0.0",
 		"emberplus-connection": "^0.2.1",
 		"p-queue": "^8.0.1"
 	},

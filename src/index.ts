@@ -9,9 +9,11 @@ import { EmberClient, Model as EmberModel } from 'emberplus-connection' // note 
 import { ElementType } from 'emberplus-connection/dist/model'
 import type { TreeElement, EmberElement } from 'emberplus-connection/dist/model'
 import { GetVariablesList } from './variables'
+import delay from 'delay'
 import PQueue from 'p-queue'
 
 const reconnectInterval: number = 300000 //emberplus-connection destroys socket after 5 minutes
+const reconnectOnFailDelay: number = 10000 //reattempt delay when initial connection queries throw an error
 
 /**
  * Companion instance class for generic EmBER+ Devices
@@ -138,14 +140,17 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 					await this.registerParameters()
 					this.updateStatus(InstanceStatus.Ok)
 				})
-				.catch((e) => {
+				.catch(async (e) => {
 					// get root
 					this.log('error', 'Failed to discover root or subscribe to path: ' + e)
-					this.updateStatus(InstanceStatus.UnknownWarning)
+					this.updateStatus(InstanceStatus.UnknownWarning, e.toString())
+					await this.emberClient.disconnect()
+					await delay(reconnectOnFailDelay)
+					this.setupEmberConnection()
 				})
 		})
 		this.emberClient.on('disconnected', () => {
-			this.updateStatus(InstanceStatus.Connecting)
+			this.updateStatus(InstanceStatus.Connecting, 'Disconnected')
 			this.log('warn', `Disconnected from ${this.config.host}:${this.config.port}`)
 			this.reconnectTimerStart()
 		})
@@ -235,8 +240,8 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 
 			this.setVariableValues(Object.fromEntries(this.state.parameters.entries()))
 			if (this.isRecordingActions) {
-				let actionType: string
-				let actionValue: any
+				let actionType: ActionId
+				let actionValue: number | boolean | string
 				if (node.contents.parameterType === EmberModel.ParameterType.Integer) {
 					actionType = ActionId.SetValueInt
 					actionValue = Number(node.contents.value)
@@ -254,7 +259,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 					if (isNaN(actionValue)) return
 				} else if (node.contents.parameterType === EmberModel.ParameterType.String) {
 					actionType = ActionId.SetValueString
-					actionValue = node.contents.value?.toString()
+					actionValue = node.contents.value?.toString() ?? ''
 				} else {
 					return
 				}
