@@ -138,6 +138,8 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 					const request = await this.emberClient.getDirectory(this.emberClient.tree)
 					await request.response
 					await this.registerParameters()
+					this.subscribeActions()
+					this.subscribeFeedbacks()
 					this.updateStatus(InstanceStatus.Ok)
 				})
 				.catch(async (e) => {
