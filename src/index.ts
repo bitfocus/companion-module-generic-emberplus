@@ -23,8 +23,8 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	private config!: EmberPlusConfig
 	private state!: EmberPlusState
 	private emberQueue!: PQueue
-	private reconnectTimer!: ReturnType<typeof setTimeout> | undefined
-	private isRecordingActions!: boolean
+	private reconnectTimer: ReturnType<typeof setTimeout> | undefined = undefined
+	private isRecordingActions: boolean = false
 
 	// Override base types to make types stricter
 	public checkFeedbacks(...feedbackTypes: string[]): void {
@@ -156,6 +156,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 			this.log('warn', `Disconnected from ${this.config.host}:${this.config.port}`)
 			this.reconnectTimerStart()
 		})
+		this.reconnectTimerStart()
 		this.emberClient.connect().catch((e) => {
 			this.updateStatus(InstanceStatus.ConnectionFailure)
 			this.log('error', 'Connection Failure: ' + e)

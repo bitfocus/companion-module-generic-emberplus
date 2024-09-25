@@ -4,15 +4,13 @@
 
 This is a generic ember plus module - successful use of this tool requires use and familiary with Ember Plus Viewer or a similar tool to identify the Ember Paths, and types, to be monitored and controlled.
 
-The module only supports connection via TCP
+The module only supports connection via TCP.
 
 ## Configuration
 
 #### Bonjour
 
-Some devices support mDNS announcements according to the Ember Plus [specification](https://github.com/Lawo/ember-plus/blob/master/documentation/Ember%2B%20Service%20Discovery.pdf).
-
-The module should discover. Otherwise device IP and Port can be manually entered.
+Some devices support mDNS announcements according to the Ember Plus [specification](https://github.com/Lawo/ember-plus/blob/master/documentation/Ember%2B%20Service%20Discovery.pdf). The module should discover these, otherwise device IP and Port can be manually entered.
 
 #### Matrix Control
 
@@ -36,11 +34,11 @@ Central to the concept of ember+ is the address or path of the data element you 
 
 - #### String: Path.To.Ember.Node
 
-  Paths can also be entered as a period seperated string. Such as _Path.To.Ember.Element_. These text paths can be found in Ember Plus Viewer, however need to be reformatted to use period seperators rather than forward slashes. Note: Some characters (such as #) used in ember paths are not supported for use in variables by companion, and the expected variable will not be created - the path can still be used in actions and feedbacks however.
+  Paths can also be entered as a period seperated string. Such as _Path.To.Ember.Node_. These text paths can be found in Ember Plus Viewer, however they need to be reformatted to use period seperators rather than forward slashes. Note: Some characters (such as #) used in ember paths are not supported for use in variables by companion, and the expected variable will not be created - the path can still be used in actions and feedbacks however.
 
 - #### Decimal in Brackets: My Useful Ember Path [1.2.3.4]
 
-  Any path field that contains brackets [] will just use the contents enclosed in the brackets as the path. Thus you can copy paste any path with text and decimals from ember plus viewer, and keep the text for readability or enter your own description _This is a very useful path[1.2.3.4]_. Only the path will be used for variable creation.
+  Any path field that contains brackets [] will just use the contents enclosed in the brackets as the path. Thus you can copy paste any path with text and decimals from Ember Plus Viewer, and keep the text for readability or enter your own description _This is a very useful path[1.2.3.4]_. Only the path will be used for variable creation.
 
 - #### Variables
   Except in the module configuration, all of the above can be constructed with variables for both actions and feedbacks.
@@ -84,3 +82,7 @@ Both Parameter Equals, and Parameter Equals String type convert all data to stri
 
 - Take
 - Clear
+
+## Action Recorder
+
+The Action Recorder can record Set Value actions for ember nodes you are currently subscribed to.
