@@ -38,7 +38,7 @@ Central to the concept of ember+ is the address or path of the data element you 
 
 - #### Decimal in Brackets: My Useful Ember Path [1.2.3.4]
 
-  Any path field that contains brackets [] will just use the contents enclosed in the brackets as the path. Thus you can copy paste any path with text and decimals from Ember Plus Viewer, and keep the text for readability or enter your own description _This is a very useful path[1.2.3.4]_. Only the path will be used for variable creation.
+  Any path field that contains brackets [] will just use the contents enclosed in the brackets as the path. Thus you can copy paste any path with text and decimals from Ember Plus Viewer, and keep the text for readability or enter your own description _This is a very useful path[1.2.3.4]_. Only the path will be used for variable creation. This method cannot be used in config fields.
 
 - #### Variables
   Except in the module configuration, all of the above can be constructed with variables for both actions and feedbacks.
