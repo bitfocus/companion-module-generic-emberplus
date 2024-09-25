@@ -1062,9 +1062,9 @@ asn1@evs-broadcast/node-asn1:
   languageName: node
   linkType: hard
 
-"emberplus-connection@npm:^0.2.2":
-  version: 0.2.2
-  resolution: "emberplus-connection@npm:0.2.2"
+"emberplus-connection@npm:0.2.1":
+  version: 0.2.1
+  resolution: "emberplus-connection@npm:0.2.1"
   dependencies:
     asn1: evs-broadcast/node-asn1
     debug: "npm:^4.3.4"
@@ -1072,7 +1072,7 @@ asn1@evs-broadcast/node-asn1:
     long: "npm:^3.2.0"
     smart-buffer: "npm:^3.0.3"
     tslib: "npm:^2.6.2"
-  checksum: 10c0/e7674b2990733800f3838f8ec4d9679b26336bc6c2e83b78dce2c10e9552c26f8fc3f08fbaa0ce8f089812c26ef7d4c3057b20cb90527a5e34e53cc6b4203430
+  checksum: 10c0/33a98476560664e921dc2e375256ae8f8e92d78c095ac03a123d91acccc38daaa5da313d7b5d0a63ef450b86d069da7eb999cbc8e921b09abeb399dcd3dc10c3
   languageName: node
   linkType: hard
 
@@ -1550,7 +1550,7 @@ asn1@evs-broadcast/node-asn1:
     "@companion-module/tools": "npm:^2.0.4"
     "@types/node": "npm:^18.19.45"
     delay: "npm:^6.0.0"
-    emberplus-connection: "npm:^0.2.2"
+    emberplus-connection: "npm:0.2.1"
     eslint: "npm:^9.11.0"
     husky: "npm:^9.1.6"
     lint-staged: "npm:^15.2.10"
