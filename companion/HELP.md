@@ -8,21 +8,21 @@ The module only supports connection via TCP
 
 ## Configuration
 
-### Bonjour
+#### Bonjour
 
 Some devices support mDNS announcements according to the Ember Plus [specification](https://github.com/Lawo/ember-plus/blob/master/documentation/Ember%2B%20Service%20Discovery.pdf).
 
 The module should discover. Otherwise device IP and Port can be manually entered.
 
-### Matrix Control
+#### Matrix Control
 
 If you require matrix control, enter the ember path(s) here.
 
-### Auto Take
+#### Auto Take
 
 Defines matrix behaviour.
 
-### Paths to Monitor
+#### Paths to Monitor
 
 Paths defined here will be registed with the host on initialisation, and available as variables and for use in feedbacks.
 
@@ -30,19 +30,19 @@ Paths defined here will be registed with the host on initialisation, and availab
 
 Central to the concept of ember+ is the address or path of the data element you wish to monitor or change. There are several ways to enter this in the module.
 
-- ### Decimal
+- #### Decimal: 1.2.3.4
 
   Paths can always be entered as a decimal address (ie _1.2.3.4_).
 
-- ### String
+- #### String: Path.To.Ember.Node
 
   Paths can also be entered as a period seperated string. Such as _Path.To.Ember.Element_. These text paths can be found in Ember Plus Viewer, however need to be reformatted to use period seperators rather than forward slashes. Note: Some characters (such as #) used in ember paths are not supported for use in variables by companion, and the expected variable will not be created - the path can still be used in actions and feedbacks however.
 
-- ### Decimal in Brackets
+- #### Decimal in Brackets: My Useful Ember Path [1.2.3.4]
 
   Any path field that contains brackets [] will just use the contents enclosed in the brackets as the path. Thus you can copy paste any path with text and decimals from ember plus viewer, and keep the text for readability or enter your own description _This is a very useful path[1.2.3.4]_. Only the path will be used for variable creation.
 
-- ### Variables
+- #### Variables
   Except in the module configuration, all of the above can be constructed with variables for both actions and feedbacks.
 
 ## Value Fields
