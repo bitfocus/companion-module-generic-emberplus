@@ -92,40 +92,46 @@ const setValue =
 					if (node.contents.parameterType === type) {
 						self.log('debug', 'Got node on ' + path)
 						let value: string | number | boolean
-						if (type === EmberModel.ParameterType.String) {
-							value = await self.parseVariablesInString(action.options['value']?.toString() ?? '')
-						} else if (type === EmberModel.ParameterType.Integer) {
-							value = parseInt(await self.parseVariablesInString(action.options['value']?.toString() ?? ''))
-							if (isNaN(value) || value > 4294967295 || value < -4294967295) {
+						switch (type) {
+							case EmberModel.ParameterType.String:
+								value = await self.parseVariablesInString(action.options['value']?.toString() ?? '')
+								break
+							case EmberModel.ParameterType.Integer:
+								value = parseInt(await self.parseVariablesInString(action.options['value']?.toString() ?? ''))
+								if (isNaN(value) || value > 4294967295 || value < -4294967295) {
+									return
+								}
+								break
+							case EmberModel.ParameterType.Real:
+								value = Number(await self.parseVariablesInString(action.options['value']?.toString() ?? ''))
+								if (isNaN(value) || value > 4294967295 || value < -4294967295) {
+									return
+								}
+								break
+							case EmberModel.ParameterType.Enum:
+								value = parseInt(await self.parseVariablesInString(action.options['value']?.toString() ?? ''))
+								if (isNaN(value) || value > 4294967295 || value < 0) {
+									return
+								}
+								break
+							case EmberModel.ParameterType.Boolean:
+								switch (await self.parseVariablesInString(action.options['value']?.toString() ?? '')) {
+									case 'true':
+									case 'on':
+									case '1':
+										value = true
+										break
+									case 'false':
+									case 'off':
+									case '0':
+										value = false
+										break
+									default:
+										value = Boolean(await self.parseVariablesInString(action.options['value']?.toString() ?? ''))
+								}
+								break
+							default:
 								return
-							}
-						} else if (type === EmberModel.ParameterType.Real) {
-							value = Number(await self.parseVariablesInString(action.options['value']?.toString() ?? ''))
-							if (isNaN(value) || value > 4294967295 || value < -4294967295) {
-								return
-							}
-						} else if (type === EmberModel.ParameterType.Enum) {
-							value = parseInt(await self.parseVariablesInString(action.options['value']?.toString() ?? ''))
-							if (isNaN(value) || value > 4294967295 || value < 0) {
-								return
-							}
-						} else if (type === EmberModel.ParameterType.Boolean) {
-							switch (await self.parseVariablesInString(action.options['value']?.toString() ?? '')) {
-								case 'true':
-								case 'on':
-								case '1':
-									value = true
-									break
-								case 'false':
-								case 'off':
-								case '0':
-									value = false
-									break
-								default:
-									value = Boolean(action.options['value'])
-							}
-						} else {
-							return
 						}
 						const request = await emberClient.setValue(
 							node as EmberModel.NumberedTreeNode<EmberModel.Parameter>,
