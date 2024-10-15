@@ -1,6 +1,6 @@
 {
 	"name": "generic-emberplus",
-	"version": "2.4.4",
+	"version": "2.5.0",
 	"main": "dist/index.js",
 	"scripts": {
 		"prepare": "husky",
@@ -21,29 +21,29 @@
 		"*.{js,json,md}": [
 			"prettier --write"
 		],
-		"*.ts": [
+		"*.{ts,tsx,js,jsx}": [
 			"yarn lint:raw --fix"
 		]
 	},
 	"engines": {
-		"node": "^18.20"
+		"node": "^22.2"
 	},
 	"dependencies": {
-		"@companion-module/base": "~1.10.0",
-		"@types/node": "^18.19.45",
+		"@companion-module/base": "~1.11.0",
 		"delay": "^6.0.0",
 		"emberplus-connection": "0.2.1",
 		"p-queue": "^8.0.1"
 	},
 	"devDependencies": {
-		"@companion-module/tools": "^2.0.4",
-		"eslint": "^9.11.0",
+		"@companion-module/tools": "^2.1.0",
+		"@types/node": "^22.7.4",
+		"eslint": "^9.12.0",
 		"husky": "^9.1.6",
 		"lint-staged": "^15.2.10",
 		"prettier": "^3.3.3",
-		"rimraf": "^5.0.10",
-		"typescript": "~5.5.4",
-		"typescript-eslint": "^8.6.0"
+		"rimraf": "^6.0.1",
+		"typescript": "~5.6.2",
+		"typescript-eslint": "^8.9.0"
 	},
 	"prettier": "@companion-module/tools/.prettierrc.json",
 	"packageManager": "yarn@4.5.0"

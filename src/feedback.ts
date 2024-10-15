@@ -9,6 +9,7 @@ import { EmberPlusState } from './state'
 export enum FeedbackId {
 	Parameter = 'parameter',
 	String = 'string',
+	Boolean = 'boolean',
 	Take = 'take',
 	Clear = 'clear',
 	SourceBackgroundSelected = 'sourceBackgroundSelected',
@@ -35,7 +36,7 @@ export function GetFeedbacksList(
 	const feedbacks: { [id in FeedbackId]: CompanionFeedbackDefinition | undefined } = {
 		[FeedbackId.Parameter]: {
 			name: 'Parameter Equals',
-			description: 'Checks the current value of a paramter',
+			description: 'Checks the current value of a parameter',
 			type: 'boolean',
 			defaultStyle: styles.blackOnWhite,
 			options: [
@@ -67,7 +68,7 @@ export function GetFeedbacksList(
 		},
 		[FeedbackId.String]: {
 			name: 'Parameter Equals String',
-			description: 'Checks the current value of a paramter against a String',
+			description: 'Checks the current value of a parameter against a String',
 			type: 'boolean',
 			defaultStyle: styles.blackOnWhite,
 			options: [
@@ -92,6 +93,38 @@ export function GetFeedbacksList(
 				const path = await resolvePath(context, feedback.options['path']?.toString() ?? '')
 				const value = await context.parseVariablesInString(feedback.options['value']?.toString() ?? '')
 				return state.parameters.get(path) == value
+			},
+			subscribe: async (feedback, context) => {
+				await _self.registerNewParameter(await resolvePath(context, feedback.options['path']?.toString() ?? ''))
+			},
+		},
+		[FeedbackId.Boolean]: {
+			name: 'Parameter Equals True',
+			description: 'Checks the current value of a paramter is true',
+			type: 'boolean',
+			defaultStyle: styles.blackOnWhite,
+			options: [
+				{
+					type: 'dropdown',
+					label: 'Select registered path',
+					id: 'path',
+					choices: config.monitoredParameters?.map((item) => <DropdownChoice>{ id: item, label: item }) ?? [],
+					default: config.monitoredParameters?.find(() => true) ?? 'No paths configured!',
+					allowCustom: true,
+				},
+			],
+			callback: async (feedback, context) => {
+				const path = await resolvePath(context, feedback.options['path']?.toString() ?? '')
+				switch (state.parameters.get(path)?.toString().toLowerCase()) {
+					case 'true':
+					case '1':
+						return true
+					case 'false':
+					case '0':
+						return false
+					default:
+						return Boolean(state.parameters.get(path))
+				}
 			},
 			subscribe: async (feedback, context) => {
 				await _self.registerNewParameter(await resolvePath(context, feedback.options['path']?.toString() ?? ''))
