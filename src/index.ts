@@ -239,7 +239,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 		if (node.contents.type == ElementType.Parameter) {
 			this.log('debug', 'Got parameter value for ' + path + ': ' + (node.contents.value?.toString() ?? ''))
 			this.state.parameters.set(path, node.contents.value?.toString() ?? '')
-			this.checkFeedbacks(FeedbackId.Parameter, FeedbackId.String)
+			this.checkFeedbacks(FeedbackId.Parameter, FeedbackId.String, FeedbackId.Boolean)
 
 			this.setVariableValues(Object.fromEntries(this.state.parameters.entries()))
 			if (this.isRecordingActions) {
@@ -271,7 +271,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 						actionId: actionType,
 						options: { path: path, value: actionValue },
 					},
-					`${path}`,
+					path,
 				)
 			}
 		}

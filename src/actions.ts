@@ -3,22 +3,27 @@ import type {
 	CompanionActionDefinitions,
 	CompanionFeedbackContext,
 	CompanionActionEvent,
+	CompanionActionInfo,
 	CompanionInputFieldNumber,
 	CompanionInputFieldTextInput,
 	InstanceBase,
+	CompanionInputFieldCheckbox,
 } from '@companion-module/base'
 import { EmberClient, Model as EmberModel } from 'emberplus-connection'
 import type PQueue from 'p-queue'
 import type { EmberPlusConfig } from './config'
 import { FeedbackId } from './feedback'
+import type { EmberPlusInstance } from './index'
 import { EmberPlusState } from './state'
 
 export enum ActionId {
 	SetValueInt = 'setValueInt',
 	SetValueIntVariable = 'setValueIntVariable',
 	SetValueReal = 'setValueReal',
+	SetValueRealVariable = 'setValueRealVariable',
 	SetValueString = 'setValueString',
 	SetValueBoolean = 'setValueBoolean',
+	SetValueBooleanVariable = 'setValueBooleanVariable',
 	SetValueEnum = 'setValueEnum',
 	SetValueEnumVariable = 'setValueEnumVariable',
 	MatrixConnect = 'matrixConnect',
@@ -35,8 +40,15 @@ const pathInput: CompanionInputFieldTextInput = {
 	label: 'Path',
 	id: 'path',
 	useVariables: true,
-	tooltip: `Path may be supplied in decimals: 1.2.3, or with a descriptor and the decimals wrapped in brackets: path/to/ember/element[1.2.3.4]`,
+	tooltip: `Path may be supplied in decimals: 1.2.3, text: path.to.ember.element, or with a descriptor and the decimals wrapped in brackets: path to ember element[1.2.3.4]`,
 }
+const createVariable: CompanionInputFieldCheckbox = {
+	type: 'checkbox',
+	label: 'Auto Create Variable',
+	id: 'variable',
+	default: false,
+}
+
 const matrixInputs: Array<CompanionInputFieldTextInput | CompanionInputFieldNumber> = [
 	pathInput,
 	{
@@ -79,48 +91,54 @@ const setValue =
 				if (node && node.contents.type === EmberModel.ElementType.Parameter) {
 					if (node.contents.parameterType === type) {
 						self.log('debug', 'Got node on ' + path)
-						if (type === EmberModel.ParameterType.String) {
-							const value: string = await self.parseVariablesInString(action.options['value']?.toString() ?? '')
-							const request = await emberClient.setValue(
-								node as EmberModel.NumberedTreeNode<EmberModel.Parameter>,
-								value,
-								false,
-							)
-							request.response?.catch(() => null) // Ensure the response is 'handled'
-						} else if (type === EmberModel.ParameterType.Integer) {
-							const value: number = parseInt(
-								await self.parseVariablesInString(action.options['value']?.toString() ?? ''),
-							)
-							if (isNaN(value) || value > 4294967295 || value < -4294967295) {
+						let value: string | number | boolean
+						switch (type) {
+							case EmberModel.ParameterType.String:
+								value = await self.parseVariablesInString(action.options['value']?.toString() ?? '')
+								break
+							case EmberModel.ParameterType.Integer:
+								value = parseInt(await self.parseVariablesInString(action.options['value']?.toString() ?? ''))
+								if (isNaN(value) || value > 4294967295 || value < -4294967295) {
+									return
+								}
+								break
+							case EmberModel.ParameterType.Real:
+								value = Number(await self.parseVariablesInString(action.options['value']?.toString() ?? ''))
+								if (isNaN(value) || value > 4294967295 || value < -4294967295) {
+									return
+								}
+								break
+							case EmberModel.ParameterType.Enum:
+								value = parseInt(await self.parseVariablesInString(action.options['value']?.toString() ?? ''))
+								if (isNaN(value) || value > 4294967295 || value < 0) {
+									return
+								}
+								break
+							case EmberModel.ParameterType.Boolean:
+								switch (await self.parseVariablesInString(action.options['value']?.toString() ?? '')) {
+									case 'true':
+									case 'on':
+									case '1':
+										value = true
+										break
+									case 'false':
+									case 'off':
+									case '0':
+										value = false
+										break
+									default:
+										value = Boolean(await self.parseVariablesInString(action.options['value']?.toString() ?? ''))
+								}
+								break
+							default:
 								return
-							}
-							const request = await emberClient.setValue(
-								node as EmberModel.NumberedTreeNode<EmberModel.Parameter>,
-								value,
-								false,
-							)
-							request.response?.catch(() => null) // Ensure the response is 'handled'
-						} else if (type === EmberModel.ParameterType.Enum) {
-							const value: number = parseInt(
-								await self.parseVariablesInString(action.options['value']?.toString() ?? ''),
-							)
-							if (isNaN(value) || value > 4294967295 || value < 0) {
-								return
-							}
-							const request = await emberClient.setValue(
-								node as EmberModel.NumberedTreeNode<EmberModel.Parameter>,
-								value,
-								false,
-							)
-							request.response?.catch(() => null) // Ensure the response is 'handled'
-						} else {
-							const request = await emberClient.setValue(
-								node as EmberModel.NumberedTreeNode<EmberModel.Parameter>,
-								action.options['value'] as number,
-								false,
-							)
-							request.response?.catch(() => null) // Ensure the response is 'handled'
 						}
+						const request = await emberClient.setValue(
+							node as EmberModel.NumberedTreeNode<EmberModel.Parameter>,
+							value,
+							false,
+						)
+						request.response?.catch(() => null) // Ensure the response is 'handled'
 					} else {
 						self.log(
 							'warn',
@@ -140,6 +158,14 @@ const setValue =
 			.catch((e: any) => {
 				self.log('debug', `Failed to set value: ${e.toString()}`)
 			})
+	}
+
+const registerParameter =
+	(self: EmberPlusInstance) =>
+	async (action: CompanionActionInfo): Promise<void> => {
+		if (action.options.variable) {
+			await self.registerNewParameter(await resolvePath(self, action.options['path']?.toString() ?? ''))
+		}
 	}
 
 const doMatrixAction =
@@ -174,11 +200,12 @@ const doMatrixAction =
 	}
 
 /**
- * Performes a connection on a specified matrix.
+ * Performs a connection on a specified matrix.
  * @param self reference to the BaseInstance
  * @param emberClient reference to the emberClient
  * @param config reference to the config of the module
  * @param state reference to the state of the module
+ * @param queue reference to the PQueue of the module
  */
 const doMatrixActionFunction = function (
 	self: InstanceBase<EmberPlusConfig>,
@@ -232,11 +259,12 @@ const doMatrixActionFunction = function (
 
 /**
  * Gets called, when take is not on Auto-Take.
- * Performes a connect on the wanted matrix
+ * Performs a connect on the wanted matrix
  * @param self reference to the BaseInstance
  * @param emberClient reference to the emberClient
  * @param config reference to the config of the module
  * @param state reference to the state of the module
+ * @param queue reference to the PQueue of the module
  */
 const doTake =
 	(
@@ -332,7 +360,7 @@ const setSelectedTarget =
 	}
 
 export function GetActionsList(
-	self: InstanceBase<EmberPlusConfig>,
+	self: EmberPlusInstance,
 	emberClient: EmberClient,
 	config: EmberPlusConfig,
 	state: EmberPlusState,
@@ -353,8 +381,10 @@ export function GetActionsList(
 					default: 0,
 					step: 1,
 				},
+				createVariable,
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.Integer, queue),
+			subscribe: registerParameter(self),
 		},
 		[ActionId.SetValueIntVariable]: {
 			name: 'Set Value Integer from Variable',
@@ -368,8 +398,10 @@ export function GetActionsList(
 					useVariables: true,
 					default: '0',
 				},
+				createVariable,
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.Integer, queue),
+			subscribe: registerParameter(self),
 		},
 		[ActionId.SetValueReal]: {
 			name: 'Set Value Real',
@@ -385,8 +417,26 @@ export function GetActionsList(
 					default: 0,
 					step: 0.001, // TODO - don't want this at all preferably
 				},
+				createVariable,
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.Real, queue),
+			subscribe: registerParameter(self),
+		},
+		[ActionId.SetValueRealVariable]: {
+			name: 'Set Value Real from Variable',
+			options: [
+				pathInput,
+				{
+					type: 'textinput',
+					label: 'Value',
+					id: 'value',
+					default: '0.0',
+					useVariables: true,
+				},
+				createVariable,
+			],
+			callback: setValue(self, emberClient, EmberModel.ParameterType.Real, queue),
+			subscribe: registerParameter(self),
 		},
 		[ActionId.SetValueBoolean]: {
 			name: 'Set Value Boolean',
@@ -398,8 +448,30 @@ export function GetActionsList(
 					id: 'value',
 					default: false,
 				},
+				createVariable,
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.Boolean, queue),
+			subscribe: async (action, context) => {
+				if (action.options.variable) {
+					await self.registerNewParameter(await resolvePath(context, action.options['path']?.toString() ?? ''))
+				}
+			},
+		},
+		[ActionId.SetValueBooleanVariable]: {
+			name: 'Set Value Boolean from Variable',
+			options: [
+				pathInput,
+				{
+					type: 'textinput',
+					label: 'Value',
+					id: 'value',
+					default: 'false',
+					useVariables: true,
+				},
+				createVariable,
+			],
+			callback: setValue(self, emberClient, EmberModel.ParameterType.Boolean, queue),
+			subscribe: registerParameter(self),
 		},
 		[ActionId.SetValueEnum]: {
 			name: 'Set Value ENUM (as Integer)',
@@ -415,8 +487,10 @@ export function GetActionsList(
 					default: 0,
 					step: 1,
 				},
+				createVariable,
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.Enum, queue),
+			subscribe: registerParameter(self),
 		},
 		[ActionId.SetValueEnumVariable]: {
 			name: 'Set Value ENUM from Variable (as Integer)',
@@ -431,8 +505,10 @@ export function GetActionsList(
 					default: '0',
 					tooltip: 'Return an integer between 0 and 4294967295',
 				},
+				createVariable,
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.Enum, queue),
+			subscribe: registerParameter(self),
 		},
 		[ActionId.SetValueString]: {
 			name: 'Set Value String',
@@ -444,8 +520,10 @@ export function GetActionsList(
 					id: 'value',
 					useVariables: true,
 				},
+				createVariable,
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.String, queue),
+			subscribe: registerParameter(self),
 		},
 		[ActionId.MatrixConnect]: {
 			name: 'Matrix Connect',

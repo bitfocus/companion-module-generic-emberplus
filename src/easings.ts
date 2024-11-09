@@ -17,7 +17,7 @@ export namespace Easing {
 		 *
 		 * @method Easing.Linear#In
 		 * @param {number} k - The value to be tweened.
-		 * @returns {number} k^2.
+		 * @returns {number} k.
 		 */
 		static None(k: number): number {
 			return k
