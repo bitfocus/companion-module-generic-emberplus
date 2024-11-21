@@ -237,10 +237,9 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	}
 	public async handleChangedValue(path: string, node: TreeElement<EmberElement>): Promise<void> {
 		if (node.contents.type == ElementType.Parameter) {
-			this.log('debug', 'Got parameter value for ' + path + ': ' + (node.contents.value?.toString() ?? ''))
+			this.log('debug', 'Got parameter value for ' + path + ': ' + (node.contents.value ?? ''))
 			this.state.parameters.set(path, node.contents.value?.toString() ?? '')
 			this.checkFeedbacks(FeedbackId.Parameter, FeedbackId.String, FeedbackId.Boolean)
-
 			this.setVariableValues(Object.fromEntries(this.state.parameters.entries()))
 			if (this.isRecordingActions) {
 				let actionType: ActionId
