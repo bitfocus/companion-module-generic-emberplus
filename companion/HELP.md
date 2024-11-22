@@ -34,7 +34,7 @@ Central to the concept of ember+ is the address or path of the data element you 
 
 - #### String: Path.To.Ember.Node
 
-  Paths can also be entered as a period seperated string. Such as _Path.To.Ember.Node_. These text paths can be found in Ember Plus Viewer, however they need to be reformatted to use period seperators rather than forward slashes. Note: Some characters (such as #) used in ember paths are not supported for use in variables by companion, and the expected variable will not be created - the path can still be used in actions and feedbacks however.
+  Paths can also be entered as a period seperated string. Such as _Path.To.Ember.Node_. These text paths can be found in Ember Plus Viewer, however they need to be reformatted to use period seperators rather than forward slashes. Note: The '#' character used in ember paths are not supported for use in variables by companion, and will be replaced by '\_' in variable ids - the path can still be used in actions and feedbacks however.
 
 - #### Decimal in Brackets: My Useful Ember Path [1.2.3.4]
 

@@ -1,13 +1,13 @@
 import type {
 	CompanionActionDefinition,
 	CompanionActionDefinitions,
-	CompanionFeedbackContext,
 	CompanionActionEvent,
 	CompanionActionInfo,
 	CompanionInputFieldNumber,
 	CompanionInputFieldTextInput,
 	InstanceBase,
 	CompanionInputFieldCheckbox,
+	CompanionActionContext,
 } from '@companion-module/base'
 import { EmberClient, Model as EmberModel } from 'emberplus-connection'
 import type PQueue from 'p-queue'
@@ -69,11 +69,8 @@ const matrixInputs: Array<CompanionInputFieldTextInput | CompanionInputFieldNumb
 	},
 ]
 
-export async function resolvePath(
-	self: InstanceBase<EmberPlusConfig> | CompanionFeedbackContext,
-	path: string,
-): Promise<string> {
-	const pathString: string = await self.parseVariablesInString(path)
+export async function resolvePath(context: CompanionActionContext, path: string): Promise<string> {
+	const pathString: string = await context.parseVariablesInString(path)
 	if (pathString.includes('[') && pathString.includes(']')) {
 		return pathString.substring(pathString.indexOf('[') + 1, pathString.indexOf(']'))
 	}
@@ -82,10 +79,10 @@ export async function resolvePath(
 
 const setValue =
 	(self: InstanceBase<EmberPlusConfig>, emberClient: EmberClient, type: EmberModel.ParameterType, queue: PQueue) =>
-	async (action: CompanionActionEvent): Promise<void> => {
+	async (action: CompanionActionEvent, context: CompanionActionContext): Promise<void> => {
 		queue
 			.add(async () => {
-				const path = await resolvePath(self, action.options['path']?.toString() ?? '')
+				const path = await resolvePath(context, action.options['path']?.toString() ?? '')
 				const node = await emberClient.getElementByPath(path)
 				// TODO - do we handle not found?
 				if (node && node.contents.type === EmberModel.ElementType.Parameter) {
@@ -234,7 +231,7 @@ const doMatrixActionFunction = function (
 							const sources = [state.selected.source]
 							emberClient
 								.matrixConnect(node as EmberModel.NumberedTreeNode<EmberModel.Matrix>, target, sources)
-								.then((r) => self.log('debug', String(r)))
+								.then((r) => self.log('debug', String(JSON.stringify(r))))
 								.catch((r) => self.log('debug', r))
 						} else {
 							self.log('warn', 'Matrix ' + state.selected.matrix + ' not found or not a parameter')

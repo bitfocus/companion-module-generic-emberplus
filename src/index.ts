@@ -1,5 +1,4 @@
-import { InstanceBase, InstanceStatus, runEntrypoint } from '@companion-module/base'
-import type { SomeCompanionConfigField } from '@companion-module/base'
+import { InstanceBase, InstanceStatus, runEntrypoint, type SomeCompanionConfigField } from '@companion-module/base'
 import { GetActionsList, ActionId } from './actions'
 import { type EmberPlusConfig, GetConfigFields } from './config'
 import { GetPresetsList } from './presets'
@@ -238,37 +237,42 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	public async handleChangedValue(path: string, node: TreeElement<EmberElement>): Promise<void> {
 		if (node.contents.type == ElementType.Parameter) {
 			this.log('debug', 'Got parameter value for ' + path + ': ' + (node.contents.value ?? ''))
-			this.state.parameters.set(path, node.contents.value?.toString() ?? '')
-			this.checkFeedbacks(FeedbackId.Parameter, FeedbackId.String, FeedbackId.Boolean)
-			this.setVariableValues(Object.fromEntries(this.state.parameters.entries()))
-			if (this.isRecordingActions) {
-				let actionType: ActionId
-				let actionValue: number | boolean | string
-				if (node.contents.parameterType === EmberModel.ParameterType.Integer) {
-					actionType = ActionId.SetValueInt
-					actionValue = Number(node.contents.value)
-					if (isNaN(actionValue)) return
-				} else if (node.contents.parameterType === EmberModel.ParameterType.Boolean) {
+			let value: boolean | number | string
+			let actionType: ActionId | undefined
+			switch (node.contents.parameterType) {
+				case EmberModel.ParameterType.Boolean:
 					actionType = ActionId.SetValueBoolean
-					actionValue = !!node.contents.value
-				} else if (node.contents.parameterType === EmberModel.ParameterType.Enum) {
-					actionType = ActionId.SetValueEnum
-					actionValue = Number(node.contents.value)
-					if (isNaN(actionValue)) return
-				} else if (node.contents.parameterType === EmberModel.ParameterType.Real) {
+					value = node.contents.value as boolean
+					break
+				case EmberModel.ParameterType.Integer:
+					actionType = ActionId.SetValueInt
+					value = node.contents.value as number
+					break
+				case EmberModel.ParameterType.Real:
 					actionType = ActionId.SetValueReal
-					actionValue = Number(node.contents.value)
-					if (isNaN(actionValue)) return
-				} else if (node.contents.parameterType === EmberModel.ParameterType.String) {
+					value = node.contents.value as number
+					break
+				case EmberModel.ParameterType.Enum:
+					actionType = ActionId.SetValueEnum
+					value = node.contents.value as number
+					break
+				case EmberModel.ParameterType.String:
 					actionType = ActionId.SetValueString
-					actionValue = node.contents.value?.toString() ?? ''
-				} else {
-					return
-				}
+					value = node.contents.value as string
+					break
+				default:
+					value = node.contents.value as string
+			}
+			this.state.parameters.set(path, value)
+			this.setVariableValues({
+				[path.replaceAll('#', '_')]: value,
+			})
+			this.checkFeedbacks(FeedbackId.Parameter, FeedbackId.String, FeedbackId.Boolean)
+			if (this.isRecordingActions && actionType !== undefined) {
 				this.recordAction(
 					{
 						actionId: actionType,
-						options: { path: path, value: actionValue },
+						options: { path: path, value: value },
 					},
 					path,
 				)

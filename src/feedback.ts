@@ -35,7 +35,7 @@ export function GetFeedbacksList(
 ): CompanionFeedbackDefinitions {
 	const feedbacks: { [id in FeedbackId]: CompanionFeedbackDefinition | undefined } = {
 		[FeedbackId.Parameter]: {
-			name: 'Parameter Equals',
+			name: 'Parameter Equals Number',
 			description: 'Checks the current value of a parameter',
 			type: 'boolean',
 			defaultStyle: styles.blackOnWhite,
@@ -92,7 +92,7 @@ export function GetFeedbacksList(
 			callback: async (feedback, context) => {
 				const path = await resolvePath(context, feedback.options['path']?.toString() ?? '')
 				const value = await context.parseVariablesInString(feedback.options['value']?.toString() ?? '')
-				return state.parameters.get(path) == value
+				return state.parameters.get(path)?.toString() == value
 			},
 			subscribe: async (feedback, context) => {
 				await _self.registerNewParameter(await resolvePath(context, feedback.options['path']?.toString() ?? ''))
