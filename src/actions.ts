@@ -18,14 +18,10 @@ import { EmberPlusState } from './state'
 
 export enum ActionId {
 	SetValueInt = 'setValueInt',
-	SetValueIntVariable = 'setValueIntVariable',
 	SetValueReal = 'setValueReal',
-	SetValueRealVariable = 'setValueRealVariable',
 	SetValueString = 'setValueString',
 	SetValueBoolean = 'setValueBoolean',
-	SetValueBooleanVariable = 'setValueBooleanVariable',
 	SetValueEnum = 'setValueEnum',
-	SetValueEnumVariable = 'setValueEnumVariable',
 	MatrixConnect = 'matrixConnect',
 	MatrixDisconnect = 'matrixDisconnect',
 	MatrixSetConnection = 'matrixSetConnection',
@@ -46,6 +42,13 @@ const createVariable: CompanionInputFieldCheckbox = {
 	type: 'checkbox',
 	label: 'Auto Create Variable',
 	id: 'variable',
+	default: false,
+}
+
+const useVariable: CompanionInputFieldCheckbox = {
+	type: 'checkbox',
+	label: 'Use Variable?',
+	id: 'useVar',
 	default: false,
 }
 
@@ -94,37 +97,47 @@ const setValue =
 								value = await self.parseVariablesInString(action.options['value']?.toString() ?? '')
 								break
 							case EmberModel.ParameterType.Integer:
-								value = parseInt(await self.parseVariablesInString(action.options['value']?.toString() ?? ''))
+								value = action.options['useVar']
+									? parseInt(await self.parseVariablesInString(action.options['valueVar']?.toString() ?? ''))
+									: Math.floor(Number(action.options['value']))
 								if (isNaN(value) || value > 4294967295 || value < -4294967295) {
 									return
 								}
 								break
 							case EmberModel.ParameterType.Real:
-								value = Number(await self.parseVariablesInString(action.options['value']?.toString() ?? ''))
+								value = action.options['useVar']
+									? Number(await self.parseVariablesInString(action.options['valueVar']?.toString() ?? ''))
+									: Number(action.options['value'])
 								if (isNaN(value) || value > 4294967295 || value < -4294967295) {
 									return
 								}
 								break
 							case EmberModel.ParameterType.Enum:
-								value = parseInt(await self.parseVariablesInString(action.options['value']?.toString() ?? ''))
+								value = action.options['useVar']
+									? parseInt(await self.parseVariablesInString(action.options['value']?.toString() ?? ''))
+									: Number(action.options['value'])
 								if (isNaN(value) || value > 4294967295 || value < 0) {
 									return
 								}
 								break
 							case EmberModel.ParameterType.Boolean:
-								switch (await self.parseVariablesInString(action.options['value']?.toString() ?? '')) {
-									case 'true':
-									case 'on':
-									case '1':
-										value = true
-										break
-									case 'false':
-									case 'off':
-									case '0':
-										value = false
-										break
-									default:
-										value = Boolean(await self.parseVariablesInString(action.options['value']?.toString() ?? ''))
+								if (action.options['useVar']) {
+									switch (await self.parseVariablesInString(action.options['valueVar']?.toString() ?? '')) {
+										case 'true':
+										case 'on':
+										case '1':
+											value = true
+											break
+										case 'false':
+										case 'off':
+										case '0':
+											value = false
+											break
+										default:
+											value = Boolean(await self.parseVariablesInString(action.options['valueVar']?.toString() ?? ''))
+									}
+								} else {
+									value = Boolean(action.options['value'])
 								}
 								break
 							default:
@@ -377,24 +390,22 @@ export function GetActionsList(
 					max: 0xffffffff,
 					default: 0,
 					step: 1,
+					isVisible: (options) => {
+						return !options.useVar
+					},
 				},
-				createVariable,
-			],
-			callback: setValue(self, emberClient, EmberModel.ParameterType.Integer, queue),
-			subscribe: registerParameter(self),
-		},
-		[ActionId.SetValueIntVariable]: {
-			name: 'Set Value Integer from Variable',
-			options: [
-				pathInput,
 				{
 					type: 'textinput',
 					label: 'Value',
-					id: 'value',
+					id: 'valueVar',
 					required: true,
 					useVariables: true,
 					default: '0',
+					isVisible: (options) => {
+						return !!options.useVar
+					},
 				},
+				useVariable,
 				createVariable,
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.Integer, queue),
@@ -413,23 +424,21 @@ export function GetActionsList(
 					max: 0xffffffff,
 					default: 0,
 					step: 0.001, // TODO - don't want this at all preferably
+					isVisible: (options) => {
+						return !options.useVar
+					},
 				},
-				createVariable,
-			],
-			callback: setValue(self, emberClient, EmberModel.ParameterType.Real, queue),
-			subscribe: registerParameter(self),
-		},
-		[ActionId.SetValueRealVariable]: {
-			name: 'Set Value Real from Variable',
-			options: [
-				pathInput,
 				{
 					type: 'textinput',
 					label: 'Value',
-					id: 'value',
+					id: 'valueVar',
 					default: '0.0',
 					useVariables: true,
+					isVisible: (options) => {
+						return !!options.useVar
+					},
 				},
+				useVariable,
 				createVariable,
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.Real, queue),
@@ -444,7 +453,21 @@ export function GetActionsList(
 					label: 'Value',
 					id: 'value',
 					default: false,
+					isVisible: (options) => {
+						return !options.useVar
+					},
 				},
+				{
+					type: 'textinput',
+					label: 'Value',
+					id: 'valueVar',
+					default: 'false',
+					useVariables: true,
+					isVisible: (options) => {
+						return !!options.useVar
+					},
+				},
+				useVariable,
 				createVariable,
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.Boolean, queue),
@@ -453,22 +476,6 @@ export function GetActionsList(
 					await self.registerNewParameter(await resolvePath(context, action.options['path']?.toString() ?? ''))
 				}
 			},
-		},
-		[ActionId.SetValueBooleanVariable]: {
-			name: 'Set Value Boolean from Variable',
-			options: [
-				pathInput,
-				{
-					type: 'textinput',
-					label: 'Value',
-					id: 'value',
-					default: 'false',
-					useVariables: true,
-				},
-				createVariable,
-			],
-			callback: setValue(self, emberClient, EmberModel.ParameterType.Boolean, queue),
-			subscribe: registerParameter(self),
 		},
 		[ActionId.SetValueEnum]: {
 			name: 'Set Value ENUM (as Integer)',
@@ -483,25 +490,23 @@ export function GetActionsList(
 					max: 0xffffffff,
 					default: 0,
 					step: 1,
+					isVisible: (options) => {
+						return !options.useVar
+					},
 				},
-				createVariable,
-			],
-			callback: setValue(self, emberClient, EmberModel.ParameterType.Enum, queue),
-			subscribe: registerParameter(self),
-		},
-		[ActionId.SetValueEnumVariable]: {
-			name: 'Set Value ENUM from Variable (as Integer)',
-			options: [
-				pathInput,
 				{
 					type: 'textinput',
 					label: 'Value',
-					id: 'value',
+					id: 'valueVar',
 					required: true,
 					useVariables: true,
 					default: '0',
 					tooltip: 'Return an integer between 0 and 4294967295',
+					isVisible: (options) => {
+						return !!options.useVar
+					},
 				},
+				useVariable,
 				createVariable,
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.Enum, queue),

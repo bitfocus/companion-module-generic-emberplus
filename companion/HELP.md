@@ -53,13 +53,9 @@ Similarly ENUMS are always refered to by Integer Index .
 ## Actions
 
 - Set Value Integer
-- Set Value Integer from Variable
 - Set Value Real
-- Set Value Real from Variable
 - Set Value Boolean
-- Set Value Boolean from Variable
 - Set Value ENUM (as Integer)
-- Set Value ENUM from Variable (as Integer)
 - Set Value String
 - Matrix Connect
 - Matrix Disconnect
