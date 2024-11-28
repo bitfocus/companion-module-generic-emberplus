@@ -37,15 +37,15 @@
 	},
 	"devDependencies": {
 		"@companion-module/tools": "^2.1.0",
-		"@types/node": "^22.9.1",
+		"@types/node": "^22.10.1",
 		"eslint": "^9.15.0",
 		"husky": "^9.1.7",
 		"lint-staged": "^15.2.10",
-		"prettier": "^3.3.3",
+		"prettier": "^3.4.1",
 		"rimraf": "^6.0.1",
 		"typescript": "~5.7.2",
-		"typescript-eslint": "^8.15.0"
+		"typescript-eslint": "^8.16.0"
 	},
 	"prettier": "@companion-module/tools/.prettierrc.json",
-	"packageManager": "yarn@4.5.1"
+	"packageManager": "yarn@4.5.3"
 }
