@@ -44,6 +44,7 @@ const createVariable: CompanionInputFieldCheckbox = {
 	label: 'Auto Create Variable',
 	id: 'variable',
 	default: false,
+	tooltip: 'Will not pickup variable change in path field',
 }
 
 const useVariable: CompanionInputFieldCheckbox = {
@@ -257,7 +258,6 @@ const doMatrixActionFunction = function (
 						self.checkFeedbacks(
 							FeedbackId.TargetBackgroundSelected,
 							FeedbackId.SourceBackgroundSelected,
-							FeedbackId.Take,
 							FeedbackId.Take,
 						)
 					})

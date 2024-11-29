@@ -42,7 +42,7 @@ function convergeSetValueActions(
 			case OldActionId.SetValueEnum:
 			case OldActionId.SetValueInt:
 			case OldActionId.SetValueReal:
-				action.options.useVar = false
+				action.options.useVar = action.options.useVar === undefined ? false : action.options.useVar
 				result.updatedActions.push(action)
 				break
 			case OldActionId.SetValueBooleanVariable:

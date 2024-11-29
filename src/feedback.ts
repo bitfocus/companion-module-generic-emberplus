@@ -1,5 +1,10 @@
 import { combineRgb /*InstanceBase*/ } from '@companion-module/base'
-import type { CompanionFeedbackDefinition, CompanionFeedbackDefinitions, DropdownChoice } from '@companion-module/base'
+import type {
+	CompanionFeedbackDefinition,
+	CompanionFeedbackDefinitions,
+	CompanionFeedbackContext,
+	DropdownChoice,
+} from '@companion-module/base'
 import type { EmberPlusInstance } from './index'
 import { EmberClient } from 'emberplus-connection'
 import { resolvePath } from './actions'
@@ -25,6 +30,30 @@ const styles = {
 		bgcolor: combineRgb(255, 0, 0),
 		color: combineRgb(0, 0, 0),
 	},
+}
+
+export async function resolveFeedback(
+	self: EmberPlusInstance,
+	context: CompanionFeedbackContext,
+	state: EmberPlusState,
+	type: 'boolean' | 'number' | 'string',
+	rawPath: string,
+	value?: boolean | number | string,
+): Promise<boolean> {
+	const path = await resolvePath(context, rawPath)
+	if (state.parameters.has(path)) {
+		switch (type) {
+			case 'boolean':
+				return Boolean(state.parameters.get(path))
+			case 'number':
+				return Number(state.parameters.get(path)) == Number(value)
+			case 'string':
+				return state.parameters.get(path)?.toString() == (await context.parseVariablesInString(value as string))
+		}
+	} else {
+		self.registerNewParameter(path).catch(() => {})
+		return false
+	}
 }
 
 export function GetFeedbacksList(
@@ -59,8 +88,14 @@ export function GetFeedbacksList(
 				},
 			],
 			callback: async (feedback, context) => {
-				const path = await resolvePath(context, feedback.options['path']?.toString() ?? '')
-				return Number(state.parameters.get(path)) == feedback.options['value']
+				return await resolveFeedback(
+					_self,
+					context,
+					state,
+					'number',
+					String(feedback.options['path']),
+					Number(feedback.options['value']),
+				)
 			},
 			subscribe: async (feedback, context) => {
 				await _self.registerNewParameter(await resolvePath(context, feedback.options['path']?.toString() ?? ''))
@@ -90,9 +125,14 @@ export function GetFeedbacksList(
 				},
 			],
 			callback: async (feedback, context) => {
-				const path = await resolvePath(context, feedback.options['path']?.toString() ?? '')
-				const value = await context.parseVariablesInString(feedback.options['value']?.toString() ?? '')
-				return state.parameters.get(path)?.toString() == value
+				return await resolveFeedback(
+					_self,
+					context,
+					state,
+					'string',
+					feedback.options['path']?.toString() ?? '',
+					feedback.options['value']?.toString() ?? '',
+				)
 			},
 			subscribe: async (feedback, context) => {
 				await _self.registerNewParameter(await resolvePath(context, feedback.options['path']?.toString() ?? ''))
@@ -114,8 +154,7 @@ export function GetFeedbacksList(
 				},
 			],
 			callback: async (feedback, context) => {
-				const path = await resolvePath(context, feedback.options['path']?.toString() ?? '')
-				return Boolean(state.parameters.get(path))
+				return await resolveFeedback(_self, context, state, 'boolean', feedback.options['path']?.toString() ?? '')
 			},
 			subscribe: async (feedback, context) => {
 				await _self.registerNewParameter(await resolvePath(context, feedback.options['path']?.toString() ?? ''))
