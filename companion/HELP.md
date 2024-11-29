@@ -75,7 +75,7 @@ Similarly ENUMS are always refered to by Integer Index .
 - Source Background If Selected
 - Target Background if Selected
 
-Parameter Equals, Parameter Equals String, and Parameter Equals True type convert all data to strings before performing an equality test, thus can be used on any node type. Ie, you can check a boolean node with the Parameter Equals String feedback by setting the Value to _true_. The path field for Parameter Equals and Parameter Equals String presents a dropdown of registered paths. New paths (including variables) can be entered and if valid will be automatically registered and added to the dropdowns and variable list.
+Parameter Equals, Parameter Equals String, and Parameter Equals True type coerce all data to the respective data type before performing an equality test, thus can be used on any node type. Ie, you can check a boolean node with the Parameter Equals String feedback by setting the Value to _true_. Prior to version 2.5 all data was coerced to strings prior to equality tests. The path field for Parameter Equals and Parameter Equals String presents a dropdown of registered paths. New paths (including variables) can be entered and if valid will be automatically registered and added to the dropdowns and variable list.
 
 ## Presets
 

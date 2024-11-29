@@ -38,39 +38,44 @@ function convergeSetValueActions(
 
 	for (const action of props.actions) {
 		switch (action.actionId) {
-			case OldActionId.SetValueBoolean:
-			case OldActionId.SetValueEnum:
-			case OldActionId.SetValueInt:
-			case OldActionId.SetValueReal:
+			case OldActionId.SetValueBoolean.toString():
+			case OldActionId.SetValueEnum.toString():
+			case OldActionId.SetValueInt.toString():
+			case OldActionId.SetValueReal.toString():
 				action.options.useVar = action.options.useVar === undefined ? false : action.options.useVar
+				action.options.variable = action.options.variable === undefined ? false : action.options.variable
 				result.updatedActions.push(action)
 				break
-			case OldActionId.SetValueBooleanVariable:
-				action.actionId = ActionId.SetValueBoolean
+			case OldActionId.SetValueBooleanVariable.toString():
+				action.actionId = ActionId.SetValueBoolean.toString()
 				action.options.useVar = true
 				action.options.valueVar = action.options.value
 				action.options.value = false
+				action.options.variable = action.options.variable === undefined ? false : action.options.variable
 				result.updatedActions.push(action)
 				break
-			case OldActionId.SetValueEnumVariable:
-				action.actionId = ActionId.SetValueEnum
+			case OldActionId.SetValueEnumVariable.toString():
+				action.actionId = ActionId.SetValueEnum.toString()
 				action.options.useVar = true
 				action.options.valueVar = action.options.value
 				action.options.value = 0
+				action.options.variable = action.options.variable === undefined ? false : action.options.variable
 				result.updatedActions.push(action)
 				break
-			case OldActionId.SetValueIntVariable:
-				action.actionId = ActionId.SetValueInt
+			case OldActionId.SetValueIntVariable.toString():
+				action.actionId = ActionId.SetValueInt.toString()
 				action.options.useVar = true
 				action.options.valueVar = action.options.value
 				action.options.value = 0
+				action.options.variable = action.options.variable === undefined ? false : action.options.variable
 				result.updatedActions.push(action)
 				break
-			case OldActionId.SetValueRealVariable:
-				action.actionId = ActionId.SetValueReal
+			case OldActionId.SetValueRealVariable.toString():
+				action.actionId = ActionId.SetValueReal.toString()
 				action.options.useVar = true
 				action.options.valueVar = action.options.value
 				action.options.value = 0
+				action.options.variable = action.options.variable === undefined ? false : action.options.variable
 				result.updatedActions.push(action)
 				break
 		}

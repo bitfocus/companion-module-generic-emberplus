@@ -6,7 +6,7 @@ import type {
 	DropdownChoice,
 } from '@companion-module/base'
 import type { EmberPlusInstance } from './index'
-import { EmberClient } from 'emberplus-connection'
+import { EmberClient, Model as EmberModel } from 'emberplus-connection'
 import { resolvePath } from './actions'
 import type { EmberPlusConfig } from './config'
 import { EmberPlusState } from './state'
@@ -36,18 +36,22 @@ export async function resolveFeedback(
 	self: EmberPlusInstance,
 	context: CompanionFeedbackContext,
 	state: EmberPlusState,
-	type: 'boolean' | 'number' | 'string',
+	type: EmberModel.ParameterType,
 	rawPath: string,
 	value?: boolean | number | string,
 ): Promise<boolean> {
 	const path = await resolvePath(context, rawPath)
 	if (state.parameters.has(path)) {
 		switch (type) {
-			case 'boolean':
+			case EmberModel.ParameterType.Boolean:
 				return Boolean(state.parameters.get(path))
-			case 'number':
+			case EmberModel.ParameterType.Real:
 				return Number(state.parameters.get(path)) == Number(value)
-			case 'string':
+			case EmberModel.ParameterType.Integer:
+			case EmberModel.ParameterType.Enum:
+				return Math.floor(Number(state.parameters.get(path))) == Math.floor(Number(value))
+			case EmberModel.ParameterType.String:
+			default:
 				return state.parameters.get(path)?.toString() == (await context.parseVariablesInString(value as string))
 		}
 	} else {
@@ -92,7 +96,7 @@ export function GetFeedbacksList(
 					_self,
 					context,
 					state,
-					'number',
+					EmberModel.ParameterType.Real,
 					String(feedback.options['path']),
 					Number(feedback.options['value']),
 				)
@@ -129,7 +133,7 @@ export function GetFeedbacksList(
 					_self,
 					context,
 					state,
-					'string',
+					EmberModel.ParameterType.String,
 					feedback.options['path']?.toString() ?? '',
 					feedback.options['value']?.toString() ?? '',
 				)
@@ -154,7 +158,13 @@ export function GetFeedbacksList(
 				},
 			],
 			callback: async (feedback, context) => {
-				return await resolveFeedback(_self, context, state, 'boolean', feedback.options['path']?.toString() ?? '')
+				return await resolveFeedback(
+					_self,
+					context,
+					state,
+					EmberModel.ParameterType.Boolean,
+					feedback.options['path']?.toString() ?? '',
+				)
 			},
 			subscribe: async (feedback, context) => {
 				await _self.registerNewParameter(await resolvePath(context, feedback.options['path']?.toString() ?? ''))
