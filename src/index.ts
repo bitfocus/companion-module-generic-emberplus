@@ -214,7 +214,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 					const initial_node = await this.emberClient.getElementByPath(path, (node) => {
 						this.handleChangedValue(path, node).catch((e) => this.log('error', 'Error handling parameter ' + e))
 					})
-					if (initial_node) {
+					if (initial_node?.contents.type === ElementType.Parameter) {
 						this.log('debug', 'Registered for path "' + path + '"')
 						if (this.config.monitoredParameters) {
 							this.config.monitoredParameters.push(path)
