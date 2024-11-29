@@ -97,7 +97,7 @@ export function GetFeedbacksList(
 					context,
 					state,
 					EmberModel.ParameterType.Real,
-					String(feedback.options['path']),
+					feedback.options['path']?.toString() ?? '',
 					Number(feedback.options['value']),
 				)
 			},
