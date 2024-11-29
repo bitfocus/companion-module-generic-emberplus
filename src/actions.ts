@@ -15,6 +15,7 @@ import type { EmberPlusConfig } from './config'
 import { FeedbackId } from './feedback'
 import type { EmberPlusInstance } from './index'
 import { EmberPlusState } from './state'
+import type { CompanionCommonCallbackContext } from '@companion-module/base/dist/module-api/common'
 
 export enum ActionId {
 	SetValueInt = 'setValueInt',
@@ -72,7 +73,7 @@ const matrixInputs: Array<CompanionInputFieldTextInput | CompanionInputFieldNumb
 	},
 ]
 
-export async function resolvePath(context: CompanionActionContext, path: string): Promise<string> {
+export async function resolvePath(context: CompanionCommonCallbackContext, path: string): Promise<string> {
 	const pathString: string = await context.parseVariablesInString(path)
 	if (pathString.includes('[') && pathString.includes(']')) {
 		return pathString.substring(pathString.indexOf('[') + 1, pathString.indexOf(']'))
@@ -172,9 +173,9 @@ const setValue =
 
 const registerParameter =
 	(self: EmberPlusInstance) =>
-	async (action: CompanionActionInfo): Promise<void> => {
+	async (action: CompanionActionInfo, context: CompanionActionContext): Promise<void> => {
 		if (action.options.variable) {
-			await self.registerNewParameter(await resolvePath(self, action.options['path']?.toString() ?? ''))
+			await self.registerNewParameter(await resolvePath(context, action.options['path']?.toString() ?? ''))
 		}
 	}
 
