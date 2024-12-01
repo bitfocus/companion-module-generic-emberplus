@@ -1,4 +1,4 @@
-import type { InputValue } from '@companion-module/base'
+import type { DropdownChoice } from '@companion-module/base'
 
 export const MEDIA_PLAYER_SOURCE_CLIP_OFFSET = 1000
 
@@ -21,16 +21,20 @@ export enum NumberComparitor {
 	GreaterThanEqual = 'gte',
 }
 
-export function compareNumber(
-	target: InputValue | undefined,
-	comparitor: InputValue | undefined,
-	currentValue: number,
-): boolean {
+export const comparitorOptions: DropdownChoice[] = [
+	{ id: NumberComparitor.Equal, label: '==' },
+	{ id: NumberComparitor.NotEqual, label: '!=' },
+	{ id: NumberComparitor.LessThan, label: '<' },
+	{ id: NumberComparitor.LessThanEqual, label: '<=' },
+	{ id: NumberComparitor.GreaterThan, label: '>' },
+	{ id: NumberComparitor.GreaterThanEqual, label: '>=' },
+]
+
+export function compareNumber(target: number, comparitor: NumberComparitor, currentValue: number): boolean {
 	const targetValue = Number(target)
 	if (isNaN(targetValue)) {
 		return false
 	}
-
 	switch (comparitor) {
 		case NumberComparitor.GreaterThan:
 			return currentValue > targetValue
@@ -42,6 +46,7 @@ export function compareNumber(
 			return currentValue <= targetValue
 		case NumberComparitor.NotEqual:
 			return currentValue != targetValue
+		case NumberComparitor.Equal:
 		default:
 			return currentValue === targetValue
 	}

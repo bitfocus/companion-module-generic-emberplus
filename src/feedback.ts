@@ -10,6 +10,7 @@ import { EmberClient, Model as EmberModel } from 'emberplus-connection'
 import { resolvePath } from './actions'
 import type { EmberPlusConfig } from './config'
 import { EmberPlusState } from './state'
+import { compareNumber, comparitorOptions, NumberComparitor } from './util'
 
 export enum FeedbackId {
 	Parameter = 'parameter',
@@ -39,20 +40,24 @@ export async function resolveFeedback(
 	type: EmberModel.ParameterType,
 	rawPath: string,
 	value?: boolean | number | string,
+	comparitor: NumberComparitor = NumberComparitor.Equal,
 ): Promise<boolean> {
 	const path = await resolvePath(context, rawPath)
+	if (typeof value === 'string') {
+		value = await context.parseVariablesInString(value)
+	}
 	if (state.parameters.has(path)) {
 		switch (type) {
 			case EmberModel.ParameterType.Boolean:
 				return Boolean(state.parameters.get(path))
 			case EmberModel.ParameterType.Real:
-				return Number(state.parameters.get(path)) == Number(value)
+				return compareNumber(Number(value), comparitor, Number(state.parameters.get(path)))
 			case EmberModel.ParameterType.Integer:
 			case EmberModel.ParameterType.Enum:
-				return Math.floor(Number(state.parameters.get(path))) == Math.floor(Number(value))
+				return compareNumber(Math.floor(Number(value)), comparitor, Math.floor(Number(state.parameters.get(path))))
 			case EmberModel.ParameterType.String:
 			default:
-				return state.parameters.get(path)?.toString() == (await context.parseVariablesInString(value as string))
+				return state.parameters.get(path)?.toString() == value
 		}
 	} else {
 		self.registerNewParameter(path).catch(() => {})
@@ -68,7 +73,7 @@ export function GetFeedbacksList(
 ): CompanionFeedbackDefinitions {
 	const feedbacks: { [id in FeedbackId]: CompanionFeedbackDefinition | undefined } = {
 		[FeedbackId.Parameter]: {
-			name: 'Parameter Equals Number',
+			name: 'Parameter Compare Number',
 			description: 'Checks the current value of a parameter',
 			type: 'boolean',
 			defaultStyle: styles.blackOnWhite,
@@ -82,6 +87,14 @@ export function GetFeedbacksList(
 					allowCustom: true,
 				},
 				{
+					type: 'dropdown',
+					label: 'Comparitor',
+					id: 'comparitor',
+					choices: comparitorOptions,
+					default: comparitorOptions[0].id,
+					allowCustom: false,
+				},
+				{
 					type: 'number',
 					label: 'Value',
 					id: 'value',
@@ -89,6 +102,32 @@ export function GetFeedbacksList(
 					min: -0xffffffff,
 					max: 0xffffffff,
 					default: 0,
+					isVisible: (options) => {
+						return !options.useVar
+					},
+				},
+				{
+					type: 'textinput',
+					label: 'Value',
+					id: 'valueVar',
+					required: true,
+					useVariables: true,
+					default: '0',
+					isVisible: (options) => {
+						return !!options.useVar
+					},
+				},
+				{
+					type: 'checkbox',
+					label: 'Use Variable?',
+					id: 'useVar',
+					default: false,
+				},
+				{
+					type: 'checkbox',
+					label: 'As Integers?',
+					id: 'asInt',
+					default: false,
 				},
 			],
 			callback: async (feedback, context) => {
@@ -96,9 +135,9 @@ export function GetFeedbacksList(
 					_self,
 					context,
 					state,
-					EmberModel.ParameterType.Real,
+					feedback.options['asInt'] ? EmberModel.ParameterType.Integer : EmberModel.ParameterType.Real,
 					feedback.options['path']?.toString() ?? '',
-					Number(feedback.options['value']),
+					feedback.options['useVar'] ? String(feedback.options['valueVar']) : Number(feedback.options['value']),
 				)
 			},
 			subscribe: async (feedback, context) => {
