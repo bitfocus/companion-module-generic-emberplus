@@ -5,7 +5,9 @@ import {
 	type CompanionStaticUpgradeScript,
 } from '@companion-module/base'
 import { ActionId } from './actions.js'
+import { FeedbackId } from './feedback.js'
 import type { EmberPlusConfig } from './config.js'
+import { comparitorOptions } from './util'
 
 enum OldActionId {
 	SetValueInt = 'setValueInt',
@@ -80,7 +82,17 @@ function convergeSetValueActions(
 				break
 		}
 	}
-
+	for (const feedback of props.feedbacks) {
+		switch (feedback.feedbackId) {
+			case FeedbackId.Parameter.toString():
+				feedback.options.valueVar = feedback.options.valueVar === undefined ? '0' : feedback.options.valueVar
+				feedback.options.comparitor =
+					feedback.options.comparitor === undefined ? comparitorOptions[0].id : feedback.options.comparitor
+				feedback.options.useVar = feedback.options.useVar === undefined ? false : feedback.options.useVar
+				feedback.options.asInt = feedback.options.asInt === undefined ? false : feedback.options.asInt
+				result.updatedFeedbacks.push(feedback)
+		}
+	}
 	return result
 }
 
