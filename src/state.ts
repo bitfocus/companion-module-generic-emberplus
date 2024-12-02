@@ -6,7 +6,7 @@ export interface CurrentSelected {
 
 export class EmberPlusState {
 	selected: CurrentSelected
-	parameters: Map<string, string> = new Map<string, string>()
+	parameters: Map<string, string | boolean | number> = new Map<string, string | boolean | number>()
 
 	constructor() {
 		this.selected = {

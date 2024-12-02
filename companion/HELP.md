@@ -34,7 +34,7 @@ Central to the concept of ember+ is the address or path of the data element you 
 
 - #### String: Path.To.Ember.Node
 
-  Paths can also be entered as a period seperated string. Such as _Path.To.Ember.Node_. These text paths can be found in Ember Plus Viewer, however they need to be reformatted to use period seperators rather than forward slashes. Note: Some characters (such as #) used in ember paths are not supported for use in variables by companion, and the expected variable will not be created - the path can still be used in actions and feedbacks however.
+  Paths can also be entered as a period seperated string. Such as _Path.To.Ember.Node_. These text paths can be found in Ember Plus Viewer, however they need to be reformatted to use period seperators rather than forward slashes. Note: The '#' character used in ember paths are not supported for use in variables by companion, and will be replaced by '\_' in variable ids - the path can still be used in actions and feedbacks however.
 
 - #### Decimal in Brackets: My Useful Ember Path [1.2.3.4]
 
@@ -53,13 +53,9 @@ Similarly ENUMS are always refered to by Integer Index .
 ## Actions
 
 - Set Value Integer
-- Set Value Integer from Variable
 - Set Value Real
-- Set Value Real from Variable
 - Set Value Boolean
-- Set Value Boolean from Variable
 - Set Value ENUM (as Integer)
-- Set Value ENUM from Variable (as Integer)
 - Set Value String
 - Matrix Connect
 - Matrix Disconnect
@@ -71,15 +67,15 @@ Similarly ENUMS are always refered to by Integer Index .
 
 ## Feedbacks
 
-- Parameter Equals
+- Parameter Compare Number
 - Parameter Equals String
-- Parameter Equals True
+- Parameter True
 - Take is possible
 - Clear is possible
 - Source Background If Selected
 - Target Background if Selected
 
-Parameter Equals, Parameter Equals String, and Parameter Equals True type convert all data to strings before performing an equality test, thus can be used on any node type. Ie, you can check a boolean node with the Parameter Equals String feedback by setting the Value to _true_. The path field for Parameter Equals and Parameter Equals String presents a dropdown of registered paths. New paths (including variables) can be entered and if valid will be automatically registered and added to the dropdowns and variable list.
+Parameter Compare Number, Parameter Equals String, and Parameter True type coerce all data to the respective data type, thus can be used on any node type. Ie, you can check a boolean node with the Parameter Equals String feedback by setting the Value to _true_. Prior to version 2.5 all data was coerced to strings prior to equality tests. The path field for Parameter Compare Number and Parameter Equals String presents a dropdown of registered paths. New paths (including variables) can be entered and if valid will be automatically registered and added to the dropdowns and variable list.
 
 ## Presets
 

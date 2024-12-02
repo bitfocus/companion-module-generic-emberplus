@@ -1,5 +1,4 @@
-import { InstanceBase, InstanceStatus, runEntrypoint } from '@companion-module/base'
-import type { SomeCompanionConfigField } from '@companion-module/base'
+import { InstanceBase, InstanceStatus, runEntrypoint, type SomeCompanionConfigField } from '@companion-module/base'
 import { GetActionsList, ActionId } from './actions'
 import { type EmberPlusConfig, GetConfigFields } from './config'
 import { GetPresetsList } from './presets'
@@ -8,6 +7,7 @@ import { EmberPlusState } from './state'
 import { EmberClient, Model as EmberModel } from 'emberplus-connection' // note - emberplus-conn is in parent repo, not sure if it needs to be defined as dependency
 import { ElementType } from 'emberplus-connection/dist/model'
 import type { TreeElement, EmberElement } from 'emberplus-connection/dist/model'
+import { UpgradeScripts } from './upgrades'
 import { GetVariablesList } from './variables'
 import delay from 'delay'
 import PQueue from 'p-queue'
@@ -180,6 +180,8 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	private setupMonitoredParams(): void {
 		if (this.config.monitoredParametersString) {
 			this.config.monitoredParameters = this.config.monitoredParametersString.split(',')
+		} else {
+			this.config.monitoredParameters = []
 		}
 	}
 
@@ -215,12 +217,14 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 					const initial_node = await this.emberClient.getElementByPath(path, (node) => {
 						this.handleChangedValue(path, node).catch((e) => this.log('error', 'Error handling parameter ' + e))
 					})
-					if (initial_node) {
+					if (initial_node?.contents.type === ElementType.Parameter) {
 						this.log('debug', 'Registered for path "' + path + '"')
 						if (this.config.monitoredParameters) {
 							this.config.monitoredParameters.push(path)
-							this.updateCompanionBits(false)
+						} else {
+							this.config.monitoredParameters = [path]
 						}
+						this.updateCompanionBits(false)
 						await this.handleChangedValue(path, initial_node)
 					}
 				} catch (e) {
@@ -237,39 +241,49 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	}
 	public async handleChangedValue(path: string, node: TreeElement<EmberElement>): Promise<void> {
 		if (node.contents.type == ElementType.Parameter) {
-			this.log('debug', 'Got parameter value for ' + path + ': ' + (node.contents.value?.toString() ?? ''))
-			this.state.parameters.set(path, node.contents.value?.toString() ?? '')
-			this.checkFeedbacks(FeedbackId.Parameter, FeedbackId.String, FeedbackId.Boolean)
-
-			this.setVariableValues(Object.fromEntries(this.state.parameters.entries()))
-			if (this.isRecordingActions) {
-				let actionType: ActionId
-				let actionValue: number | boolean | string
-				if (node.contents.parameterType === EmberModel.ParameterType.Integer) {
-					actionType = ActionId.SetValueInt
-					actionValue = Number(node.contents.value)
-					if (isNaN(actionValue)) return
-				} else if (node.contents.parameterType === EmberModel.ParameterType.Boolean) {
+			this.log('debug', 'Got parameter value for ' + path + ': ' + (node.contents.value ?? ''))
+			let value: boolean | number | string
+			let actionType: ActionId | undefined
+			switch (node.contents.parameterType) {
+				case EmberModel.ParameterType.Boolean:
 					actionType = ActionId.SetValueBoolean
-					actionValue = !!node.contents.value
-				} else if (node.contents.parameterType === EmberModel.ParameterType.Enum) {
-					actionType = ActionId.SetValueEnum
-					actionValue = Number(node.contents.value)
-					if (isNaN(actionValue)) return
-				} else if (node.contents.parameterType === EmberModel.ParameterType.Real) {
+					value = node.contents.value as boolean
+					break
+				case EmberModel.ParameterType.Integer:
+					actionType = ActionId.SetValueInt
+					value = node.contents.value as number
+					break
+				case EmberModel.ParameterType.Real:
 					actionType = ActionId.SetValueReal
-					actionValue = Number(node.contents.value)
-					if (isNaN(actionValue)) return
-				} else if (node.contents.parameterType === EmberModel.ParameterType.String) {
+					value = node.contents.value as number
+					break
+				case EmberModel.ParameterType.Enum:
+					actionType = ActionId.SetValueEnum
+					value = node.contents.value as number
+					break
+				case EmberModel.ParameterType.String:
 					actionType = ActionId.SetValueString
-					actionValue = node.contents.value?.toString() ?? ''
+					value = node.contents.value as string
+					break
+				default:
+					value = node.contents.value as string
+			}
+			this.state.parameters.set(path, value)
+			this.setVariableValues({
+				[path.replaceAll('#', '_')]: value,
+			})
+			this.checkFeedbacks(FeedbackId.Parameter, FeedbackId.String, FeedbackId.Boolean)
+			if (this.isRecordingActions && actionType !== undefined) {
+				let actOptions
+				if (actionType == ActionId.SetValueString) {
+					actOptions = { path: path, value: value, variable: true }
 				} else {
-					return
+					actOptions = { path: path, value: value, useVar: false, variable: true, valueVar: value.toString() }
 				}
 				this.recordAction(
 					{
 						actionId: actionType,
-						options: { path: path, value: actionValue },
+						options: actOptions,
 					},
 					path,
 				)
@@ -278,4 +292,4 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	}
 }
 
-runEntrypoint(EmberPlusInstance, [])
+runEntrypoint(EmberPlusInstance, UpgradeScripts)

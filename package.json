@@ -10,7 +10,8 @@
 		"build:watch": "tsc -p tsconfig.json --watch",
 		"lint:raw": "eslint",
 		"lint": "yarn lint:raw .",
-		"dist": "yarn companion-module-build"
+		"dist": "yarn companion-module-build",
+		"package": "rimraf dist && yarn build:main && yarn dist"
 	},
 	"repository": {
 		"type": "git",
@@ -26,25 +27,25 @@
 		]
 	},
 	"engines": {
-		"node": "^22.2"
+		"node": "^22.11"
 	},
 	"dependencies": {
-		"@companion-module/base": "~1.11.0",
+		"@companion-module/base": "~1.11.2",
 		"delay": "^6.0.0",
 		"emberplus-connection": "0.2.1",
 		"p-queue": "^8.0.1"
 	},
 	"devDependencies": {
 		"@companion-module/tools": "^2.1.0",
-		"@types/node": "^22.9.0",
-		"eslint": "^9.14.0",
-		"husky": "^9.1.6",
+		"@types/node": "^22.10.1",
+		"eslint": "^9.16.0",
+		"husky": "^9.1.7",
 		"lint-staged": "^15.2.10",
-		"prettier": "^3.3.3",
+		"prettier": "^3.4.1",
 		"rimraf": "^6.0.1",
-		"typescript": "~5.6.3",
-		"typescript-eslint": "^8.13.0"
+		"typescript": "~5.7.2",
+		"typescript-eslint": "^8.16.0"
 	},
 	"prettier": "@companion-module/tools/.prettierrc.json",
-	"packageManager": "yarn@4.5.1"
+	"packageManager": "yarn@4.5.3"
 }
