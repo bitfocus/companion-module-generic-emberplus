@@ -116,7 +116,7 @@ const setValue =
 								break
 							case EmberModel.ParameterType.Enum:
 								value = action.options['useVar']
-									? parseInt(await self.parseVariablesInString(action.options['value']?.toString() ?? ''))
+									? parseInt(await self.parseVariablesInString(action.options['valueVar']?.toString() ?? ''))
 									: Math.floor(Number(action.options['value']))
 								if (isNaN(value) || value > 4294967295 || value < 0) {
 									return

@@ -274,10 +274,16 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 			})
 			this.checkFeedbacks(FeedbackId.Parameter, FeedbackId.String, FeedbackId.Boolean)
 			if (this.isRecordingActions && actionType !== undefined) {
+				let actOptions
+				if (actionType == ActionId.SetValueString) {
+					actOptions = { path: path, value: value, variable: true }
+				} else {
+					actOptions = { path: path, value: value, useVar: false, variable: true, valueVar: value.toString() }
+				}
 				this.recordAction(
 					{
 						actionId: actionType,
-						options: { path: path, value: value },
+						options: actOptions,
 					},
 					path,
 				)
