@@ -7,6 +7,7 @@ import { EmberPlusState } from './state'
 import { EmberClient, Model as EmberModel } from 'emberplus-connection' // note - emberplus-conn is in parent repo, not sure if it needs to be defined as dependency
 import { ElementType } from 'emberplus-connection/dist/model'
 import type { TreeElement, EmberElement } from 'emberplus-connection/dist/model'
+import { UpgradeScripts } from './upgrades'
 import { GetVariablesList } from './variables'
 import delay from 'delay'
 import PQueue from 'p-queue'
@@ -179,6 +180,8 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	private setupMonitoredParams(): void {
 		if (this.config.monitoredParametersString) {
 			this.config.monitoredParameters = this.config.monitoredParametersString.split(',')
+		} else {
+			this.config.monitoredParameters = []
 		}
 	}
 
@@ -218,8 +221,10 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 						this.log('debug', 'Registered for path "' + path + '"')
 						if (this.config.monitoredParameters) {
 							this.config.monitoredParameters.push(path)
-							this.updateCompanionBits(false)
+						} else {
+							this.config.monitoredParameters = [path]
 						}
+						this.updateCompanionBits(false)
 						await this.handleChangedValue(path, initial_node)
 					}
 				} catch (e) {
@@ -281,4 +286,4 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	}
 }
 
-runEntrypoint(EmberPlusInstance, [])
+runEntrypoint(EmberPlusInstance, UpgradeScripts)

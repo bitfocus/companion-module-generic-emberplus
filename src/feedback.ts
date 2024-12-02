@@ -138,6 +138,7 @@ export function GetFeedbacksList(
 					feedback.options['asInt'] ? EmberModel.ParameterType.Integer : EmberModel.ParameterType.Real,
 					feedback.options['path']?.toString() ?? '',
 					feedback.options['useVar'] ? String(feedback.options['valueVar']) : Number(feedback.options['value']),
+					feedback.options['comparitor'] as NumberComparitor,
 				)
 			},
 			subscribe: async (feedback, context) => {
@@ -182,7 +183,7 @@ export function GetFeedbacksList(
 			},
 		},
 		[FeedbackId.Boolean]: {
-			name: 'Parameter Equals True',
+			name: 'Parameter True',
 			description: 'Checks the current value of a paramter is true',
 			type: 'boolean',
 			defaultStyle: styles.blackOnWhite,
