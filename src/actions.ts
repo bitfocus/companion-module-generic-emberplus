@@ -85,12 +85,12 @@ export async function resolvePath(context: CompanionCommonCallbackContext, path:
 const setValue =
 	(self: EmberPlusInstance, emberClient: EmberClient, type: EmberModel.ParameterType, queue: PQueue) =>
 	async (action: CompanionActionEvent, context: CompanionActionContext): Promise<void> => {
+		const path = await resolvePath(context, action.options['path']?.toString() ?? '')
+		if (action.options.variable) {
+			await self.registerNewParameter(path)
+		}
 		queue
 			.add(async () => {
-				const path = await resolvePath(context, action.options['path']?.toString() ?? '')
-				if (action.options.variable) {
-					await self.registerNewParameter(path)
-				}
 				const node = await emberClient.getElementByPath(path)
 				// TODO - do we handle not found?
 				if (node && node.contents.type === EmberModel.ElementType.Parameter) {
