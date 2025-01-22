@@ -39,6 +39,39 @@ const pathInput: CompanionInputFieldTextInput = {
 	useVariables: true,
 	tooltip: `Path may be supplied in decimals: 1.2.3, text: path.to.ember.element, or with a descriptor and the decimals wrapped in brackets: path to ember element[1.2.3.4]`,
 }
+
+const minLimit: CompanionInputFieldTextInput = {
+	type: 'textinput',
+	label: 'Minimum',
+	id: 'min',
+	default: '0',
+	useVariables: true,
+	tooltip: 'Relative action minimum value will be limited to this value',
+	isVisible: (options) => {
+		return Boolean(options.relative)
+	},
+}
+
+const maxLimit: CompanionInputFieldTextInput = {
+	type: 'textinput',
+	label: 'Maximum',
+	id: 'max',
+	default: '',
+	useVariables: true,
+	tooltip: 'Relative action maximum value will be limited to this value',
+	isVisible: (options) => {
+		return Boolean(options.relative)
+	},
+}
+
+const relative: CompanionInputFieldCheckbox = {
+	type: 'checkbox',
+	label: 'Relative',
+	id: 'relative',
+	default: false,
+	tooltip: 'Adjust value by this amount',
+}
+
 const createVariable: CompanionInputFieldCheckbox = {
 	type: 'checkbox',
 	label: 'Auto Create Variable',
@@ -82,8 +115,40 @@ export async function resolvePath(context: CompanionCommonCallbackContext, path:
 	return pathString
 }
 
+export async function calcRelativeNumber(
+	value: number,
+	path: string,
+	min: string,
+	max: string,
+	type: EmberModel.ParameterType,
+	self: EmberPlusInstance,
+	state: EmberPlusState,
+): Promise<number> {
+	let oldValue = Number(state.parameters.get(path))
+	if (isNaN(oldValue)) oldValue = 0
+	let newValue = value + oldValue
+	const minLimit = Number(await self.parseVariablesInString(min))
+	const maxLimit = Number(await self.parseVariablesInString(max))
+	if (type === EmberModel.ParameterType.Integer) {
+		newValue = Math.round(newValue)
+	}
+	if (type === EmberModel.ParameterType.Enum) {
+		newValue = Math.round(newValue)
+		newValue = newValue < 0 ? 0 : newValue
+	}
+	if (!isNaN(minLimit)) newValue = newValue < minLimit ? minLimit : newValue
+	if (!isNaN(maxLimit)) newValue = newValue > maxLimit ? maxLimit : newValue
+	return newValue
+}
+
 const setValue =
-	(self: EmberPlusInstance, emberClient: EmberClient, type: EmberModel.ParameterType, queue: PQueue) =>
+	(
+		self: EmberPlusInstance,
+		emberClient: EmberClient,
+		type: EmberModel.ParameterType,
+		state: EmberPlusState,
+		queue: PQueue,
+	) =>
 	async (action: CompanionActionEvent, context: CompanionActionContext): Promise<void> => {
 		const path = await resolvePath(context, action.options['path']?.toString() ?? '')
 		if (action.options.variable) {
@@ -108,6 +173,17 @@ const setValue =
 								if (isNaN(value) || value > 4294967295 || value < -4294967295) {
 									return
 								}
+								if (action.options['relative']) {
+									value = await calcRelativeNumber(
+										value,
+										path,
+										action.options['min']?.toString() ?? '',
+										action.options['max']?.toString() ?? '',
+										type,
+										self,
+										state,
+									)
+								}
 								break
 							case EmberModel.ParameterType.Real:
 								value = action.options['useVar']
@@ -115,6 +191,17 @@ const setValue =
 									: Number(action.options['value'])
 								if (isNaN(value) || value > 4294967295 || value < -4294967295) {
 									return
+								}
+								if (action.options['relative']) {
+									value = await calcRelativeNumber(
+										value,
+										path,
+										action.options['min']?.toString() ?? '',
+										action.options['max']?.toString() ?? '',
+										type,
+										self,
+										state,
+									)
 								}
 								break
 							case EmberModel.ParameterType.Enum:
@@ -124,9 +211,22 @@ const setValue =
 								if (isNaN(value) || value > 4294967295 || value < 0) {
 									return
 								}
+								if (action.options['relative']) {
+									value = await calcRelativeNumber(
+										value,
+										path,
+										action.options['min']?.toString() ?? '',
+										action.options['max']?.toString() ?? '',
+										type,
+										self,
+										state,
+									)
+								}
 								break
 							case EmberModel.ParameterType.Boolean:
-								if (action.options['useVar']) {
+								if (action.options['relative']) {
+									value = !state.parameters.get(path)
+								} else if (action.options['useVar']) {
 									switch (await self.parseVariablesInString(action.options['valueVar']?.toString() ?? '')) {
 										case 'true':
 										case 'on':
@@ -409,10 +509,13 @@ export function GetActionsList(
 						return !!options.useVar
 					},
 				},
+				relative,
+				minLimit,
+				maxLimit,
 				useVariable,
 				createVariable,
 			],
-			callback: setValue(self, emberClient, EmberModel.ParameterType.Integer, queue),
+			callback: setValue(self, emberClient, EmberModel.ParameterType.Integer, state, queue),
 			subscribe: registerParameter(self),
 		},
 		[ActionId.SetValueReal]: {
@@ -442,10 +545,13 @@ export function GetActionsList(
 						return !!options.useVar
 					},
 				},
+				relative,
+				minLimit,
+				maxLimit,
 				useVariable,
 				createVariable,
 			],
-			callback: setValue(self, emberClient, EmberModel.ParameterType.Real, queue),
+			callback: setValue(self, emberClient, EmberModel.ParameterType.Real, state, queue),
 			subscribe: registerParameter(self),
 		},
 		[ActionId.SetValueBoolean]: {
@@ -454,11 +560,17 @@ export function GetActionsList(
 				pathInput,
 				{
 					type: 'checkbox',
+					label: 'Toggle',
+					id: 'toggle',
+					default: false,
+				},
+				{
+					type: 'checkbox',
 					label: 'Value',
 					id: 'value',
 					default: false,
 					isVisible: (options) => {
-						return !options.useVar
+						return !options.useVar && !options.toggle
 					},
 				},
 				{
@@ -468,13 +580,18 @@ export function GetActionsList(
 					default: 'false',
 					useVariables: true,
 					isVisible: (options) => {
-						return !!options.useVar
+						return !!options.useVar && !options.toggle
 					},
 				},
-				useVariable,
+				{
+					...useVariable,
+					isVisible: (options) => {
+						return !options.toggle
+					},
+				},
 				createVariable,
 			],
-			callback: setValue(self, emberClient, EmberModel.ParameterType.Boolean, queue),
+			callback: setValue(self, emberClient, EmberModel.ParameterType.Boolean, state, queue),
 			subscribe: async (action, context) => {
 				if (action.options.variable) {
 					await self.registerNewParameter(await resolvePath(context, action.options['path']?.toString() ?? ''))
@@ -510,10 +627,13 @@ export function GetActionsList(
 						return !!options.useVar
 					},
 				},
+				relative,
+				minLimit,
+				maxLimit,
 				useVariable,
 				createVariable,
 			],
-			callback: setValue(self, emberClient, EmberModel.ParameterType.Enum, queue),
+			callback: setValue(self, emberClient, EmberModel.ParameterType.Enum, state, queue),
 			subscribe: registerParameter(self),
 		},
 		[ActionId.SetValueString]: {
@@ -528,7 +648,7 @@ export function GetActionsList(
 				},
 				createVariable,
 			],
-			callback: setValue(self, emberClient, EmberModel.ParameterType.String, queue),
+			callback: setValue(self, emberClient, EmberModel.ParameterType.String, state, queue),
 			subscribe: registerParameter(self),
 		},
 		[ActionId.MatrixConnect]: {
