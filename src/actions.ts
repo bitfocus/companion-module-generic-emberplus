@@ -44,24 +44,18 @@ const minLimit: CompanionInputFieldTextInput = {
 	type: 'textinput',
 	label: 'Minimum',
 	id: 'min',
-	default: '0',
+	default: '-4294967295',
 	useVariables: true,
 	tooltip: 'Relative action minimum value will be limited to this value',
-	isVisible: (options) => {
-		return Boolean(options.relative)
-	},
 }
 
 const maxLimit: CompanionInputFieldTextInput = {
 	type: 'textinput',
 	label: 'Maximum',
 	id: 'max',
-	default: '',
+	default: '4294967295',
 	useVariables: true,
 	tooltip: 'Relative action maximum value will be limited to this value',
-	isVisible: (options) => {
-		return Boolean(options.relative)
-	},
 }
 
 const relative: CompanionInputFieldCheckbox = {
@@ -509,11 +503,21 @@ export function GetActionsList(
 						return !!options.useVar
 					},
 				},
-				relative,
-				minLimit,
-				maxLimit,
 				useVariable,
 				createVariable,
+				relative,
+				{
+					...minLimit,
+					isVisible: (options) => {
+						return !!options.relative
+					},
+				},
+				{
+					...maxLimit,
+					isVisible: (options) => {
+						return !!options.relative
+					},
+				},
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.Integer, state, queue),
 			subscribe: registerParameter(self),
@@ -545,11 +549,21 @@ export function GetActionsList(
 						return !!options.useVar
 					},
 				},
-				relative,
-				minLimit,
-				maxLimit,
 				useVariable,
 				createVariable,
+				relative,
+				{
+					...minLimit,
+					isVisible: (options) => {
+						return !!options.relative
+					},
+				},
+				{
+					...maxLimit,
+					isVisible: (options) => {
+						return !!options.relative
+					},
+				},
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.Real, state, queue),
 			subscribe: registerParameter(self),
@@ -627,11 +641,22 @@ export function GetActionsList(
 						return !!options.useVar
 					},
 				},
-				relative,
-				minLimit,
-				maxLimit,
 				useVariable,
 				createVariable,
+				relative,
+				{
+					...minLimit,
+					default: '0',
+					isVisible: (options) => {
+						return !!options.relative
+					},
+				},
+				{
+					...maxLimit,
+					isVisible: (options) => {
+						return !!options.relative
+					},
+				},
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.Enum, state, queue),
 			subscribe: registerParameter(self),
