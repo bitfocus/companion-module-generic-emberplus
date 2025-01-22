@@ -1,6 +1,5 @@
 {
 	"name": "generic-emberplus",
-
 	"version": "2.6.0",
 	"main": "dist/index.js",
 	"scripts": {
@@ -28,7 +27,6 @@
 		]
 	},
 	"engines": {
-
 		"node": "^22.13"
 	},
 	"dependencies": {
