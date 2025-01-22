@@ -277,8 +277,26 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 				let actOptions
 				if (actionType == ActionId.SetValueString) {
 					actOptions = { path: path, value: value, variable: true }
+				} else if (actionType == ActionId.SetValueBoolean) {
+					actOptions = {
+						path: path,
+						value: value,
+						useVar: false,
+						variable: true,
+						valueVar: value.toString(),
+						toggle: false,
+					}
 				} else {
-					actOptions = { path: path, value: value, useVar: false, variable: true, valueVar: value.toString() }
+					actOptions = {
+						path: path,
+						value: value,
+						useVar: false,
+						variable: true,
+						valueVar: value.toString(),
+						relative: false,
+						min: '',
+						max: '4294967295',
+					}
 				}
 				this.recordAction(
 					{
