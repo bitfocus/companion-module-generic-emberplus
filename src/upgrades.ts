@@ -76,4 +76,32 @@ function v250(
 	return result
 }
 
-export const UpgradeScripts: CompanionStaticUpgradeScript<EmberPlusConfig>[] = [v250]
+function v260(
+	_context: CompanionUpgradeContext<EmberPlusConfig>,
+	props: CompanionStaticUpgradeProps<EmberPlusConfig>,
+): CompanionStaticUpgradeResult<EmberPlusConfig> {
+	const result: CompanionStaticUpgradeResult<EmberPlusConfig> = {
+		updatedActions: [],
+		updatedConfig: null,
+		updatedFeedbacks: [],
+	}
+
+	for (const action of props.actions) {
+		switch (action.actionId) {
+			case 'setValueBoolean':
+				action.options.toggle = action.options.toggle === undefined ? false : action.options.toggle
+				result.updatedActions.push(action)
+				break
+			case 'setValueEnum':
+			case 'setValueInt':
+			case 'setValueReal':
+				action.options.relative = action.options.relative === undefined ? false : action.options.relative
+				action.options.min = action.options.min === undefined ? '' : action.options.min
+				action.options.max = action.options.max === undefined ? '' : action.options.max
+				result.updatedActions.push(action)
+		}
+	}
+	return result
+}
+
+export const UpgradeScripts: CompanionStaticUpgradeScript<EmberPlusConfig>[] = [v250, v260]
