@@ -218,7 +218,7 @@ const setValue =
 								}
 								break
 							case EmberModel.ParameterType.Boolean:
-								if (action.options['relative']) {
+								if (action.options['toggle']) {
 									value = !state.parameters.get(path)
 								} else if (action.options['useVar']) {
 									switch (await self.parseVariablesInString(action.options['valueVar']?.toString() ?? '')) {
