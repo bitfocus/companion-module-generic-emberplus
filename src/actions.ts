@@ -71,7 +71,6 @@ const createVariable: CompanionInputFieldCheckbox = {
 	label: 'Auto Create Variable',
 	id: 'variable',
 	default: false,
-	tooltip: 'Will not pickup variable change in path field',
 }
 
 const useVariable: CompanionInputFieldCheckbox = {
