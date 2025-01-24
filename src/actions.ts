@@ -63,7 +63,7 @@ const relative: CompanionInputFieldCheckbox = {
 	label: 'Relative',
 	id: 'relative',
 	default: false,
-	tooltip: 'Adjust value by this amount',
+	tooltip: 'Adjust value by this amount. Variable will be auto-created.',
 }
 
 const createVariable: CompanionInputFieldCheckbox = {
@@ -71,7 +71,6 @@ const createVariable: CompanionInputFieldCheckbox = {
 	label: 'Auto Create Variable',
 	id: 'variable',
 	default: false,
-	tooltip: 'Will not pickup variable change in path field',
 }
 
 const useVariable: CompanionInputFieldCheckbox = {
@@ -145,7 +144,7 @@ const setValue =
 	) =>
 	async (action: CompanionActionEvent, context: CompanionActionContext): Promise<void> => {
 		const path = await resolvePath(context, action.options['path']?.toString() ?? '')
-		if (action.options.variable) {
+		if (action.options.variable || action.options.toggle || action.options.relative) {
 			await self.registerNewParameter(path)
 		}
 		await queue
@@ -272,7 +271,7 @@ const setValue =
 const registerParameter =
 	(self: EmberPlusInstance) =>
 	async (action: CompanionActionInfo, context: CompanionActionContext): Promise<void> => {
-		if (action.options.variable) {
+		if (action.options.variable || action.options.toggle || action.options.relative) {
 			await self.registerNewParameter(await resolvePath(context, action.options['path']?.toString() ?? ''))
 		}
 	}
@@ -504,7 +503,12 @@ export function GetActionsList(
 					},
 				},
 				useVariable,
-				createVariable,
+				{
+					...createVariable,
+					isVisible: (options) => {
+						return !options.relative
+					},
+				},
 				relative,
 				{
 					...minLimit,
@@ -550,7 +554,12 @@ export function GetActionsList(
 					},
 				},
 				useVariable,
-				createVariable,
+				{
+					...createVariable,
+					isVisible: (options) => {
+						return !options.relative
+					},
+				},
 				relative,
 				{
 					...minLimit,
@@ -577,6 +586,7 @@ export function GetActionsList(
 					label: 'Toggle',
 					id: 'toggle',
 					default: false,
+					tooltip: 'Variable will be auto-created.',
 				},
 				{
 					type: 'checkbox',
@@ -603,7 +613,12 @@ export function GetActionsList(
 						return !options.toggle
 					},
 				},
-				createVariable,
+				{
+					...createVariable,
+					isVisible: (options) => {
+						return !options.toggle
+					},
+				},
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.Boolean, state, queue),
 			subscribe: async (action, context) => {
@@ -642,7 +657,12 @@ export function GetActionsList(
 					},
 				},
 				useVariable,
-				createVariable,
+				{
+					...createVariable,
+					isVisible: (options) => {
+						return !options.relative
+					},
+				},
 				relative,
 				{
 					...minLimit,
