@@ -33,18 +33,18 @@
 		"@companion-module/base": "~1.11.3",
 		"delay": "^6.0.0",
 		"emberplus-connection": "0.2.1",
-		"p-queue": "^8.0.1"
+		"p-queue": "^8.1.0"
 	},
 	"devDependencies": {
 		"@companion-module/tools": "^2.1.1",
-		"@types/node": "^22.10.10",
-		"eslint": "^9.18.0",
+		"@types/node": "^22.13.5",
+		"eslint": "^9.21.0",
 		"husky": "^9.1.7",
-		"lint-staged": "^15.4.2",
-		"prettier": "^3.4.2",
+		"lint-staged": "^15.4.3",
+		"prettier": "^3.5.1",
 		"rimraf": "^6.0.1",
 		"typescript": "~5.7.3",
-		"typescript-eslint": "^8.21.0"
+		"typescript-eslint": "^8.24.1"
 	},
 	"prettier": "@companion-module/tools/.prettierrc.json",
 	"packageManager": "yarn@4.6.0"
