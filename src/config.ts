@@ -25,10 +25,10 @@ export function GetConfigFields(): SomeCompanionConfigField[] {
 		{
 			type: 'textinput',
 			id: 'host',
-			label: 'Target IP',
-			tooltip: 'The IP of the ember+ provider',
+			label: 'Target Host',
+			tooltip: 'The Hostname/IP of the ember+ provider',
 			width: 6,
-			regex: Regex.IP,
+			regex: Regex.HOSTNAME,
 			isVisible: (options) => !options['bonjourHost'],
 		},
 		{
