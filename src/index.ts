@@ -209,10 +209,10 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 		}
 	}
 
-	public async registerNewParameter(path: string): Promise<void> {
+	public async registerNewParameter(path: string): Promise<TreeElement<EmberElement> | undefined> {
 		if (this.config.monitoredParameters?.includes(path) === true) return
-		this.emberQueue
-			.add(async () => {
+		return (await this.emberQueue
+			.add(async (): Promise<TreeElement<EmberElement> | undefined> => {
 				try {
 					const initial_node = await this.emberClient.getElementByPath(path, (node) => {
 						this.handleChangedValue(path, node).catch((e) => this.log('error', 'Error handling parameter ' + e))
@@ -220,20 +220,25 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 					if (initial_node?.contents.type === ElementType.Parameter) {
 						this.log('debug', 'Registered for path "' + path + '"')
 						if (this.config.monitoredParameters) {
-							this.config.monitoredParameters.push(path)
+							if (this.config.monitoredParameters?.includes(path) === false) {
+								this.config.monitoredParameters.push(path)
+							}
 						} else {
 							this.config.monitoredParameters = [path]
 						}
 						this.updateCompanionBits(false)
 						await this.handleChangedValue(path, initial_node)
 					}
+					return initial_node
 				} catch (e) {
 					this.log('error', 'Failed to subscribe to path "' + path + '": ' + e)
+					return undefined
 				}
 			})
 			.catch((e) => {
 				this.log('debug', `Failed to register parameter: ${e.toString()}`)
-			})
+				return undefined
+			})) as TreeElement<EmberElement> | undefined
 	}
 	// Track whether actions are being recorded
 	public handleStartStopRecordActions(isRecording: boolean): void {
@@ -270,7 +275,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 			}
 			this.state.parameters.set(path, value)
 			this.setVariableValues({
-				[path.replaceAll('#', '_')]: value,
+				[path.replaceAll(/[# ]/gm, '_')]: value,
 			})
 			this.checkFeedbacks(FeedbackId.Parameter, FeedbackId.String, FeedbackId.Boolean)
 			if (this.isRecordingActions && actionType !== undefined) {

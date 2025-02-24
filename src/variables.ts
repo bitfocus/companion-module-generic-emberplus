@@ -5,7 +5,7 @@ export function GetVariablesList(config: EmberPlusConfig): CompanionVariableDefi
 	return (
 		config.monitoredParameters?.map((fb) => ({
 			name: fb,
-			variableId: fb.replaceAll('#', '_'),
+			variableId: fb.replaceAll(/[# ]/gm, '_'),
 		})) ?? []
 	)
 }
