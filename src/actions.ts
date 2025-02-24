@@ -110,7 +110,7 @@ const matrixInputs: Array<CompanionInputFieldTextInput | CompanionInputFieldNumb
 ]
 
 export async function resolvePath(context: CompanionCommonCallbackContext, path: string): Promise<string> {
-	const pathString: string = await context.parseVariablesInString(path)
+	const pathString: string = (await context.parseVariablesInString(path)).replaceAll('/', '.')
 	if (pathString.includes('[') && pathString.includes(']')) {
 		return pathString.substring(pathString.indexOf('[') + 1, pathString.indexOf(']'))
 	}
