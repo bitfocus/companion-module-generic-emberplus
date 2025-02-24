@@ -80,6 +80,15 @@ const useVariable: CompanionInputFieldCheckbox = {
 	default: false,
 }
 
+export const factorOpt: CompanionInputFieldTextInput = {
+	type: 'textinput',
+	label: 'Factor',
+	id: 'factor',
+	useVariables: true,
+	default: '1',
+	tooltip: `Value will be multiplied by this field`,
+}
+
 const matrixInputs: Array<CompanionInputFieldTextInput | CompanionInputFieldNumber> = [
 	pathInput,
 	{
@@ -155,14 +164,19 @@ const setValue =
 					if (node.contents.parameterType === type) {
 						self.log('debug', 'Got node on ' + path)
 						let value: string | number | boolean
+						let factor: number
 						switch (type) {
 							case EmberModel.ParameterType.String:
 								value = await self.parseVariablesInString(action.options['value']?.toString() ?? '')
 								break
 							case EmberModel.ParameterType.Integer:
+								factor = parseInt(await self.parseVariablesInString(action.options['factor']?.toString() ?? '1'))
+								if (isNaN(factor)) factor = 1
 								value = action.options['useVar']
-									? parseInt(await self.parseVariablesInString(action.options['valueVar']?.toString() ?? ''))
-									: Math.floor(Number(action.options['value']))
+									? Math.floor(
+											Number(await self.parseVariablesInString(action.options['valueVar']?.toString() ?? '')) * factor,
+										)
+									: Math.floor(Number(action.options['value']) * factor)
 								if (isNaN(value) || value > 4294967295 || value < -4294967295) {
 									return
 								}
@@ -522,6 +536,7 @@ export function GetActionsList(
 						return !!options.relative
 					},
 				},
+				factorOpt,
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.Integer, state, queue),
 			subscribe: registerParameter(self),

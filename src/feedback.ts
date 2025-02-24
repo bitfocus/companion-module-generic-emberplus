@@ -7,7 +7,7 @@ import type {
 } from '@companion-module/base'
 import type { EmberPlusInstance } from './index'
 import { EmberClient, Model as EmberModel } from 'emberplus-connection'
-import { resolvePath } from './actions'
+import { resolvePath, factorOpt } from './actions'
 import type { EmberPlusConfig } from './config'
 import { EmberPlusState } from './state'
 import { compareNumber, comparitorOptions, NumberComparitor } from './util'
@@ -41,7 +41,10 @@ export async function resolveFeedback(
 	rawPath: string,
 	value?: boolean | number | string,
 	comparitor: NumberComparitor = NumberComparitor.Equal,
+	factor: string = '1',
 ): Promise<boolean> {
+	let fact = parseInt(await context.parseVariablesInString(factor))
+	if (isNaN(fact)) fact = 1
 	const path = await resolvePath(context, rawPath)
 	if (typeof value === 'string') {
 		value = await context.parseVariablesInString(value)
@@ -51,10 +54,14 @@ export async function resolveFeedback(
 			case EmberModel.ParameterType.Boolean:
 				return Boolean(state.parameters.get(path))
 			case EmberModel.ParameterType.Real:
-				return compareNumber(Number(value), comparitor, Number(state.parameters.get(path)))
+				return compareNumber(Number(value) * fact, comparitor, Number(state.parameters.get(path)))
 			case EmberModel.ParameterType.Integer:
 			case EmberModel.ParameterType.Enum:
-				return compareNumber(Math.floor(Number(value)), comparitor, Math.floor(Number(state.parameters.get(path))))
+				return compareNumber(
+					Math.floor(Number(value)) * fact,
+					comparitor,
+					Math.floor(Number(state.parameters.get(path))),
+				)
 			case EmberModel.ParameterType.String:
 			default:
 				return state.parameters.get(path)?.toString() == value
@@ -128,7 +135,9 @@ export function GetFeedbacksList(
 					label: 'As Integers?',
 					id: 'asInt',
 					default: false,
+					tooltip: '',
 				},
+				factorOpt,
 			],
 			callback: async (feedback, context) => {
 				return await resolveFeedback(
@@ -139,6 +148,7 @@ export function GetFeedbacksList(
 					feedback.options['path']?.toString() ?? '',
 					feedback.options['useVar'] ? String(feedback.options['valueVar']) : Number(feedback.options['value']),
 					feedback.options['comparitor'] as NumberComparitor,
+					feedback.options['factor']?.toString() ?? '1',
 				)
 			},
 			subscribe: async (feedback, context) => {
