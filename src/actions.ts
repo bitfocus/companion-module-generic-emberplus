@@ -8,6 +8,7 @@ import type {
 	InstanceBase,
 	CompanionInputFieldCheckbox,
 	CompanionActionContext,
+	CompanionOptionValues,
 } from '@companion-module/base'
 import { EmberClient, Model as EmberModel } from 'emberplus-connection'
 import type PQueue from 'p-queue'
@@ -16,6 +17,19 @@ import { FeedbackId } from './feedback'
 import type { EmberPlusInstance } from './index'
 import { EmberPlusState } from './state'
 import type { CompanionCommonCallbackContext } from '@companion-module/base/dist/module-api/common'
+
+export interface setValueActionOptions extends CompanionOptionValues {
+	path: string
+	value: string | number | boolean
+	useVar?: boolean
+	variable: boolean
+	valueVar?: string
+	relative?: boolean
+	min?: string
+	max?: string
+	factor?: string
+	toggle?: boolean
+}
 
 export enum ActionId {
 	SetValueInt = 'setValueInt',

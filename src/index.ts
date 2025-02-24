@@ -1,11 +1,17 @@
-import { InstanceBase, InstanceStatus, runEntrypoint, type SomeCompanionConfigField } from '@companion-module/base'
-import { GetActionsList, ActionId } from './actions'
+import {
+	InstanceBase,
+	InstanceStatus,
+	runEntrypoint,
+	type CompanionVariableValues,
+	type SomeCompanionConfigField,
+} from '@companion-module/base'
+import { GetActionsList, ActionId, type setValueActionOptions } from './actions'
 import { type EmberPlusConfig, GetConfigFields } from './config'
 import { GetPresetsList } from './presets'
 import { FeedbackId, GetFeedbacksList } from './feedback'
 import { EmberPlusState } from './state'
 import { EmberClient, Model as EmberModel } from 'emberplus-connection' // note - emberplus-conn is in parent repo, not sure if it needs to be defined as dependency
-import { ElementType } from 'emberplus-connection/dist/model'
+import { ElementType, ParameterType } from 'emberplus-connection/dist/model'
 import type { TreeElement, EmberElement } from 'emberplus-connection/dist/model'
 import { UpgradeScripts } from './upgrades'
 import { GetVariablesList } from './variables'
@@ -222,6 +228,9 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 						if (this.config.monitoredParameters) {
 							if (this.config.monitoredParameters?.includes(path) === false) {
 								this.config.monitoredParameters.push(path)
+								if (initial_node?.contents?.parameterType === ParameterType.Enum) {
+									this.config.monitoredParameters.push(`${path}_ENUM`)
+								}
 							}
 						} else {
 							this.config.monitoredParameters = [path]
@@ -249,6 +258,9 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 			this.log('debug', 'Got parameter value for ' + path + ': ' + (node.contents.value ?? ''))
 			let value: boolean | number | string
 			let actionType: ActionId | undefined
+			let min: string = ''
+			let max: string = '4294967295'
+			let factor: string = '1'
 			switch (node.contents.parameterType) {
 				case EmberModel.ParameterType.Boolean:
 					actionType = ActionId.SetValueBoolean
@@ -256,15 +268,22 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 					break
 				case EmberModel.ParameterType.Integer:
 					actionType = ActionId.SetValueInt
-					value = node.contents.value as number
+					value = Number(node.contents.value) / Number(node.contents.factor ?? 1)
+					min = node.contents.minimum?.toString() ?? ''
+					max = node.contents.maximum?.toString() ?? ''
+					factor = node.contents.factor?.toString() ?? '1'
 					break
 				case EmberModel.ParameterType.Real:
 					actionType = ActionId.SetValueReal
 					value = node.contents.value as number
+					min = node.contents.minimum?.toString() ?? ''
+					max = node.contents.maximum?.toString() ?? ''
 					break
 				case EmberModel.ParameterType.Enum:
 					actionType = ActionId.SetValueEnum
 					value = node.contents.value as number
+					min = node.contents.minimum?.toString() ?? '0'
+					max = node.contents.maximum?.toString() ?? ''
 					break
 				case EmberModel.ParameterType.String:
 					actionType = ActionId.SetValueString
@@ -274,35 +293,28 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 					value = node.contents.value as string
 			}
 			this.state.parameters.set(path, value)
-			this.setVariableValues({
+			const variableValues: CompanionVariableValues = {
 				[path.replaceAll(/[# ]/gm, '_')]: value,
-			})
+			}
+			if (node.contents.parameterType === ParameterType.Enum) {
+				variableValues[`${path.replaceAll(/[# ]/gm, '_')}_ENUM`] = node.contents?.enumeration ?? ''
+			}
+			this.setVariableValues(variableValues)
 			this.checkFeedbacks(FeedbackId.Parameter, FeedbackId.String, FeedbackId.Boolean)
 			if (this.isRecordingActions && actionType !== undefined) {
-				let actOptions
-				if (actionType == ActionId.SetValueString) {
-					actOptions = { path: path, value: value, variable: true }
-				} else if (actionType == ActionId.SetValueBoolean) {
-					actOptions = {
-						path: path,
-						value: value,
-						useVar: false,
-						variable: true,
-						valueVar: value.toString(),
-						toggle: false,
-					}
-				} else {
-					actOptions = {
-						path: path,
-						value: value,
-						useVar: false,
-						variable: true,
-						valueVar: value.toString(),
-						relative: false,
-						min: '',
-						max: '4294967295',
-					}
+				const actOptions: setValueActionOptions = { path: path, value: value, variable: true }
+				if (actionType == ActionId.SetValueBoolean) {
+					actOptions.useVar = false
+					actOptions.valueVar = value.toString()
+					actOptions.toggle = false
+				} else if (actionType !== ActionId.SetValueString) {
+					actOptions.useVar = false
+					actOptions.valueVar = value.toString()
+					actOptions.relative = false
+					actOptions.min = min
+					actOptions.max = max
 				}
+				if (actionType === ActionId.SetValueInt) actOptions.factor = factor
 				this.recordAction(
 					{
 						actionId: actionType,
