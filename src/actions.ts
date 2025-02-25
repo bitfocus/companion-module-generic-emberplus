@@ -176,6 +176,13 @@ const setValue =
 				// TODO - do we handle not found?
 				if (node && node.contents.type === EmberModel.ElementType.Parameter) {
 					if (node.contents.parameterType === type) {
+						if (
+							node.contents?.access === EmberModel.ParameterAccess.None ||
+							node.contents?.access === EmberModel.ParameterAccess.Read
+						) {
+							self.log('warn', `Can't write to ${path} insufficent permissions: ${node.contents.access}`)
+							return
+						}
 						self.log('debug', 'Got node on ' + path)
 						let value: string | number | boolean
 						let factor: number
