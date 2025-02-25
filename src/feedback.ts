@@ -58,7 +58,7 @@ export async function resolveFeedback(
 			case EmberModel.ParameterType.Integer:
 			case EmberModel.ParameterType.Enum:
 				return compareNumber(
-					Math.floor(Number(value)) * fact,
+					Math.floor(Number(value) * fact),
 					comparitor,
 					Math.floor(Number(state.parameters.get(path))),
 				)
