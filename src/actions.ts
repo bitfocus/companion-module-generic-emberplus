@@ -131,6 +131,10 @@ export async function resolvePath(context: CompanionCommonCallbackContext, path:
 	return pathString
 }
 
+function checkNumberLimits(value: number, min: number, max: number): number {
+	return value > max ? max : value < min ? min : value
+}
+
 export async function calcRelativeNumber(
 	value: number,
 	path: string,
@@ -212,6 +216,11 @@ const setValue =
 										state,
 									)
 								}
+								value = checkNumberLimits(
+									value,
+									node.contents?.minimum ?? -4294967295,
+									node.contents?.maximum ?? 4294967295,
+								)
 								break
 							case EmberModel.ParameterType.Real:
 								value = action.options['useVar']
@@ -231,6 +240,11 @@ const setValue =
 										state,
 									)
 								}
+								value = checkNumberLimits(
+									value,
+									node.contents?.minimum ?? -4294967295,
+									node.contents?.maximum ?? 4294967295,
+								)
 								break
 							case EmberModel.ParameterType.Enum:
 								value = action.options['useVar']
@@ -250,6 +264,7 @@ const setValue =
 										state,
 									)
 								}
+								value = checkNumberLimits(value, node.contents?.minimum ?? 0, node.contents?.maximum ?? 4294967295)
 								break
 							case EmberModel.ParameterType.Boolean:
 								if (action.options['toggle']) {
