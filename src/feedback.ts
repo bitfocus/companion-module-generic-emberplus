@@ -54,7 +54,7 @@ export async function resolveFeedback(
 			case EmberModel.ParameterType.Boolean:
 				return Boolean(state.parameters.get(path))
 			case EmberModel.ParameterType.Real:
-				return compareNumber(Number(value) * fact, comparitor, Number(state.parameters.get(path)))
+				return compareNumber(Number(value), comparitor, Number(state.parameters.get(path)))
 			case EmberModel.ParameterType.Integer:
 			case EmberModel.ParameterType.Enum:
 				return compareNumber(
@@ -137,7 +137,12 @@ export function GetFeedbacksList(
 					default: false,
 					tooltip: '',
 				},
-				factorOpt,
+				{
+					...factorOpt,
+					isVisible: (options) => {
+						return !!options.asInt
+					},
+				},
 			],
 			callback: async (feedback, context) => {
 				return await resolveFeedback(
@@ -153,6 +158,19 @@ export function GetFeedbacksList(
 			},
 			subscribe: async (feedback, context) => {
 				await _self.registerNewParameter(await resolvePath(context, feedback.options['path']?.toString() ?? ''))
+			},
+			learn: async (feedback, context) => {
+				const path = await resolvePath(context, feedback.options['path']?.toString() ?? '')
+				if (state.parameters.has(path)) {
+					const val = state.parameters.get(path)
+					if (typeof val !== 'number') return undefined
+					return {
+						...feedback.options,
+						value: val,
+						valueVar: val?.toString(),
+					}
+				}
+				return undefined
 			},
 		},
 		[FeedbackId.String]: {
@@ -190,6 +208,17 @@ export function GetFeedbacksList(
 			},
 			subscribe: async (feedback, context) => {
 				await _self.registerNewParameter(await resolvePath(context, feedback.options['path']?.toString() ?? ''))
+			},
+			learn: async (feedback, context) => {
+				const path = await resolvePath(context, feedback.options['path']?.toString() ?? '')
+				if (state.parameters.has(path)) {
+					const val = state.parameters.get(path)
+					return {
+						...feedback.options,
+						value: val?.toString(),
+					}
+				}
+				return undefined
 			},
 		},
 		[FeedbackId.Boolean]: {
