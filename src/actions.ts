@@ -192,7 +192,10 @@ const setValue =
 						let factor: number
 						switch (type) {
 							case EmberModel.ParameterType.String:
-								value = await self.parseVariablesInString(action.options['value']?.toString() ?? '')
+								value = (await self.parseVariablesInString(action.options['value']?.toString() ?? ''))
+									.replaceAll('\\n', '\n')
+									.replaceAll('\\r', '\r')
+									.replaceAll('\\t', '\r')
 								break
 							case EmberModel.ParameterType.Integer:
 								factor = parseInt(await self.parseVariablesInString(action.options['factor']?.toString() ?? '1'))

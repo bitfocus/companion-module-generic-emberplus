@@ -73,7 +73,7 @@ export async function resolveFeedback(
 }
 
 export function GetFeedbacksList(
-	_self: EmberPlusInstance, //InstanceBase<EmberPlusConfig>,
+	self: EmberPlusInstance, //InstanceBase<EmberPlusConfig>,
 	_emberClient: EmberClient,
 	config: EmberPlusConfig,
 	state: EmberPlusState,
@@ -92,6 +92,26 @@ export function GetFeedbacksList(
 					choices: config.monitoredParameters?.map((item) => <DropdownChoice>{ id: item, label: item }) ?? [],
 					default: config.monitoredParameters?.find(() => true) ?? 'No paths configured!',
 					allowCustom: true,
+					isVisible: (options) => {
+						return !options.usePathVar
+					},
+				},
+				{
+					type: 'textinput',
+					label: 'Path',
+					id: 'pathVar',
+					required: true,
+					useVariables: { local: true },
+					default: '',
+					isVisible: (options) => {
+						return !!options.usePathVar
+					},
+				},
+				{
+					type: 'checkbox',
+					label: 'Path from String',
+					id: 'usePathVar',
+					default: false,
 				},
 				{
 					type: 'dropdown',
@@ -146,21 +166,35 @@ export function GetFeedbacksList(
 			],
 			callback: async (feedback, context) => {
 				return await resolveFeedback(
-					_self,
+					self,
 					context,
 					state,
 					feedback.options['asInt'] ? EmberModel.ParameterType.Integer : EmberModel.ParameterType.Real,
-					feedback.options['path']?.toString() ?? '',
+					feedback.options['usePathVar']
+						? (feedback.options['pathVar']?.toString() ?? '')
+						: (feedback.options['path']?.toString() ?? ''),
 					feedback.options['useVar'] ? String(feedback.options['valueVar']) : Number(feedback.options['value']),
 					feedback.options['comparitor'] as NumberComparitor,
 					feedback.options['factor']?.toString() ?? '1',
 				)
 			},
 			subscribe: async (feedback, context) => {
-				await _self.registerNewParameter(await resolvePath(context, feedback.options['path']?.toString() ?? ''))
+				await self.registerNewParameter(
+					await resolvePath(
+						context,
+						feedback.options['usePathVar']
+							? (feedback.options['pathVar']?.toString() ?? '')
+							: (feedback.options['path']?.toString() ?? ''),
+					),
+				)
 			},
 			learn: async (feedback, context) => {
-				const path = await resolvePath(context, feedback.options['path']?.toString() ?? '')
+				const path = await resolvePath(
+					context,
+					feedback.options['usePathVar']
+						? (feedback.options['pathVar']?.toString() ?? '')
+						: (feedback.options['path']?.toString() ?? ''),
+				)
 				if (state.parameters.has(path)) {
 					const val = state.parameters.get(path)
 					if (typeof val !== 'number') return undefined
@@ -186,6 +220,26 @@ export function GetFeedbacksList(
 					choices: config.monitoredParameters?.map((item) => <DropdownChoice>{ id: item, label: item }) ?? [],
 					default: config.monitoredParameters?.find(() => true) ?? 'No paths configured!',
 					allowCustom: true,
+					isVisible: (options) => {
+						return !options.usePathVar
+					},
+				},
+				{
+					type: 'textinput',
+					label: 'Path',
+					id: 'pathVar',
+					required: true,
+					useVariables: { local: true },
+					default: '',
+					isVisible: (options) => {
+						return !!options.usePathVar
+					},
+				},
+				{
+					type: 'checkbox',
+					label: 'Path from String',
+					id: 'usePathVar',
+					default: false,
 				},
 				{
 					type: 'textinput',
@@ -198,7 +252,7 @@ export function GetFeedbacksList(
 			],
 			callback: async (feedback, context) => {
 				return await resolveFeedback(
-					_self,
+					self,
 					context,
 					state,
 					EmberModel.ParameterType.String,
@@ -207,10 +261,22 @@ export function GetFeedbacksList(
 				)
 			},
 			subscribe: async (feedback, context) => {
-				await _self.registerNewParameter(await resolvePath(context, feedback.options['path']?.toString() ?? ''))
+				await self.registerNewParameter(
+					await resolvePath(
+						context,
+						feedback.options['usePathVar']
+							? (feedback.options['pathVar']?.toString() ?? '')
+							: (feedback.options['path']?.toString() ?? ''),
+					),
+				)
 			},
 			learn: async (feedback, context) => {
-				const path = await resolvePath(context, feedback.options['path']?.toString() ?? '')
+				const path = await resolvePath(
+					context,
+					feedback.options['usePathVar']
+						? (feedback.options['pathVar']?.toString() ?? '')
+						: (feedback.options['path']?.toString() ?? ''),
+				)
 				if (state.parameters.has(path)) {
 					const val = state.parameters.get(path)
 					return {
@@ -234,19 +300,48 @@ export function GetFeedbacksList(
 					choices: config.monitoredParameters?.map((item) => <DropdownChoice>{ id: item, label: item }) ?? [],
 					default: config.monitoredParameters?.find(() => true) ?? 'No paths configured!',
 					allowCustom: true,
+					isVisible: (options) => {
+						return !options.usePathVar
+					},
+				},
+				{
+					type: 'textinput',
+					label: 'Path',
+					id: 'pathVar',
+					required: true,
+					useVariables: { local: true },
+					default: '',
+					isVisible: (options) => {
+						return !!options.usePathVar
+					},
+				},
+				{
+					type: 'checkbox',
+					label: 'Path from String',
+					id: 'usePathVar',
+					default: false,
 				},
 			],
 			callback: async (feedback, context) => {
 				return await resolveFeedback(
-					_self,
+					self,
 					context,
 					state,
 					EmberModel.ParameterType.Boolean,
-					feedback.options['path']?.toString() ?? '',
+					feedback.options['usePathVar']
+						? (feedback.options['pathVar']?.toString() ?? '')
+						: (feedback.options['path']?.toString() ?? ''),
 				)
 			},
 			subscribe: async (feedback, context) => {
-				await _self.registerNewParameter(await resolvePath(context, feedback.options['path']?.toString() ?? ''))
+				await self.registerNewParameter(
+					await resolvePath(
+						context,
+						feedback.options['usePathVar']
+							? (feedback.options['pathVar']?.toString() ?? '')
+							: (feedback.options['path']?.toString() ?? ''),
+					),
+				)
 			},
 		},
 		[FeedbackId.Take]: {

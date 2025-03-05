@@ -117,7 +117,7 @@ function v270(
 	for (const action of props.actions) {
 		switch (action.actionId) {
 			case 'setValueInt':
-				action.options.factor = action.options.factor === undefined ? '1' : action.options.factor
+				action.options.factor = action.options.factor ?? '1'
 				result.updatedActions.push(action)
 				break
 		}
@@ -125,8 +125,21 @@ function v270(
 	for (const feedback of props.feedbacks) {
 		switch (feedback.feedbackId) {
 			case 'parameter':
-				feedback.options.factor = feedback.options.factor === undefined ? '1' : feedback.options.factor
+				feedback.options.factor = feedback.options.factor ?? '1'
+				feedback.options.pathVar = feedback.options.pathVar ?? feedback.options.path
+				feedback.options.usePathVar = feedback.options.usePathVar ?? false
 				result.updatedFeedbacks.push(feedback)
+				break
+			case 'string':
+				feedback.options.pathVar = feedback.options.pathVar ?? feedback.options.path
+				feedback.options.usePathVar = feedback.options.usePathVar ?? false
+				result.updatedFeedbacks.push(feedback)
+				break
+			case 'boolean':
+				feedback.options.pathVar = feedback.options.pathVar ?? feedback.options.path
+				feedback.options.usePathVar = feedback.options.usePathVar ?? false
+				result.updatedFeedbacks.push(feedback)
+				break
 		}
 	}
 	return result
