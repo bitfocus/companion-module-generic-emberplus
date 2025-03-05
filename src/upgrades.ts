@@ -114,6 +114,13 @@ function v270(
 		updatedFeedbacks: [],
 	}
 
+	if (props.config?.factor === undefined) {
+		result.updatedConfig = {
+			...props.config,
+			factor: false,
+		}
+	}
+
 	for (const action of props.actions) {
 		switch (action.actionId) {
 			case 'setValueInt':

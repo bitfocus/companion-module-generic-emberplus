@@ -12,6 +12,7 @@ export interface EmberPlusConfig {
 	matricesString?: string
 	monitoredParametersString?: string
 	monitoredParameters?: string[]
+	factor: boolean
 }
 
 export function GetConfigFields(): SomeCompanionConfigField[] {
@@ -79,6 +80,13 @@ export function GetConfigFields(): SomeCompanionConfigField[] {
 			label: 'Paths to parameters to monitor',
 			tooltip: 'Please separate by coma',
 			width: 12,
+		},
+		{
+			type: 'checkbox',
+			id: 'factor',
+			label: 'Factorise Integer Parameter Variables?',
+			width: 6,
+			default: true,
 		},
 	]
 }

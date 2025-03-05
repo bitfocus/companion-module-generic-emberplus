@@ -52,19 +52,19 @@ export async function resolveFeedback(
 	if (state.parameters.has(path)) {
 		switch (type) {
 			case EmberModel.ParameterType.Boolean:
-				return Boolean(state.parameters.get(path))
+				return Boolean(state.parameters.get(path)?.value)
 			case EmberModel.ParameterType.Real:
-				return compareNumber(Number(value), comparitor, Number(state.parameters.get(path)))
+				return compareNumber(Number(value), comparitor, Number(state.parameters.get(path)?.value))
 			case EmberModel.ParameterType.Integer:
 			case EmberModel.ParameterType.Enum:
 				return compareNumber(
 					Math.floor(Number(value) * fact),
 					comparitor,
-					Math.floor(Number(state.parameters.get(path))),
+					Math.floor(Number(state.parameters.get(path)?.value)),
 				)
 			case EmberModel.ParameterType.String:
 			default:
-				return state.parameters.get(path)?.toString() == value
+				return state.parameters.get(path)?.value?.toString() == value
 		}
 	} else {
 		self.registerNewParameter(path).catch(() => {})
@@ -196,7 +196,7 @@ export function GetFeedbacksList(
 						: (feedback.options['path']?.toString() ?? ''),
 				)
 				if (state.parameters.has(path)) {
-					const val = state.parameters.get(path)
+					const val = state.parameters.get(path)?.value
 					if (typeof val !== 'number') return undefined
 					return {
 						...feedback.options,
@@ -278,7 +278,7 @@ export function GetFeedbacksList(
 						: (feedback.options['path']?.toString() ?? ''),
 				)
 				if (state.parameters.has(path)) {
-					const val = state.parameters.get(path)
+					const val = state.parameters.get(path)?.value
 					return {
 						...feedback.options,
 						value: val?.toString(),

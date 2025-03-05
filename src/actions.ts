@@ -144,7 +144,7 @@ export async function calcRelativeNumber(
 	self: EmberPlusInstance,
 	state: EmberPlusState,
 ): Promise<number> {
-	let oldValue = Number(state.parameters.get(path))
+	let oldValue = Number(state.parameters.get(path)?.value)
 	if (isNaN(oldValue)) oldValue = 0
 	let newValue = value + oldValue
 	const minLimit = Number(await self.parseVariablesInString(min))
@@ -160,6 +160,50 @@ export async function calcRelativeNumber(
 	if (!isNaN(maxLimit)) newValue = newValue > maxLimit ? maxLimit : newValue
 	return newValue
 }
+
+const learnSetValueActionOptions =
+	(state: EmberPlusState, type: EmberModel.ParameterType) =>
+	async (action: CompanionActionEvent, context: CompanionActionContext): Promise<setValueActionOptions | undefined> => {
+		const path = await resolvePath(context, action.options['path']?.toString() ?? '')
+		if (!state.parameters.has(path)) return undefined
+		const emberPath = state.parameters.get(path)
+		if (type !== emberPath?.parameterType) return undefined
+		const options = action.options as setValueActionOptions
+		switch (type) {
+			case EmberModel.ParameterType.String:
+				if (emberPath?.value) options.value = emberPath?.value?.toString()
+				break
+			case EmberModel.ParameterType.Boolean:
+				if (emberPath?.value) options.value = Boolean(emberPath?.value)
+				if (emberPath?.value) options.valueVar = emberPath?.value.toString()
+				break
+			case EmberModel.ParameterType.Enum:
+				if (emberPath?.value) options.value = Number(emberPath?.value)
+				if (emberPath?.value) options.valueVar = emberPath?.value.toString()
+				if (emberPath?.minimum) options.min = (emberPath?.minimum ?? 0).toString()
+				if (emberPath?.maximum) options.max = emberPath?.maximum.toString()
+				break
+			case EmberModel.ParameterType.Integer:
+				if (emberPath?.value) options.value = Number(emberPath?.value)
+				if (emberPath?.value) options.valueVar = emberPath?.value.toString()
+				if (emberPath?.minimum) options.min = emberPath?.minimum.toString()
+				if (emberPath?.maximum) options.max = emberPath?.maximum.toString()
+				if (emberPath?.factor) {
+					options.factor = emberPath?.factor.toString()
+					options.value = Number(emberPath.value) / emberPath.factor
+					options.valueVar = options.value.toString()
+				}
+				break
+			case EmberModel.ParameterType.Real:
+				if (emberPath?.value) options.value = Number(emberPath?.value)
+				if (emberPath?.value) options.valueVar = emberPath?.value.toString()
+				if (emberPath?.minimum) options.min = emberPath?.minimum.toString()
+				if (emberPath?.maximum) options.max = emberPath?.maximum.toString()
+				break
+			default:
+				return undefined
+		}
+	}
 
 const setValue =
 	(
@@ -221,8 +265,8 @@ const setValue =
 								}
 								value = checkNumberLimits(
 									value,
-									node.contents?.minimum ?? -4294967295,
-									node.contents?.maximum ?? 4294967295,
+									state.parameters.get(path)?.minimum ?? -4294967295,
+									state.parameters.get(path)?.maximum ?? 4294967295,
 								)
 								break
 							case EmberModel.ParameterType.Real:
@@ -245,15 +289,15 @@ const setValue =
 								}
 								value = checkNumberLimits(
 									value,
-									node.contents?.minimum ?? -4294967295,
-									node.contents?.maximum ?? 4294967295,
+									state.parameters.get(path)?.minimum ?? -4294967295,
+									state.parameters.get(path)?.maximum ?? 4294967295,
 								)
 								break
 							case EmberModel.ParameterType.Enum:
 								value = action.options['useVar']
 									? parseInt(await self.parseVariablesInString(action.options['valueVar']?.toString() ?? ''))
 									: Math.floor(Number(action.options['value']))
-								if (isNaN(value) || value > 4294967295 || value < 0) {
+								if (isNaN(value) || value > 4294967295) {
 									return
 								}
 								if (action.options['relative']) {
@@ -267,11 +311,15 @@ const setValue =
 										state,
 									)
 								}
-								value = checkNumberLimits(value, node.contents?.minimum ?? 0, node.contents?.maximum ?? 4294967295)
+								value = checkNumberLimits(
+									value,
+									state.parameters.get(path)?.minimum ?? 0,
+									state.parameters.get(path)?.maximum ?? 4294967295,
+								)
 								break
 							case EmberModel.ParameterType.Boolean:
 								if (action.options['toggle']) {
-									value = !state.parameters.get(path)
+									value = !state.parameters.get(path)?.value
 								} else if (action.options['useVar']) {
 									switch (await self.parseVariablesInString(action.options['valueVar']?.toString() ?? '')) {
 										case 'true':
@@ -579,6 +627,7 @@ export function GetActionsList(
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.Integer, state, queue),
 			subscribe: registerParameter(self),
+			learn: learnSetValueActionOptions(state, EmberModel.ParameterType.Integer),
 		},
 		[ActionId.SetValueReal]: {
 			name: 'Set Value Real',
@@ -630,6 +679,7 @@ export function GetActionsList(
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.Real, state, queue),
 			subscribe: registerParameter(self),
+			learn: learnSetValueActionOptions(state, EmberModel.ParameterType.Real),
 		},
 		[ActionId.SetValueBoolean]: {
 			name: 'Set Value Boolean',
@@ -680,6 +730,7 @@ export function GetActionsList(
 					await self.registerNewParameter(await resolvePath(context, action.options['path']?.toString() ?? ''))
 				}
 			},
+			learn: learnSetValueActionOptions(state, EmberModel.ParameterType.Boolean),
 		},
 		[ActionId.SetValueEnum]: {
 			name: 'Set Value ENUM (as Integer)',
@@ -734,6 +785,7 @@ export function GetActionsList(
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.Enum, state, queue),
 			subscribe: registerParameter(self),
+			learn: learnSetValueActionOptions(state, EmberModel.ParameterType.Enum),
 		},
 		[ActionId.SetValueString]: {
 			name: 'Set Value String',
@@ -749,6 +801,7 @@ export function GetActionsList(
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.String, state, queue),
 			subscribe: registerParameter(self),
+			learn: learnSetValueActionOptions(state, EmberModel.ParameterType.String),
 		},
 		[ActionId.MatrixConnect]: {
 			name: 'Matrix Connect',

@@ -93,7 +93,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 
 	private updateCompanionBits(updateAll: boolean): void {
 		this.setFeedbackDefinitions(GetFeedbacksList(this, this.client, this.config, this.state))
-		this.setVariableDefinitions(GetVariablesList(this.config))
+		this.setVariableDefinitions(GetVariablesList(this.config, this.state))
 		if (!updateAll) return
 		this.setActionDefinitions(GetActionsList(this, this.client, this.config, this.state, this.emberQueue))
 		this.setPresetDefinitions(GetPresetsList())
@@ -258,9 +258,14 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 			this.log('debug', 'Got parameter value for ' + path + ': ' + (node.contents.value ?? ''))
 			let value: boolean | number | string
 			let actionType: ActionId | undefined
-			let min: string = ''
-			let max: string = '4294967295'
-			let factor: string = '1'
+			if (this.state.parameters.has(path)) {
+				this.state.parameters.set(path, {
+					...this.state.parameters.get(path),
+					...node.contents,
+				})
+			} else {
+				this.state.parameters.set(path, node.contents)
+			}
 			switch (node.contents.parameterType) {
 				case EmberModel.ParameterType.Boolean:
 					actionType = ActionId.SetValueBoolean
@@ -268,22 +273,15 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 					break
 				case EmberModel.ParameterType.Integer:
 					actionType = ActionId.SetValueInt
-					value = Number(node.contents.value) / Number(node.contents.factor ?? 1)
-					min = node.contents.minimum?.toString() ?? ''
-					max = node.contents.maximum?.toString() ?? ''
-					factor = node.contents.factor?.toString() ?? '1'
+					value = Number(node.contents.value) / (this.state.parameters.get(path)?.factor ?? 1)
 					break
 				case EmberModel.ParameterType.Real:
 					actionType = ActionId.SetValueReal
 					value = node.contents.value as number
-					min = node.contents.minimum?.toString() ?? ''
-					max = node.contents.maximum?.toString() ?? ''
 					break
 				case EmberModel.ParameterType.Enum:
 					actionType = ActionId.SetValueEnum
 					value = node.contents.value as number
-					min = node.contents.minimum?.toString() ?? '0'
-					max = node.contents.maximum?.toString() ?? ''
 					break
 				case EmberModel.ParameterType.String:
 					actionType = ActionId.SetValueString
@@ -292,9 +290,19 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 				default:
 					value = node.contents.value as string
 			}
-			this.state.parameters.set(path, value)
+			if (this.state.parameters.has(path)) {
+				this.state.parameters.set(path, {
+					...this.state.parameters.get(path),
+					...node.contents,
+				})
+			} else {
+				this.state.parameters.set(path, node.contents)
+			}
 			const variableValues: CompanionVariableValues = {
 				[path.replaceAll(/[# ]/gm, '_')]: value,
+			}
+			if (node.contents.parameterType === ParameterType.Integer && !this.config.factor) {
+				variableValues[path.replaceAll(/[# ]/gm, '_')] = Number(node.contents.value)
 			}
 			if (node.contents.parameterType === ParameterType.Enum) {
 				variableValues[`${path.replaceAll(/[# ]/gm, '_')}_ENUM`] = node.contents?.enumeration ?? ''
@@ -311,10 +319,11 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 					actOptions.useVar = false
 					actOptions.valueVar = value.toString()
 					actOptions.relative = false
-					actOptions.min = min
-					actOptions.max = max
+					actOptions.min = this.state.parameters.get(path)?.minimum?.toString() ?? ''
+					actOptions.max = this.state.parameters.get(path)?.maximum?.toString() ?? ''
 				}
-				if (actionType === ActionId.SetValueInt) actOptions.factor = factor
+				if (actionType === ActionId.SetValueInt)
+					actOptions.factor = this.state.parameters.get(path)?.factor?.toString() ?? '1'
 				this.recordAction(
 					{
 						actionId: actionType,

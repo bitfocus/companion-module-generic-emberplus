@@ -1,3 +1,5 @@
+import type { Model as EmberModel } from 'emberplus-connection'
+
 export interface CurrentSelected {
 	target: number
 	source: number
@@ -6,7 +8,7 @@ export interface CurrentSelected {
 
 export class EmberPlusState {
 	selected: CurrentSelected
-	parameters: Map<string, string | boolean | number> = new Map<string, string | boolean | number>()
+	parameters: Map<string, EmberModel.Parameter> = new Map<string, EmberModel.Parameter>()
 
 	constructor() {
 		this.selected = {
