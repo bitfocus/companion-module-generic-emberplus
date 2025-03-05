@@ -203,6 +203,7 @@ const learnSetValueActionOptions =
 			default:
 				return undefined
 		}
+		return options
 	}
 
 const setValue =
