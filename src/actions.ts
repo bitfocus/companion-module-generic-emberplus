@@ -16,6 +16,7 @@ import type { EmberPlusConfig } from './config'
 import { FeedbackId } from './feedback'
 import type { EmberPlusInstance } from './index'
 import { EmberPlusState } from './state'
+import { parseEscapeCharacters, substituteEscapeCharacters } from './util'
 import type { CompanionCommonCallbackContext } from '@companion-module/base/dist/module-api/common'
 
 export interface setValueActionOptions extends CompanionOptionValues {
@@ -171,7 +172,7 @@ const learnSetValueActionOptions =
 		const options = action.options as setValueActionOptions
 		switch (type) {
 			case EmberModel.ParameterType.String:
-				if (emberPath?.value) options.value = emberPath?.value?.toString()
+				if (emberPath?.value) options.value = substituteEscapeCharacters(emberPath?.value?.toString())
 				break
 			case EmberModel.ParameterType.Boolean:
 				if (emberPath?.value) options.value = Boolean(emberPath?.value)
@@ -237,10 +238,9 @@ const setValue =
 						let factor: number
 						switch (type) {
 							case EmberModel.ParameterType.String:
-								value = (await self.parseVariablesInString(action.options['value']?.toString() ?? ''))
-									.replaceAll('\\n', '\n')
-									.replaceAll('\\r', '\r')
-									.replaceAll('\\t', '\r')
+								value = parseEscapeCharacters(
+									await self.parseVariablesInString(action.options['value']?.toString() ?? ''),
+								)
 								break
 							case EmberModel.ParameterType.Integer:
 								factor = parseInt(await self.parseVariablesInString(action.options['factor']?.toString() ?? '1'))

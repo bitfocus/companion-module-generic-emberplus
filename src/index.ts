@@ -14,6 +14,7 @@ import { EmberClient, Model as EmberModel } from 'emberplus-connection' // note 
 import { ElementType, ParameterType } from 'emberplus-connection/dist/model'
 import type { TreeElement, EmberElement } from 'emberplus-connection/dist/model'
 import { UpgradeScripts } from './upgrades'
+import { substituteEscapeCharacters } from './util'
 import { GetVariablesList } from './variables'
 import delay from 'delay'
 import PQueue from 'p-queue'
@@ -285,7 +286,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 					break
 				case EmberModel.ParameterType.String:
 					actionType = ActionId.SetValueString
-					value = node.contents.value as string
+					value = substituteEscapeCharacters(node.contents.value as string)
 					break
 				default:
 					value = node.contents.value as string
