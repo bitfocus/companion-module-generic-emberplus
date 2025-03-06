@@ -36,7 +36,7 @@
 		"p-queue": "^8.1.0"
 	},
 	"devDependencies": {
-		"@companion-module/tools": "^2.1.1",
+		"@companion-module/tools": "^2.2.1",
 		"@types/node": "^22.13.9",
 		"eslint": "^9.21.0",
 		"husky": "^9.1.7",
