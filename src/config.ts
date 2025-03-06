@@ -87,6 +87,7 @@ export function GetConfigFields(): SomeCompanionConfigField[] {
 			label: 'Factorise Integer Parameter Variables?',
 			width: 6,
 			default: true,
+			tooltip: 'Variables from Integer Parameters will be divided by the Factor field where reported',
 		},
 	]
 }
