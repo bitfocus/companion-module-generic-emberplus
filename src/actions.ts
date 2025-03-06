@@ -143,14 +143,14 @@ export async function calcRelativeNumber(
 	min: string,
 	max: string,
 	type: EmberModel.ParameterType,
-	self: EmberPlusInstance,
+	context: CompanionActionContext,
 	state: EmberPlusState,
 ): Promise<number> {
 	let oldValue = Number(state.parameters.get(path)?.value)
 	if (isNaN(oldValue)) oldValue = 0
 	let newValue = value + oldValue
-	const minLimit = Number(await self.parseVariablesInString(min))
-	const maxLimit = Number(await self.parseVariablesInString(max))
+	const minLimit = Number(await context.parseVariablesInString(min))
+	const maxLimit = Number(await context.parseVariablesInString(max))
 	if (type === EmberModel.ParameterType.Integer) {
 		newValue = Math.round(newValue)
 	}
@@ -242,15 +242,16 @@ const setValue =
 						let factor: number
 						switch (type) {
 							case EmberModel.ParameterType.String:
-								value = await self.parseVariablesInString(action.options['value']?.toString() ?? '')
+								value = await context.parseVariablesInString(action.options['value']?.toString() ?? '')
 								if (action.options['parseEscapeChars']) value = parseEscapeCharacters(value)
 								break
 							case EmberModel.ParameterType.Integer:
-								factor = parseInt(await self.parseVariablesInString(action.options['factor']?.toString() ?? '1'))
+								factor = parseInt(await context.parseVariablesInString(action.options['factor']?.toString() ?? '1'))
 								if (isNaN(factor)) factor = 1
 								value = action.options['useVar']
 									? Math.floor(
-											Number(await self.parseVariablesInString(action.options['valueVar']?.toString() ?? '')) * factor,
+											Number(await context.parseVariablesInString(action.options['valueVar']?.toString() ?? '')) *
+												factor,
 										)
 									: Math.floor(Number(action.options['value']) * factor)
 								if (isNaN(value) || value > 4294967295 || value < -4294967295) {
@@ -263,7 +264,7 @@ const setValue =
 										action.options['min']?.toString() ?? '',
 										action.options['max']?.toString() ?? '',
 										type,
-										self,
+										context,
 										state,
 									)
 								}
@@ -275,7 +276,7 @@ const setValue =
 								break
 							case EmberModel.ParameterType.Real:
 								value = action.options['useVar']
-									? Number(await self.parseVariablesInString(action.options['valueVar']?.toString() ?? ''))
+									? Number(await context.parseVariablesInString(action.options['valueVar']?.toString() ?? ''))
 									: Number(action.options['value'])
 								if (isNaN(value) || value > 4294967295 || value < -4294967295) {
 									return
@@ -287,7 +288,7 @@ const setValue =
 										action.options['min']?.toString() ?? '',
 										action.options['max']?.toString() ?? '',
 										type,
-										self,
+										context,
 										state,
 									)
 								}
@@ -299,7 +300,7 @@ const setValue =
 								break
 							case EmberModel.ParameterType.Enum:
 								value = action.options['useVar']
-									? parseInt(await self.parseVariablesInString(action.options['valueVar']?.toString() ?? ''))
+									? parseInt(await context.parseVariablesInString(action.options['valueVar']?.toString() ?? ''))
 									: Math.floor(Number(action.options['value']))
 								if (isNaN(value) || value > 4294967295) {
 									return
@@ -311,7 +312,7 @@ const setValue =
 										action.options['min']?.toString() ?? '',
 										action.options['max']?.toString() ?? '',
 										type,
-										self,
+										context,
 										state,
 									)
 								}
@@ -325,7 +326,7 @@ const setValue =
 								if (action.options['toggle']) {
 									value = !state.parameters.get(path)?.value
 								} else if (action.options['useVar']) {
-									switch (await self.parseVariablesInString(action.options['valueVar']?.toString() ?? '')) {
+									switch (await context.parseVariablesInString(action.options['valueVar']?.toString() ?? '')) {
 										case 'true':
 										case 'on':
 										case '1':
@@ -337,7 +338,9 @@ const setValue =
 											value = false
 											break
 										default:
-											value = Boolean(await self.parseVariablesInString(action.options['valueVar']?.toString() ?? ''))
+											value = Boolean(
+												await context.parseVariablesInString(action.options['valueVar']?.toString() ?? ''),
+											)
 									}
 								} else {
 									value = Boolean(action.options['value'])
