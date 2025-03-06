@@ -196,12 +196,13 @@ export function GetFeedbacksList(
 						: (feedback.options['path']?.toString() ?? ''),
 				)
 				if (state.parameters.has(path)) {
-					const val = state.parameters.get(path)?.value
-					if (typeof val !== 'number') return undefined
+					const val = state.parameters.get(path)
+					if (typeof val?.value !== 'number') return undefined
 					return {
 						...feedback.options,
-						value: val,
-						valueVar: val?.toString(),
+						value: val.value,
+						valueVar: val?.value.toString(),
+						factor: val.factor ?? feedback.options.factor,
 					}
 				}
 				return undefined
@@ -279,6 +280,7 @@ export function GetFeedbacksList(
 				)
 				if (state.parameters.has(path)) {
 					const val = state.parameters.get(path)?.value
+					if (val === undefined) return undefined
 					return {
 						...feedback.options,
 						value: val?.toString(),
