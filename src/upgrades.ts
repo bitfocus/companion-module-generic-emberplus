@@ -127,6 +127,10 @@ function v270(
 				action.options.factor = action.options.factor ?? '1'
 				result.updatedActions.push(action)
 				break
+			case 'setValueString':
+				action.options.parseEscapeChars = action.options.parseEscapeChars ?? false
+				result.updatedActions.push(action)
+				break
 		}
 	}
 	for (const feedback of props.feedbacks) {

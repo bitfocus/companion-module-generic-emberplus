@@ -322,6 +322,8 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 					actOptions.relative = false
 					actOptions.min = this.state.parameters.get(path)?.minimum?.toString() ?? ''
 					actOptions.max = this.state.parameters.get(path)?.maximum?.toString() ?? ''
+				} else {
+					actOptions.parseEscapeChars = true
 				}
 				if (actionType === ActionId.SetValueInt)
 					actOptions.factor = this.state.parameters.get(path)?.factor?.toString() ?? '1'

@@ -30,6 +30,7 @@ export interface setValueActionOptions extends CompanionOptionValues {
 	max?: string
 	factor?: string
 	toggle?: boolean
+	parseEscapeChars?: boolean
 }
 
 export enum ActionId {
@@ -172,7 +173,10 @@ const learnSetValueActionOptions =
 		const options = action.options as setValueActionOptions
 		switch (type) {
 			case EmberModel.ParameterType.String:
-				if (emberPath?.value) options.value = substituteEscapeCharacters(emberPath?.value?.toString())
+				if (emberPath?.value) {
+					options.value = substituteEscapeCharacters(emberPath?.value?.toString())
+					options.parseEscapeChars = true
+				}
 				break
 			case EmberModel.ParameterType.Boolean:
 				if (emberPath?.value) options.value = Boolean(emberPath?.value)
@@ -238,9 +242,8 @@ const setValue =
 						let factor: number
 						switch (type) {
 							case EmberModel.ParameterType.String:
-								value = parseEscapeCharacters(
-									await self.parseVariablesInString(action.options['value']?.toString() ?? ''),
-								)
+								value = await self.parseVariablesInString(action.options['value']?.toString() ?? '')
+								if (action.options['parseEscapeChars']) value = parseEscapeCharacters(value)
 								break
 							case EmberModel.ParameterType.Integer:
 								factor = parseInt(await self.parseVariablesInString(action.options['factor']?.toString() ?? '1'))
@@ -617,12 +620,14 @@ export function GetActionsList(
 					isVisible: (options) => {
 						return !!options.relative
 					},
+					tooltip: 'Relative action maximum value will be limited to this value. Value is not factored',
 				},
 				{
 					...maxLimit,
 					isVisible: (options) => {
 						return !!options.relative
 					},
+					tooltip: 'Relative action maximum value will be limited to this value. Value is not factored',
 				},
 				factorOpt,
 			],
@@ -797,6 +802,13 @@ export function GetActionsList(
 					label: 'Value',
 					id: 'value',
 					useVariables: true,
+				},
+				{
+					type: 'checkbox',
+					label: 'Parse escape characters',
+					id: 'parseEscapeChars',
+					default: true,
+					tooltip: 'Parse escape characters such as \\r \\n \\t',
 				},
 				createVariable,
 			],
