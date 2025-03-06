@@ -138,7 +138,7 @@ export function GetFeedbacksList(
 					label: 'Value',
 					id: 'valueVar',
 					required: true,
-					useVariables: true,
+					useVariables: { local: true },
 					default: '0',
 					isVisible: (options) => {
 						return !!options.useVar
@@ -246,7 +246,7 @@ export function GetFeedbacksList(
 					label: 'Value',
 					id: 'value',
 					required: true,
-					useVariables: true,
+					useVariables: { local: true },
 					default: '0',
 				},
 			],

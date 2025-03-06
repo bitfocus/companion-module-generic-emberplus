@@ -52,7 +52,7 @@ const pathInput: CompanionInputFieldTextInput = {
 	type: 'textinput',
 	label: 'Path',
 	id: 'path',
-	useVariables: true,
+	useVariables: { local: true },
 	tooltip: `Path may be supplied in decimals: 1.2.3, text: path.to.ember.element, or with a descriptor and the decimals wrapped in brackets: path to ember element[1.2.3.4]`,
 }
 
@@ -61,7 +61,7 @@ const minLimit: CompanionInputFieldTextInput = {
 	label: 'Minimum',
 	id: 'min',
 	default: '-4294967295',
-	useVariables: true,
+	useVariables: { local: true },
 	tooltip: 'Relative action minimum value will be limited to this value',
 }
 
@@ -70,7 +70,7 @@ const maxLimit: CompanionInputFieldTextInput = {
 	label: 'Maximum',
 	id: 'max',
 	default: '4294967295',
-	useVariables: true,
+	useVariables: { local: true },
 	tooltip: 'Relative action maximum value will be limited to this value',
 }
 
@@ -100,7 +100,7 @@ export const factorOpt: CompanionInputFieldTextInput = {
 	type: 'textinput',
 	label: 'Factor',
 	id: 'factor',
-	useVariables: true,
+	useVariables: { local: true },
 	default: '1',
 	tooltip: `Value will be multiplied by this field`,
 }
@@ -601,7 +601,7 @@ export function GetActionsList(
 					label: 'Value',
 					id: 'valueVar',
 					required: true,
-					useVariables: true,
+					useVariables: { local: true },
 					default: '0',
 					isVisible: (options) => {
 						return !!options.useVar
@@ -657,7 +657,7 @@ export function GetActionsList(
 					label: 'Value',
 					id: 'valueVar',
 					default: '0.0',
-					useVariables: true,
+					useVariables: { local: true },
 					isVisible: (options) => {
 						return !!options.useVar
 					},
@@ -712,7 +712,7 @@ export function GetActionsList(
 					label: 'Value',
 					id: 'valueVar',
 					default: 'false',
-					useVariables: true,
+					useVariables: { local: true },
 					isVisible: (options) => {
 						return !!options.useVar && !options.toggle
 					},
@@ -760,7 +760,7 @@ export function GetActionsList(
 					label: 'Value',
 					id: 'valueVar',
 					required: true,
-					useVariables: true,
+					useVariables: { local: true },
 					default: '0',
 					tooltip: 'Return an integer between 0 and 4294967295',
 					isVisible: (options) => {
@@ -801,7 +801,7 @@ export function GetActionsList(
 					type: 'textinput',
 					label: 'Value',
 					id: 'value',
-					useVariables: true,
+					useVariables: { local: true },
 				},
 				{
 					type: 'checkbox',
