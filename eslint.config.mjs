@@ -12,7 +12,7 @@ const customConfig = [
 			'@typescript-eslint/no-unsafe-enum-comparison': 'off',
 			// misconfiguration of ts or something?
 			'n/no-missing-import': 'off',
-			// 'm/no-unpublished-import': 'off',
+			'n/no-unpublished-import': 'off',
 		},
 	},
 ]

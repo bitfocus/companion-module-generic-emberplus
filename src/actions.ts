@@ -194,7 +194,7 @@ const learnSetValueActionOptions =
 				if (emberPath?.minimum) options.min = emberPath?.minimum.toString()
 				if (emberPath?.maximum) options.max = emberPath?.maximum.toString()
 				if (emberPath?.factor) {
-					options.factor = emberPath?.factor.toString()
+					options.factor = emberPath.factor.toString()
 					options.value = Number(emberPath.value) / emberPath.factor
 					options.valueVar = options.value.toString()
 				}
