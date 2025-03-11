@@ -96,6 +96,10 @@ export function substituteEscapeCharacters(msg: string): string {
 	return message
 }
 
+/**
+ * Return array of dropdown choices of registered paths of the specified parameter type(s)
+ */
+
 export function filterPathChoices(state: EmberPlusState, ...paramFilter: EmberModel.ParameterType[]): DropdownChoice[] {
 	const choices: DropdownChoice[] = []
 	for (const [path, value] of state.parameters) {
