@@ -4,6 +4,10 @@ import type {
 	CompanionFeedbackDefinitions,
 	CompanionFeedbackContext,
 	CompanionFeedbackInfo,
+	CompanionInputFieldDropdown,
+	CompanionInputFieldTextInput,
+	CompanionInputFieldCheckbox,
+	CompanionInputFieldNumber,
 } from '@companion-module/base'
 import type { EmberPlusInstance } from './index'
 import { EmberClient, Model as EmberModel } from 'emberplus-connection'
@@ -32,6 +36,102 @@ const styles = {
 		bgcolor: combineRgb(255, 0, 0),
 		color: combineRgb(0, 0, 0),
 	},
+}
+
+const pathDropDown: CompanionInputFieldDropdown = {
+	type: 'dropdown',
+	label: 'Select registered path',
+	id: 'path',
+	choices: [],
+	default: 'No paths configured!',
+	allowCustom: true,
+}
+
+const pathString: CompanionInputFieldTextInput = {
+	type: 'textinput',
+	label: 'Path',
+	id: 'pathVar',
+	required: true,
+	useVariables: { local: true },
+	default: '',
+}
+const usePathVar: CompanionInputFieldCheckbox = {
+	type: 'checkbox',
+	label: 'Path from String',
+	id: 'usePathVar',
+	default: false,
+}
+
+const valueText: CompanionInputFieldTextInput = {
+	type: 'textinput',
+	label: 'Value',
+	id: 'value',
+	required: true,
+	useVariables: { local: true },
+	default: '',
+}
+
+const valueNumber: CompanionInputFieldNumber = {
+	type: 'number',
+	label: 'Value',
+	id: 'value',
+	required: true,
+	min: -0xffffffff,
+	max: 0xffffffff,
+	default: 0,
+}
+
+const comparitorDropdown: CompanionInputFieldDropdown = {
+	type: 'dropdown',
+	label: 'Comparitor',
+	id: 'comparitor',
+	choices: comparitorOptions,
+	default: comparitorOptions[0].id,
+	allowCustom: false,
+}
+
+const useVarCheckbox: CompanionInputFieldCheckbox = {
+	type: 'checkbox',
+	label: 'Use Variable?',
+	id: 'useVar',
+	default: false,
+}
+const asIntCheckbox: CompanionInputFieldCheckbox = {
+	type: 'checkbox',
+	label: 'As Integers?',
+	id: 'asInt',
+	default: false,
+	tooltip: '',
+}
+
+const matrixNumber: CompanionInputFieldNumber = {
+	type: 'number',
+	label: 'Select Matrix Number',
+	id: 'matrix',
+	required: true,
+	min: -0,
+	max: 0xffffffff,
+	default: 0,
+}
+
+const sourceNumber: CompanionInputFieldNumber = {
+	type: 'number',
+	label: 'Value',
+	id: 'source',
+	required: true,
+	min: -0,
+	max: 0xffffffff,
+	default: 0,
+}
+
+const targetNumber: CompanionInputFieldNumber = {
+	type: 'number',
+	label: 'Value',
+	id: 'target',
+	required: true,
+	min: -0,
+	max: 0xffffffff,
+	default: 0,
 }
 
 async function resolveFeedbackPath(
@@ -99,9 +199,7 @@ export function GetFeedbacksList(
 			defaultStyle: styles.blackOnWhite,
 			options: [
 				{
-					type: 'dropdown',
-					label: 'Select registered path',
-					id: 'path',
+					...pathDropDown,
 					choices:
 						filterPathChoices(
 							state,
@@ -116,72 +214,34 @@ export function GetFeedbacksList(
 							EmberModel.ParameterType.Real,
 							EmberModel.ParameterType.Integer,
 						).find(() => true)?.id ?? 'No paths configured!',
-					allowCustom: true,
 					isVisible: (options) => {
 						return !options.usePathVar
 					},
 				},
 				{
-					type: 'textinput',
-					label: 'Path',
-					id: 'pathVar',
-					required: true,
-					useVariables: { local: true },
-					default: '',
+					...pathString,
 					isVisible: (options) => {
 						return !!options.usePathVar
 					},
 				},
+				usePathVar,
+				comparitorDropdown,
 				{
-					type: 'checkbox',
-					label: 'Path from String',
-					id: 'usePathVar',
-					default: false,
-				},
-				{
-					type: 'dropdown',
-					label: 'Comparitor',
-					id: 'comparitor',
-					choices: comparitorOptions,
-					default: comparitorOptions[0].id,
-					allowCustom: false,
-				},
-				{
-					type: 'number',
-					label: 'Value',
-					id: 'value',
-					required: true,
-					min: -0xffffffff,
-					max: 0xffffffff,
-					default: 0,
+					...valueNumber,
 					isVisible: (options) => {
 						return !options.useVar
 					},
 				},
 				{
-					type: 'textinput',
-					label: 'Value',
+					...valueText,
 					id: 'valueVar',
-					required: true,
-					useVariables: { local: true },
 					default: '0',
 					isVisible: (options) => {
 						return !!options.useVar
 					},
 				},
-				{
-					type: 'checkbox',
-					label: 'Use Variable?',
-					id: 'useVar',
-					default: false,
-				},
-				{
-					type: 'checkbox',
-					label: 'As Integers?',
-					id: 'asInt',
-					default: false,
-					tooltip: '',
-				},
+				useVarCheckbox,
+				asIntCheckbox,
 				{
 					...factorOpt,
 					isVisible: (options) => {
@@ -226,42 +286,22 @@ export function GetFeedbacksList(
 			defaultStyle: styles.blackOnWhite,
 			options: [
 				{
-					type: 'dropdown',
-					label: 'Select registered path',
-					id: 'path',
+					...pathDropDown,
 					choices: filterPathChoices(state, EmberModel.ParameterType.String) ?? [],
 					default:
 						filterPathChoices(state, EmberModel.ParameterType.String).find(() => true)?.id ?? 'No paths configured!',
-					allowCustom: true,
 					isVisible: (options) => {
 						return !options.usePathVar
 					},
 				},
 				{
-					type: 'textinput',
-					label: 'Path',
-					id: 'pathVar',
-					required: true,
-					useVariables: { local: true },
-					default: '',
+					...pathString,
 					isVisible: (options) => {
 						return !!options.usePathVar
 					},
 				},
-				{
-					type: 'checkbox',
-					label: 'Path from String',
-					id: 'usePathVar',
-					default: false,
-				},
-				{
-					type: 'textinput',
-					label: 'Value',
-					id: 'value',
-					required: true,
-					useVariables: { local: true },
-					default: '0',
-				},
+				usePathVar,
+				valueText,
 			],
 			callback: async (feedback, context) => {
 				return await resolveFeedback(
@@ -296,42 +336,22 @@ export function GetFeedbacksList(
 			defaultStyle: styles.blackOnWhite,
 			options: [
 				{
-					type: 'dropdown',
-					label: 'Select registered path',
-					id: 'path',
+					...pathDropDown,
 					choices: filterPathChoices(state, EmberModel.ParameterType.Enum) ?? [],
 					default:
 						filterPathChoices(state, EmberModel.ParameterType.Enum).find(() => true)?.id ?? 'No paths configured!',
-					allowCustom: true,
 					isVisible: (options) => {
 						return !options.usePathVar
 					},
 				},
 				{
-					type: 'textinput',
-					label: 'Path',
-					id: 'pathVar',
-					required: true,
-					useVariables: { local: true },
-					default: '',
+					...pathString,
 					isVisible: (options) => {
 						return !!options.usePathVar
 					},
 				},
-				{
-					type: 'checkbox',
-					label: 'Path from String',
-					id: 'usePathVar',
-					default: false,
-				},
-				{
-					type: 'textinput',
-					label: 'Value',
-					id: 'value',
-					required: true,
-					useVariables: { local: true },
-					default: '',
-				},
+				usePathVar,
+				valueText,
 			],
 			callback: async (feedback, context) => {
 				return await resolveFeedback(
@@ -366,34 +386,21 @@ export function GetFeedbacksList(
 			defaultStyle: styles.blackOnWhite,
 			options: [
 				{
-					type: 'dropdown',
-					label: 'Select registered path',
-					id: 'path',
+					...pathDropDown,
 					choices: filterPathChoices(state, EmberModel.ParameterType.Boolean) ?? [],
 					default:
 						filterPathChoices(state, EmberModel.ParameterType.Boolean).find(() => true)?.id ?? 'No paths configured!',
-					allowCustom: true,
 					isVisible: (options) => {
 						return !options.usePathVar
 					},
 				},
 				{
-					type: 'textinput',
-					label: 'Path',
-					id: 'pathVar',
-					required: true,
-					useVariables: { local: true },
-					default: '',
+					...pathString,
 					isVisible: (options) => {
 						return !!options.usePathVar
 					},
 				},
-				{
-					type: 'checkbox',
-					label: 'Path from String',
-					id: 'usePathVar',
-					default: false,
-				},
+				usePathVar,
 			],
 			callback: async (feedback, context) => {
 				return await resolveFeedback(
@@ -433,26 +440,7 @@ export function GetFeedbacksList(
 			description: 'Change Background of Source, when it is currently selected.',
 			type: 'boolean',
 			defaultStyle: styles.blackOnRed,
-			options: [
-				{
-					type: 'number',
-					label: 'Select Matrix Number',
-					id: 'matrix',
-					required: true,
-					min: -0,
-					max: 0xffffffff,
-					default: 0,
-				},
-				{
-					type: 'number',
-					label: 'Value',
-					id: 'source',
-					required: true,
-					min: -0,
-					max: 0xffffffff,
-					default: 0,
-				},
-			],
+			options: [matrixNumber, sourceNumber],
 			callback: (feedback) => {
 				return (
 					state.selected.source == feedback.options['source'] && state.selected.matrix == feedback.options['matrix']
@@ -464,26 +452,7 @@ export function GetFeedbacksList(
 			description: 'Change Background of Target, when it is currently selected.',
 			type: 'boolean',
 			defaultStyle: styles.blackOnRed,
-			options: [
-				{
-					type: 'number',
-					label: 'Select Matrix Number',
-					id: 'matrix',
-					required: true,
-					min: -0,
-					max: 0xffffffff,
-					default: 0,
-				},
-				{
-					type: 'number',
-					label: 'Value',
-					id: 'target',
-					required: true,
-					min: -0,
-					max: 0xffffffff,
-					default: 0,
-				},
-			],
+			options: [matrixNumber, targetNumber],
 			callback: (feedback) => {
 				return (
 					state.selected.target == feedback.options['target'] && state.selected.matrix == feedback.options['matrix']
