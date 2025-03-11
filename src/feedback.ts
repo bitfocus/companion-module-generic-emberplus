@@ -3,6 +3,7 @@ import type {
 	CompanionFeedbackDefinition,
 	CompanionFeedbackDefinitions,
 	CompanionFeedbackContext,
+	CompanionFeedbackInfo,
 } from '@companion-module/base'
 import type { EmberPlusInstance } from './index'
 import { EmberClient, Model as EmberModel } from 'emberplus-connection'
@@ -15,6 +16,7 @@ export enum FeedbackId {
 	Parameter = 'parameter',
 	String = 'string',
 	Boolean = 'boolean',
+	ENUM = 'enum',
 	Take = 'take',
 	Clear = 'clear',
 	SourceBackgroundSelected = 'sourceBackgroundSelected',
@@ -32,19 +34,30 @@ const styles = {
 	},
 }
 
+async function resolveFeedbackPath(
+	feedback: CompanionFeedbackInfo,
+	context: CompanionFeedbackContext,
+): Promise<string> {
+	return await resolvePath(
+		context,
+		feedback.options['usePathVar']
+			? (feedback.options['pathVar']?.toString() ?? '')
+			: (feedback.options['path']?.toString() ?? ''),
+	)
+}
+
 export async function resolveFeedback(
 	self: EmberPlusInstance,
 	context: CompanionFeedbackContext,
 	state: EmberPlusState,
 	type: EmberModel.ParameterType,
-	rawPath: string,
+	path: string,
 	value?: boolean | number | string,
 	comparitor: NumberComparitor = NumberComparitor.Equal,
 	factor: string = '1',
 ): Promise<boolean> {
 	let fact = parseInt(await context.parseVariablesInString(factor))
 	if (isNaN(fact)) fact = 1
-	const path = await resolvePath(context, rawPath)
 	if (typeof value === 'string') {
 		value = await context.parseVariablesInString(value)
 	}
@@ -55,12 +68,13 @@ export async function resolveFeedback(
 			case EmberModel.ParameterType.Real:
 				return compareNumber(Number(value), comparitor, Number(state.parameters.get(path)?.value))
 			case EmberModel.ParameterType.Integer:
-			case EmberModel.ParameterType.Enum:
 				return compareNumber(
 					Math.floor(Number(value) * fact),
 					comparitor,
 					Math.floor(Number(state.parameters.get(path)?.value)),
 				)
+			case EmberModel.ParameterType.Enum:
+				return state.parameters.get(path)?.enumeration == value
 			case EmberModel.ParameterType.String:
 			default:
 				return state.parameters.get(path)?.value?.toString() == value
@@ -181,31 +195,17 @@ export function GetFeedbacksList(
 					context,
 					state,
 					feedback.options['asInt'] ? EmberModel.ParameterType.Integer : EmberModel.ParameterType.Real,
-					feedback.options['usePathVar']
-						? (feedback.options['pathVar']?.toString() ?? '')
-						: (feedback.options['path']?.toString() ?? ''),
+					await resolveFeedbackPath(feedback, context),
 					feedback.options['useVar'] ? String(feedback.options['valueVar']) : Number(feedback.options['value']),
 					feedback.options['comparitor'] as NumberComparitor,
 					feedback.options['factor']?.toString() ?? '1',
 				)
 			},
 			subscribe: async (feedback, context) => {
-				await self.registerNewParameter(
-					await resolvePath(
-						context,
-						feedback.options['usePathVar']
-							? (feedback.options['pathVar']?.toString() ?? '')
-							: (feedback.options['path']?.toString() ?? ''),
-					),
-				)
+				await self.registerNewParameter(await resolveFeedbackPath(feedback, context))
 			},
 			learn: async (feedback, context) => {
-				const path = await resolvePath(
-					context,
-					feedback.options['usePathVar']
-						? (feedback.options['pathVar']?.toString() ?? '')
-						: (feedback.options['path']?.toString() ?? ''),
-				)
+				const path = await resolveFeedbackPath(feedback, context)
 				if (state.parameters.has(path)) {
 					const val = state.parameters.get(path)
 					if (typeof val?.value !== 'number') return undefined
@@ -269,29 +269,87 @@ export function GetFeedbacksList(
 					context,
 					state,
 					EmberModel.ParameterType.String,
-					feedback.options['path']?.toString() ?? '',
+					await resolveFeedbackPath(feedback, context),
 					feedback.options['value']?.toString() ?? '',
 				)
 			},
 			subscribe: async (feedback, context) => {
-				await self.registerNewParameter(
-					await resolvePath(
-						context,
-						feedback.options['usePathVar']
-							? (feedback.options['pathVar']?.toString() ?? '')
-							: (feedback.options['path']?.toString() ?? ''),
-					),
-				)
+				await self.registerNewParameter(await resolveFeedbackPath(feedback, context))
 			},
 			learn: async (feedback, context) => {
-				const path = await resolvePath(
-					context,
-					feedback.options['usePathVar']
-						? (feedback.options['pathVar']?.toString() ?? '')
-						: (feedback.options['path']?.toString() ?? ''),
-				)
+				const path = await resolveFeedbackPath(feedback, context)
 				if (state.parameters.has(path)) {
 					const val = state.parameters.get(path)?.value
+					if (val === undefined) return undefined
+					return {
+						...feedback.options,
+						value: val?.toString(),
+					}
+				}
+				return undefined
+			},
+		},
+		[FeedbackId.ENUM]: {
+			name: 'Parameter ENUM Equals String',
+			description: 'Checks the current Enumeration of an ENUM parameter against a String',
+			type: 'boolean',
+			defaultStyle: styles.blackOnWhite,
+			options: [
+				{
+					type: 'dropdown',
+					label: 'Select registered path',
+					id: 'path',
+					choices: filterPathChoices(state, EmberModel.ParameterType.Enum) ?? [],
+					default:
+						filterPathChoices(state, EmberModel.ParameterType.Enum).find(() => true)?.id ?? 'No paths configured!',
+					allowCustom: true,
+					isVisible: (options) => {
+						return !options.usePathVar
+					},
+				},
+				{
+					type: 'textinput',
+					label: 'Path',
+					id: 'pathVar',
+					required: true,
+					useVariables: { local: true },
+					default: '',
+					isVisible: (options) => {
+						return !!options.usePathVar
+					},
+				},
+				{
+					type: 'checkbox',
+					label: 'Path from String',
+					id: 'usePathVar',
+					default: false,
+				},
+				{
+					type: 'textinput',
+					label: 'Value',
+					id: 'value',
+					required: true,
+					useVariables: { local: true },
+					default: '',
+				},
+			],
+			callback: async (feedback, context) => {
+				return await resolveFeedback(
+					self,
+					context,
+					state,
+					EmberModel.ParameterType.Enum,
+					await resolveFeedbackPath(feedback, context),
+					feedback.options['value']?.toString() ?? '',
+				)
+			},
+			subscribe: async (feedback, context) => {
+				await self.registerNewParameter(await resolveFeedbackPath(feedback, context))
+			},
+			learn: async (feedback, context) => {
+				const path = await resolveFeedbackPath(feedback, context)
+				if (state.parameters.has(path)) {
+					const val = state.parameters.get(path)?.enumeration
 					if (val === undefined) return undefined
 					return {
 						...feedback.options,
@@ -343,20 +401,11 @@ export function GetFeedbacksList(
 					context,
 					state,
 					EmberModel.ParameterType.Boolean,
-					feedback.options['usePathVar']
-						? (feedback.options['pathVar']?.toString() ?? '')
-						: (feedback.options['path']?.toString() ?? ''),
+					await resolveFeedbackPath(feedback, context),
 				)
 			},
 			subscribe: async (feedback, context) => {
-				await self.registerNewParameter(
-					await resolvePath(
-						context,
-						feedback.options['usePathVar']
-							? (feedback.options['pathVar']?.toString() ?? '')
-							: (feedback.options['path']?.toString() ?? ''),
-					),
-				)
+				await self.registerNewParameter(await resolveFeedbackPath(feedback, context))
 			},
 		},
 		[FeedbackId.Take]: {

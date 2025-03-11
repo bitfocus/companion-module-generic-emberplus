@@ -34,7 +34,7 @@ Central to the concept of ember+ is the address or path of the data element you 
 
 - #### String: Path.To.Ember.Node
 
-  Paths can also be entered as a period seperated string. Such as _Path.To.Ember.Node_. These text paths can be found in Ember Plus Viewer, however they need to be reformatted to use period seperators rather than forward slashes. Note: The '#' character used in ember paths are not supported for use in variables by companion, and will be replaced by '\_' in variable ids - the path can still be used in actions and feedbacks however.
+  Paths can also be entered as a period seperated string. Such as _Path.To.Ember.Node_. These text paths can be found in Ember Plus Viewer, however they need to be reformatted to use period seperators rather than forward slashes. Note: ' ' & '#' characters used in ember paths are not supported for use in variables by companion, and will be replaced by '\_' in variable ids - the path can still be used in actions and feedbacks however.
 
 - #### Decimal in Brackets: My Useful Ember Path [1.2.3.4]
 
@@ -46,9 +46,6 @@ Central to the concept of ember+ is the address or path of the data element you 
 ## Value Fields
 
 For Set Value Actions one must ensure the correct data type is selected. In particular confusion can occur between Integer and ENUM types.
-
-For both actions and feedbacks, values are treated 'raw' - that is the transform specified in the _factor_ field is not applied. Companion expressions can be used to perform these transforms if necessary.
-Similarly ENUMS are always refered to by Integer Index .
 
 ## Actions
 
@@ -69,6 +66,7 @@ Similarly ENUMS are always refered to by Integer Index .
 
 - Parameter Compare Number
 - Parameter Equals String
+- Parameter ENUM Equals String
 - Parameter True
 - Take is possible
 - Clear is possible
