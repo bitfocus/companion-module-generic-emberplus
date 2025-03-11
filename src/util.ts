@@ -1,4 +1,6 @@
 import type { DropdownChoice } from '@companion-module/base'
+import { EmberPlusState } from './state'
+import type { Model as EmberModel } from 'emberplus-connection'
 
 export const MEDIA_PLAYER_SOURCE_CLIP_OFFSET = 1000
 
@@ -92,4 +94,23 @@ export function substituteEscapeCharacters(msg: string): string {
 		.replaceAll('\x03', '\\x03')
 		.replaceAll('\\', '\\\\')
 	return message
+}
+
+export function filterPathChoices(state: EmberPlusState, ...paramFilter: EmberModel.ParameterType[]): DropdownChoice[] {
+	const choices: DropdownChoice[] = []
+	for (const [path, value] of state.parameters) {
+		let label = `${path}`
+		paramFilter.forEach((element) => {
+			if (element === value.parameterType) {
+				if (value.identifier) {
+					label += `: ${value.identifier}`
+				}
+				if (value.description) {
+					label += ` (${value.description})`
+				}
+				choices.push({ id: path, label: label })
+			}
+		})
+	}
+	return choices
 }

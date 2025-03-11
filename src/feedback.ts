@@ -3,14 +3,13 @@ import type {
 	CompanionFeedbackDefinition,
 	CompanionFeedbackDefinitions,
 	CompanionFeedbackContext,
-	DropdownChoice,
 } from '@companion-module/base'
 import type { EmberPlusInstance } from './index'
 import { EmberClient, Model as EmberModel } from 'emberplus-connection'
 import { resolvePath, factorOpt } from './actions'
 import type { EmberPlusConfig } from './config'
 import { EmberPlusState } from './state'
-import { compareNumber, comparitorOptions, NumberComparitor } from './util'
+import { compareNumber, comparitorOptions, filterPathChoices, NumberComparitor } from './util'
 
 export enum FeedbackId {
 	Parameter = 'parameter',
@@ -75,7 +74,7 @@ export async function resolveFeedback(
 export function GetFeedbacksList(
 	self: EmberPlusInstance, //InstanceBase<EmberPlusConfig>,
 	_emberClient: EmberClient,
-	config: EmberPlusConfig,
+	_config: EmberPlusConfig,
 	state: EmberPlusState,
 ): CompanionFeedbackDefinitions {
 	const feedbacks: { [id in FeedbackId]: CompanionFeedbackDefinition | undefined } = {
@@ -89,8 +88,20 @@ export function GetFeedbacksList(
 					type: 'dropdown',
 					label: 'Select registered path',
 					id: 'path',
-					choices: config.monitoredParameters?.map((item) => <DropdownChoice>{ id: item, label: item }) ?? [],
-					default: config.monitoredParameters?.find(() => true) ?? 'No paths configured!',
+					choices:
+						filterPathChoices(
+							state,
+							EmberModel.ParameterType.Enum,
+							EmberModel.ParameterType.Real,
+							EmberModel.ParameterType.Integer,
+						) ?? [],
+					default:
+						filterPathChoices(
+							state,
+							EmberModel.ParameterType.Enum,
+							EmberModel.ParameterType.Real,
+							EmberModel.ParameterType.Integer,
+						).find(() => true)?.id ?? 'No paths configured!',
 					allowCustom: true,
 					isVisible: (options) => {
 						return !options.usePathVar
@@ -218,8 +229,9 @@ export function GetFeedbacksList(
 					type: 'dropdown',
 					label: 'Select registered path',
 					id: 'path',
-					choices: config.monitoredParameters?.map((item) => <DropdownChoice>{ id: item, label: item }) ?? [],
-					default: config.monitoredParameters?.find(() => true) ?? 'No paths configured!',
+					choices: filterPathChoices(state, EmberModel.ParameterType.String) ?? [],
+					default:
+						filterPathChoices(state, EmberModel.ParameterType.String).find(() => true)?.id ?? 'No paths configured!',
 					allowCustom: true,
 					isVisible: (options) => {
 						return !options.usePathVar
@@ -299,8 +311,9 @@ export function GetFeedbacksList(
 					type: 'dropdown',
 					label: 'Select registered path',
 					id: 'path',
-					choices: config.monitoredParameters?.map((item) => <DropdownChoice>{ id: item, label: item }) ?? [],
-					default: config.monitoredParameters?.find(() => true) ?? 'No paths configured!',
+					choices: filterPathChoices(state, EmberModel.ParameterType.Boolean) ?? [],
+					default:
+						filterPathChoices(state, EmberModel.ParameterType.Boolean).find(() => true)?.id ?? 'No paths configured!',
 					allowCustom: true,
 					isVisible: (options) => {
 						return !options.usePathVar
