@@ -14,7 +14,7 @@ import { EmberClient, Model as EmberModel } from 'emberplus-connection'
 import { resolvePath, factorOpt } from './actions'
 import type { EmberPlusConfig } from './config'
 import { EmberPlusState } from './state'
-import { compareNumber, comparitorOptions, filterPathChoices, NumberComparitor } from './util'
+import { compareNumber, comparitorOptions, filterPathChoices, NumberComparitor, parseEscapeCharacters } from './util'
 
 export enum FeedbackId {
 	Parameter = 'parameter',
@@ -25,6 +25,12 @@ export enum FeedbackId {
 	Clear = 'clear',
 	SourceBackgroundSelected = 'sourceBackgroundSelected',
 	TargetBackgroundSelected = 'targetBackgroundSelected',
+}
+
+interface resolveFeedbackOptions {
+	comparitor?: NumberComparitor
+	factor?: string
+	parse?: boolean
 }
 
 const styles = {
@@ -104,6 +110,14 @@ const asIntCheckbox: CompanionInputFieldCheckbox = {
 	tooltip: '',
 }
 
+const parseEscapeCharactersCheckBox: CompanionInputFieldCheckbox = {
+	type: 'checkbox',
+	label: 'Parse escape characters',
+	id: 'parseEscapeChars',
+	default: true,
+	tooltip: 'Parse escape characters such as \\r \\n \\t',
+}
+
 const matrixNumber: CompanionInputFieldNumber = {
 	type: 'number',
 	label: 'Select Matrix Number',
@@ -153,11 +167,11 @@ export async function resolveFeedback(
 	type: EmberModel.ParameterType,
 	path: string,
 	value?: boolean | number | string,
-	comparitor: NumberComparitor = NumberComparitor.Equal,
-	factor: string = '1',
+	options: resolveFeedbackOptions = { comparitor: NumberComparitor.Equal, factor: `1`, parse: true },
 ): Promise<boolean> {
-	let fact = parseInt(await context.parseVariablesInString(factor))
-	if (isNaN(fact)) fact = 1
+	let fact = parseInt(await context.parseVariablesInString(options.factor ?? '1'))
+	options.comparitor = options.comparitor ?? NumberComparitor.Equal
+	if (isNaN(fact) || fact < 1 ) fact = 1
 	if (typeof value === 'string') {
 		value = await context.parseVariablesInString(value)
 	}
@@ -166,17 +180,18 @@ export async function resolveFeedback(
 			case EmberModel.ParameterType.Boolean:
 				return Boolean(state.parameters.get(path)?.value)
 			case EmberModel.ParameterType.Real:
-				return compareNumber(Number(value), comparitor, Number(state.parameters.get(path)?.value))
+				return compareNumber(Number(value), options.comparitor, Number(state.parameters.get(path)?.value))
 			case EmberModel.ParameterType.Integer:
 				return compareNumber(
 					Math.floor(Number(value) * fact),
-					comparitor,
+					options.comparitor,
 					Math.floor(Number(state.parameters.get(path)?.value)),
 				)
 			case EmberModel.ParameterType.Enum:
 				return state.parameters.get(path)?.enumeration == value
 			case EmberModel.ParameterType.String:
 			default:
+				if (options.parse) value = parseEscapeCharacters(value?.toString() ?? '')
 				return state.parameters.get(path)?.value?.toString() == value
 		}
 	} else {
@@ -257,8 +272,10 @@ export function GetFeedbacksList(
 					feedback.options['asInt'] ? EmberModel.ParameterType.Integer : EmberModel.ParameterType.Real,
 					await resolveFeedbackPath(feedback, context),
 					feedback.options['useVar'] ? String(feedback.options['valueVar']) : Number(feedback.options['value']),
-					feedback.options['comparitor'] as NumberComparitor,
-					feedback.options['factor']?.toString() ?? '1',
+					{
+						comparitor: feedback.options['comparitor'] as NumberComparitor,
+						factor: feedback.options['factor']?.toString() ?? '1',
+					},
 				)
 			},
 			subscribe: async (feedback, context) => {
@@ -302,6 +319,7 @@ export function GetFeedbacksList(
 				},
 				usePathVar,
 				valueText,
+				parseEscapeCharactersCheckBox,
 			],
 			callback: async (feedback, context) => {
 				return await resolveFeedback(
@@ -311,6 +329,7 @@ export function GetFeedbacksList(
 					EmberModel.ParameterType.String,
 					await resolveFeedbackPath(feedback, context),
 					feedback.options['value']?.toString() ?? '',
+					{ parse: Boolean(feedback.options['parseEscapeChars']) },
 				)
 			},
 			subscribe: async (feedback, context) => {
@@ -320,7 +339,7 @@ export function GetFeedbacksList(
 				const path = await resolveFeedbackPath(feedback, context)
 				if (state.parameters.has(path)) {
 					const val = state.parameters.get(path)?.value
-					if (val === undefined) return undefined
+					if (val === undefined || val === null) return undefined
 					return {
 						...feedback.options,
 						value: val?.toString(),
@@ -370,10 +389,10 @@ export function GetFeedbacksList(
 				const path = await resolveFeedbackPath(feedback, context)
 				if (state.parameters.has(path)) {
 					const val = state.parameters.get(path)?.enumeration
-					if (val === undefined) return undefined
+					if (val === undefined || val === null) return undefined
 					return {
 						...feedback.options,
-						value: val?.toString(),
+						value: val.toString(),
 					}
 				}
 				return undefined

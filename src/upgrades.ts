@@ -144,6 +144,7 @@ function v270(
 			case 'string':
 				feedback.options.pathVar = feedback.options.pathVar ?? feedback.options.path
 				feedback.options.usePathVar = feedback.options.usePathVar ?? false
+				feedback.options.parseEscapeChars = feedback.options.parseEscapeChars ?? false
 				result.updatedFeedbacks.push(feedback)
 				break
 			case 'boolean':
