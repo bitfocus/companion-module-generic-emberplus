@@ -92,11 +92,14 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 		this.emberClient.discard()
 	}
 
-	private updateCompanionBits(updateAll: boolean): void {
+	/**
+	 * Update defintions of actions, feedbacks, variables. Optionally presets
+	 */
+	private updateCompanionBits(updatePresets: boolean): void {
+		this.setActionDefinitions(GetActionsList(this, this.client, this.config, this.state, this.emberQueue))
 		this.setFeedbackDefinitions(GetFeedbacksList(this, this.client, this.config, this.state))
 		this.setVariableDefinitions(GetVariablesList(this.config, this.state))
-		if (!updateAll) return
-		this.setActionDefinitions(GetActionsList(this, this.client, this.config, this.state, this.emberQueue))
+		if (!updatePresets) return
 		this.setPresetDefinitions(GetPresetsList())
 	}
 
