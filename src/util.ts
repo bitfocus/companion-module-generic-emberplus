@@ -8,8 +8,6 @@ import { EmberPlusState } from './state'
 import { Model as EmberModel } from 'emberplus-connection'
 import type { CompanionCommonCallbackContext } from '@companion-module/base/dist/module-api/common'
 
-export const MEDIA_PLAYER_SOURCE_CLIP_OFFSET = 1000
-
 export function assertUnreachable(_never: never): void {
 	// throw new Error('Unreachable')
 }
