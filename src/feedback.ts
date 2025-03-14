@@ -203,9 +203,10 @@ const subscribeParameterFeedback =
 		await self.registerNewParameter(path)
 		if (state.feedbacks.has(path)) {
 			const fbIds = state.feedbacks.get(path) ?? []
+			if (fbIds.includes(feedback.id)) return
 			state.feedbacks.set(path, [...fbIds, feedback.id])
 		} else {
-			state.feedbacks.set(path, [path])
+			state.feedbacks.set(path, [feedback.id])
 		}
 	}
 
@@ -214,7 +215,7 @@ const unsubscribeParameterFeedback =
 	async (feedback: CompanionFeedbackInfo, context: CompanionFeedbackContext): Promise<void> => {
 		const path = await resolveEventPath(feedback, context)
 		const fbIds = state.feedbacks.get(path) ?? []
-		const index = fbIds.indexOf(path)
+		const index = fbIds.indexOf(feedback.id)
 		if (index > -1) {
 			fbIds.splice(index, 1)
 			state.feedbacks.set(path, fbIds)
