@@ -146,14 +146,7 @@ export function getCurrentEnumValue(state: EmberPlusState, path: string): string
  */
 
 export function getEnumIndex(state: EmberPlusState, path: string, enumStr: string): number | undefined {
-	const parameter = state.parameters.get(path)
-	if (
-		parameter === undefined ||
-		parameter.parameterType !== EmberModel.ParameterType.Enum ||
-		parameter.enumMap === undefined
-	)
-		return undefined
-	return parameter.enumMap.get(enumStr)
+	return state.parameters.get(path)?.enumMap?.get(enumStr)
 }
 
 /**
