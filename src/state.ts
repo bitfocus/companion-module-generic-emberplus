@@ -9,6 +9,7 @@ export interface CurrentSelected {
 export class EmberPlusState {
 	selected: CurrentSelected
 	parameters: Map<string, EmberModel.Parameter> = new Map<string, EmberModel.Parameter>()
+	feedbacks: Map<string, string[]> = new Map<string, string[]>()
 
 	constructor() {
 		this.selected = {

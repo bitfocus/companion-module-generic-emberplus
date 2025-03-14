@@ -41,9 +41,11 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	private isRecordingActions: boolean = false
 
 	// Override base types to make types stricter
-	public checkFeedbacks(...feedbackTypes: string[]): void {
-		// todo - arg should be of type FeedbackId
+	public checkFeedbacks(...feedbackTypes: FeedbackId[]): void {
 		super.checkFeedbacks(...feedbackTypes)
+	}
+	public checkFeedbacksById(...feedbackIds: string[]): void {
+		super.checkFeedbacksById(...feedbackIds)
 	}
 
 	/**
@@ -222,6 +224,8 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 						})
 						if (initial_node) {
 							this.log('debug', 'Registered for path "' + path + '"')
+							this.updateParameterMap(path, initial_node)
+							this.updateCompanionBits({ updateActions: true, updateFeedbacks: true, updateVariables: true })
 							await this.handleChangedValue(path, initial_node)
 						}
 					} catch (e) {
@@ -232,7 +236,6 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 					this.log('debug', `Failed to register parameter: ${e.toString()}`)
 				})
 		}
-		this.updateCompanionBits({ updateActions: true, updateFeedbacks: true, updateVariables: true })
 	}
 
 	public async registerNewParameter(path: string): Promise<TreeElement<EmberElement> | undefined> {
@@ -253,14 +256,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 							this.config.monitoredParameters = [path]
 						}
 						if (initial_node.contents.type == ElementType.Parameter) {
-							if (this.state.parameters.has(path)) {
-								this.state.parameters.set(path, {
-									...this.state.parameters.get(path),
-									...initial_node.contents,
-								})
-							} else {
-								this.state.parameters.set(path, initial_node.contents)
-							}
+							this.updateParameterMap(path, initial_node)
 							this.updateCompanionBits({ updateActions: true, updateFeedbacks: true, updateVariables: true })
 							await this.handleChangedValue(path, initial_node)
 						}
@@ -276,6 +272,20 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 				return undefined
 			})) as TreeElement<EmberElement> | undefined
 	}
+
+	// Add or merge node data to this.state.parameters Map
+	updateParameterMap(path: string, node: TreeElement<EmberElement>): void {
+		if (node.contents.type !== ElementType.Parameter) return
+		if (this.state.parameters.has(path)) {
+			this.state.parameters.set(path, {
+				...this.state.parameters.get(path),
+				...node.contents,
+			})
+		} else {
+			this.state.parameters.set(path, node.contents)
+		}
+	}
+
 	// Track whether actions are being recorded
 	public handleStartStopRecordActions(isRecording: boolean): void {
 		this.isRecordingActions = isRecording
@@ -285,14 +295,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 			this.log('debug', 'Got parameter value for ' + path + ': ' + (node.contents.value ?? ''))
 			let value: boolean | number | string
 			let actionType: ActionId | undefined
-			if (this.state.parameters.has(path)) {
-				this.state.parameters.set(path, {
-					...this.state.parameters.get(path),
-					...node.contents,
-				})
-			} else {
-				this.state.parameters.set(path, node.contents)
-			}
+			this.updateParameterMap(path, node)
 			switch (node.contents.parameterType) {
 				case EmberModel.ParameterType.Boolean:
 					actionType = ActionId.SetValueBoolean
@@ -317,15 +320,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 				default:
 					value = node.contents.value as string
 			}
-			if (this.state.parameters.has(path)) {
-				this.state.parameters.set(path, {
-					...this.state.parameters.get(path),
-					...node.contents,
-				})
-			} else {
-				this.state.parameters.set(path, node.contents)
-			}
-			const feedbacksToCheck: string[] = [FeedbackId.Parameter, FeedbackId.String, FeedbackId.Boolean]
+			if (this.state.feedbacks.get(path)) this.checkFeedbacksById(...(this.state.feedbacks.get(path) ?? []))
 			const variableValues: CompanionVariableValues = {
 				[path.replaceAll(/[# ]/gm, '_')]: value,
 			}
@@ -333,10 +328,9 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 				variableValues[path.replaceAll(/[# ]/gm, '_')] = Number(node.contents.value)
 			} else if (node.contents.parameterType === ParameterType.Enum) {
 				variableValues[`${path.replaceAll(/[# ]/gm, '_')}_ENUM`] = getCurrentEnumValue(this.state, path)
-				feedbacksToCheck.push(FeedbackId.ENUM)
 			}
 			this.setVariableValues(variableValues)
-			this.checkFeedbacks(...feedbacksToCheck)
+
 			if (this.isRecordingActions && actionType !== undefined) {
 				const actOptions: setValueActionOptions = {
 					path: path,
@@ -355,7 +349,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 						actOptions.useVar = false
 						actOptions.valueVar = value.toString()
 						actOptions.relative = false
-						actOptions.min = this.state.parameters.get(path)?.minimum?.toString() ?? ''
+						actOptions.min = this.state.parameters.get(path)?.minimum?.toString() ?? '0'
 						actOptions.max = this.state.parameters.get(path)?.maximum?.toString() ?? ''
 						break
 					case ActionId.SetValueInt:

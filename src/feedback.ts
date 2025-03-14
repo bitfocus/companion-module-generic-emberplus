@@ -7,6 +7,7 @@ import type {
 	CompanionInputFieldTextInput,
 	CompanionInputFieldCheckbox,
 	CompanionInputFieldNumber,
+	CompanionFeedbackInfo,
 } from '@companion-module/base'
 import type { EmberPlusInstance } from './index'
 import { EmberClient, Model as EmberModel } from 'emberplus-connection'
@@ -195,6 +196,31 @@ export async function resolveFeedback(
 	}
 }
 
+const subscribeParameterFeedback =
+	(state: EmberPlusState, self: EmberPlusInstance) =>
+	async (feedback: CompanionFeedbackInfo, context: CompanionFeedbackContext): Promise<void> => {
+		const path = await resolveEventPath(feedback, context)
+		await self.registerNewParameter(path)
+		if (state.feedbacks.has(path)) {
+			const fbIds = state.feedbacks.get(path) ?? []
+			state.feedbacks.set(path, [...fbIds, feedback.id])
+		} else {
+			state.feedbacks.set(path, [path])
+		}
+	}
+
+const unsubscribeParameterFeedback =
+	(state: EmberPlusState) =>
+	async (feedback: CompanionFeedbackInfo, context: CompanionFeedbackContext): Promise<void> => {
+		const path = await resolveEventPath(feedback, context)
+		const fbIds = state.feedbacks.get(path) ?? []
+		const index = fbIds.indexOf(path)
+		if (index > -1) {
+			fbIds.splice(index, 1)
+			state.feedbacks.set(path, fbIds)
+		}
+	}
+
 export function GetFeedbacksList(
 	self: EmberPlusInstance, //InstanceBase<EmberPlusConfig>,
 	_emberClient: EmberClient,
@@ -273,9 +299,8 @@ export function GetFeedbacksList(
 					},
 				)
 			},
-			subscribe: async (feedback, context) => {
-				await self.registerNewParameter(await resolveEventPath(feedback, context))
-			},
+			subscribe: subscribeParameterFeedback(state, self),
+			unsubscribe: unsubscribeParameterFeedback(state),
 			learn: async (feedback, context) => {
 				const path = await resolveEventPath(feedback, context)
 				if (state.parameters.has(path)) {
@@ -327,9 +352,8 @@ export function GetFeedbacksList(
 					{ parse: Boolean(feedback.options['parseEscapeChars']) },
 				)
 			},
-			subscribe: async (feedback, context) => {
-				await self.registerNewParameter(await resolveEventPath(feedback, context))
-			},
+			subscribe: subscribeParameterFeedback(state, self),
+			unsubscribe: unsubscribeParameterFeedback(state),
 			learn: async (feedback, context) => {
 				const path = await resolveEventPath(feedback, context)
 				if (state.parameters.has(path)) {
@@ -377,9 +401,8 @@ export function GetFeedbacksList(
 					feedback.options['value']?.toString() ?? '',
 				)
 			},
-			subscribe: async (feedback, context) => {
-				await self.registerNewParameter(await resolveEventPath(feedback, context))
-			},
+			subscribe: subscribeParameterFeedback(state, self),
+			unsubscribe: unsubscribeParameterFeedback(state),
 			learn: async (feedback, context) => {
 				const path = await resolveEventPath(feedback, context)
 				if (state.parameters.has(path)) {
@@ -425,9 +448,8 @@ export function GetFeedbacksList(
 					await resolveEventPath(feedback, context),
 				)
 			},
-			subscribe: async (feedback, context) => {
-				await self.registerNewParameter(await resolveEventPath(feedback, context))
-			},
+			subscribe: subscribeParameterFeedback(state, self),
+			unsubscribe: unsubscribeParameterFeedback(state),
 		},
 		[FeedbackId.Take]: {
 			name: 'Take is possible',
