@@ -130,15 +130,7 @@ export function filterPathChoices(state: EmberPlusState, ...paramFilter: EmberMo
  */
 
 export function getCurrentEnumValue(state: EmberPlusState, path: string): string {
-	const parameter = state.parameters.get(path)
-	if (
-		parameter === undefined ||
-		parameter.parameterType !== EmberModel.ParameterType.Enum ||
-		parameter.value === undefined ||
-		parameter.enumeration === undefined
-	)
-		return ''
-	return parameter.enumeration.split('\n')[Number(parameter.value)] ?? ''
+	return state.parameters.get(path)?.enumeration?.split('\n')[Number(state.parameters.get(path)?.value)] ?? ''
 }
 
 /**
@@ -196,13 +188,13 @@ export async function resolvePath(context: CompanionCommonCallbackContext, path:
 }
 
 export async function resolveEventPath(
-	feedback: CompanionFeedbackInfo | CompanionActionInfo,
+	event: CompanionFeedbackInfo | CompanionActionInfo,
 	context: CompanionCommonCallbackContext,
 ): Promise<string> {
 	return await resolvePath(
 		context,
-		feedback.options['usePathVar']
-			? (feedback.options['pathVar']?.toString() ?? '')
-			: (feedback.options['path']?.toString() ?? ''),
+		event.options['usePathVar']
+			? (event.options['pathVar']?.toString() ?? '')
+			: (event.options['path']?.toString() ?? ''),
 	)
 }
