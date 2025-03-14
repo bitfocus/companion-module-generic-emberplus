@@ -4,6 +4,7 @@ import type { EmberPlusState } from './state'
 import { ParameterType } from 'emberplus-connection/dist/model'
 
 export function GetVariablesList(config: EmberPlusConfig, state: EmberPlusState): CompanionVariableDefinition[] {
+	config.monitoredParameters?.sort()
 	return (
 		config.monitoredParameters?.flatMap((fb) => {
 			let fbName = fb
