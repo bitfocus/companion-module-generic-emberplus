@@ -1,6 +1,12 @@
-import type { DropdownChoice } from '@companion-module/base'
+import type {
+	CompanionActionContext,
+	CompanionActionInfo,
+	CompanionFeedbackInfo,
+	DropdownChoice,
+} from '@companion-module/base'
 import { EmberPlusState } from './state'
-import type { Model as EmberModel } from 'emberplus-connection'
+import { Model as EmberModel } from 'emberplus-connection'
+import type { CompanionCommonCallbackContext } from '@companion-module/base/dist/module-api/common'
 
 export const MEDIA_PLAYER_SOURCE_CLIP_OFFSET = 1000
 
@@ -117,4 +123,93 @@ export function filterPathChoices(state: EmberPlusState, ...paramFilter: EmberMo
 		})
 	}
 	return choices
+}
+
+/**
+ * Returns the current enumeration string of the parameter
+ */
+
+export function getCurrentEnumValue(state: EmberPlusState, path: string): string {
+	const parameter = state.parameters.get(path)
+	if (
+		parameter === undefined ||
+		parameter.parameterType !== EmberModel.ParameterType.Enum ||
+		parameter.value === undefined ||
+		parameter.enumeration === undefined
+	)
+		return ''
+	return parameter.enumeration.split('\n')[Number(parameter.value)] ?? ''
+}
+
+/**
+ * Returns the index value of enum string
+ */
+
+export function getEnumIndex(state: EmberPlusState, path: string, enumStr: string): number | undefined {
+	const parameter = state.parameters.get(path)
+	if (
+		parameter === undefined ||
+		parameter.parameterType !== EmberModel.ParameterType.Enum ||
+		parameter.enumMap === undefined
+	)
+		return undefined
+	return parameter.enumMap.get(enumStr)
+}
+
+/**
+ * Conform numeric value to range defined by min and max
+ */
+
+export function checkNumberLimits(value: number, min: number, max: number): number {
+	return value > max ? max : value < min ? min : value
+}
+
+/**
+ * Calculate absloute numeric value from relative action
+ */
+
+export async function calcRelativeNumber(
+	value: number,
+	path: string,
+	min: string,
+	max: string,
+	type: EmberModel.ParameterType,
+	context: CompanionActionContext,
+	state: EmberPlusState,
+): Promise<number> {
+	let oldValue = Number(state.parameters.get(path)?.value)
+	if (isNaN(oldValue)) oldValue = 0
+	let newValue = value + oldValue
+	const minLimit = Number(await context.parseVariablesInString(min))
+	const maxLimit = Number(await context.parseVariablesInString(max))
+	if (type === EmberModel.ParameterType.Integer) {
+		newValue = Math.round(newValue)
+	}
+	if (type === EmberModel.ParameterType.Enum) {
+		newValue = Math.round(newValue)
+		newValue = newValue < 0 ? 0 : newValue
+	}
+	if (!isNaN(minLimit)) newValue = newValue < minLimit ? minLimit : newValue
+	if (!isNaN(maxLimit)) newValue = newValue > maxLimit ? maxLimit : newValue
+	return newValue
+}
+
+export async function resolvePath(context: CompanionCommonCallbackContext, path: string): Promise<string> {
+	const pathString: string = (await context.parseVariablesInString(path)).replaceAll('/', '.')
+	if (pathString.includes('[') && pathString.includes(']')) {
+		return pathString.substring(pathString.indexOf('[') + 1, pathString.indexOf(']'))
+	}
+	return pathString
+}
+
+export async function resolveEventPath(
+	feedback: CompanionFeedbackInfo | CompanionActionInfo,
+	context: CompanionCommonCallbackContext,
+): Promise<string> {
+	return await resolvePath(
+		context,
+		feedback.options['usePathVar']
+			? (feedback.options['pathVar']?.toString() ?? '')
+			: (feedback.options['path']?.toString() ?? ''),
+	)
 }

@@ -125,10 +125,21 @@ function v270(
 		switch (action.actionId) {
 			case 'setValueInt':
 				action.options.factor = action.options.factor ?? '1'
+				action.options.pathVar = action.options.pathVar ?? action.options.path
+				action.options.usePathVar = action.options.usePathVar ?? true
 				result.updatedActions.push(action)
 				break
 			case 'setValueString':
 				action.options.parseEscapeChars = action.options.parseEscapeChars ?? false
+				action.options.pathVar = action.options.pathVar ?? action.options.path
+				action.options.usePathVar = action.options.usePathVar ?? true
+				result.updatedActions.push(action)
+				break
+			case 'setValueReal':
+			case 'setValueEnum':
+			case 'setValueBoolean':
+				action.options.pathVar = action.options.pathVar ?? action.options.path
+				action.options.usePathVar = action.options.usePathVar ?? true
 				result.updatedActions.push(action)
 				break
 		}

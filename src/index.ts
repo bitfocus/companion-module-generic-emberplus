@@ -14,13 +14,20 @@ import { EmberClient, Model as EmberModel } from 'emberplus-connection' // note 
 import { ElementType, ParameterType } from 'emberplus-connection/dist/model'
 import type { TreeElement, EmberElement } from 'emberplus-connection/dist/model'
 import { UpgradeScripts } from './upgrades'
-import { substituteEscapeCharacters } from './util'
+import { getCurrentEnumValue, substituteEscapeCharacters } from './util'
 import { GetVariablesList } from './variables'
 import delay from 'delay'
 import PQueue from 'p-queue'
 
 const reconnectInterval: number = 300000 //emberplus-connection destroys socket after 5 minutes
 const reconnectOnFailDelay: number = 10000 //reattempt delay when initial connection queries throw an error
+
+interface updateCompanionBitsOptions {
+	updateActions?: boolean
+	updateFeedbacks?: boolean
+	updatePresets?: boolean
+	updateVariables?: boolean
+}
 
 /**
  * Companion instance class for generic EmBER+ Devices
@@ -54,8 +61,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 		this.setupEmberConnection()
 		this.setupMatrices()
 		this.setupMonitoredParams()
-
-		this.updateCompanionBits(true)
+		this.updateCompanionBits({ updateActions: true, updateFeedbacks: true, updatePresets: true, updateVariables: true })
 	}
 
 	/**
@@ -73,7 +79,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 		this.setupEmberConnection()
 		this.setupMatrices()
 		this.setupMonitoredParams()
-		this.updateCompanionBits(true)
+		this.updateCompanionBits({ updateActions: true, updateFeedbacks: true, updatePresets: true, updateVariables: true })
 	}
 
 	/**
@@ -95,12 +101,21 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	/**
 	 * Update defintions of actions, feedbacks, variables. Optionally presets
 	 */
-	private updateCompanionBits(updatePresets: boolean): void {
-		this.setActionDefinitions(GetActionsList(this, this.client, this.config, this.state, this.emberQueue))
-		this.setFeedbackDefinitions(GetFeedbacksList(this, this.client, this.config, this.state))
-		this.setVariableDefinitions(GetVariablesList(this.config, this.state))
-		if (!updatePresets) return
-		this.setPresetDefinitions(GetPresetsList())
+
+	private updateCompanionBits(
+		options: updateCompanionBitsOptions = {
+			updateActions: false,
+			updateFeedbacks: false,
+			updatePresets: false,
+			updateVariables: false,
+		},
+	): void {
+		if (options.updateActions)
+			this.setActionDefinitions(GetActionsList(this, this.client, this.config, this.state, this.emberQueue))
+		if (options.updateFeedbacks)
+			this.setFeedbackDefinitions(GetFeedbacksList(this, this.client, this.config, this.state))
+		if (options.updateVariables) this.setVariableDefinitions(GetVariablesList(this.config, this.state))
+		if (options.updatePresets) this.setPresetDefinitions(GetPresetsList())
 	}
 
 	private get client(): EmberClient {
@@ -199,7 +214,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 		this.log('debug', 'Start parameter registration')
 		for (const path of this.config.monitoredParameters ?? []) {
 			this.log('debug', 'Attempt to subscribe to ' + path)
-			this.emberQueue
+			await this.emberQueue
 				.add(async () => {
 					try {
 						const initial_node = await this.emberClient.getElementByPath(path, (node) => {
@@ -217,6 +232,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 					this.log('debug', `Failed to register parameter: ${e.toString()}`)
 				})
 		}
+		this.updateCompanionBits({ updateActions: true, updateFeedbacks: true, updateVariables: true })
 	}
 
 	public async registerNewParameter(path: string): Promise<TreeElement<EmberElement> | undefined> {
@@ -232,15 +248,22 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 						if (this.config.monitoredParameters) {
 							if (this.config.monitoredParameters?.includes(path) === false) {
 								this.config.monitoredParameters.push(path)
-								if (initial_node?.contents?.parameterType === ParameterType.Enum) {
-									this.config.monitoredParameters.push(`${path}_ENUM`)
-								}
 							}
 						} else {
 							this.config.monitoredParameters = [path]
 						}
-						this.updateCompanionBits(false)
-						await this.handleChangedValue(path, initial_node)
+						if (initial_node.contents.type == ElementType.Parameter) {
+							if (this.state.parameters.has(path)) {
+								this.state.parameters.set(path, {
+									...this.state.parameters.get(path),
+									...initial_node.contents,
+								})
+							} else {
+								this.state.parameters.set(path, initial_node.contents)
+							}
+							this.updateCompanionBits({ updateActions: true, updateFeedbacks: true, updateVariables: true })
+							await this.handleChangedValue(path, initial_node)
+						}
 					}
 					return initial_node
 				} catch (e) {
@@ -302,34 +325,60 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 			} else {
 				this.state.parameters.set(path, node.contents)
 			}
+			const feedbacksToCheck: string[] = [FeedbackId.Parameter, FeedbackId.String, FeedbackId.Boolean]
 			const variableValues: CompanionVariableValues = {
 				[path.replaceAll(/[# ]/gm, '_')]: value,
 			}
 			if (node.contents.parameterType === ParameterType.Integer && !this.config.factor) {
 				variableValues[path.replaceAll(/[# ]/gm, '_')] = Number(node.contents.value)
-			}
-			if (node.contents.parameterType === ParameterType.Enum) {
-				variableValues[`${path.replaceAll(/[# ]/gm, '_')}_ENUM`] = node.contents?.enumeration ?? ''
+			} else if (node.contents.parameterType === ParameterType.Enum) {
+				variableValues[`${path.replaceAll(/[# ]/gm, '_')}_ENUM`] = getCurrentEnumValue(this.state, path)
+				feedbacksToCheck.push(FeedbackId.ENUM)
 			}
 			this.setVariableValues(variableValues)
-			this.checkFeedbacks(FeedbackId.Parameter, FeedbackId.String, FeedbackId.Boolean)
+			this.checkFeedbacks(...feedbacksToCheck)
 			if (this.isRecordingActions && actionType !== undefined) {
-				const actOptions: setValueActionOptions = { path: path, value: value, variable: true }
-				if (actionType == ActionId.SetValueBoolean) {
-					actOptions.useVar = false
-					actOptions.valueVar = value.toString()
-					actOptions.toggle = false
-				} else if (actionType !== ActionId.SetValueString) {
-					actOptions.useVar = false
-					actOptions.valueVar = value.toString()
-					actOptions.relative = false
-					actOptions.min = this.state.parameters.get(path)?.minimum?.toString() ?? ''
-					actOptions.max = this.state.parameters.get(path)?.maximum?.toString() ?? ''
-				} else {
-					actOptions.parseEscapeChars = true
+				const actOptions: setValueActionOptions = {
+					path: path,
+					pathVar: path,
+					usePathVar: false,
+					value: value,
+					variable: true,
 				}
-				if (actionType === ActionId.SetValueInt)
-					actOptions.factor = this.state.parameters.get(path)?.factor?.toString() ?? '1'
+				switch (actionType) {
+					case ActionId.SetValueBoolean:
+						actOptions.useVar = false
+						actOptions.valueVar = value.toString()
+						actOptions.toggle = false
+						break
+					case ActionId.SetValueEnum:
+						actOptions.useVar = false
+						actOptions.valueVar = value.toString()
+						actOptions.relative = false
+						actOptions.min = this.state.parameters.get(path)?.minimum?.toString() ?? ''
+						actOptions.max = this.state.parameters.get(path)?.maximum?.toString() ?? ''
+						break
+					case ActionId.SetValueInt:
+						actOptions.useVar = false
+						actOptions.valueVar = value.toString()
+						actOptions.relative = false
+						actOptions.min = this.state.parameters.get(path)?.minimum?.toString() ?? ''
+						actOptions.max = this.state.parameters.get(path)?.maximum?.toString() ?? ''
+						actOptions.factor = this.state.parameters.get(path)?.factor?.toString() ?? '1'
+						break
+					case ActionId.SetValueReal:
+						actOptions.useVar = false
+						actOptions.valueVar = value.toString()
+						actOptions.relative = false
+						actOptions.min = this.state.parameters.get(path)?.minimum?.toString() ?? ''
+						actOptions.max = this.state.parameters.get(path)?.maximum?.toString() ?? ''
+						break
+					case ActionId.SetValueString:
+						actOptions.parseEscapeChars = true
+						break
+					default:
+						return
+				}
 				this.recordAction(
 					{
 						actionId: actionType,

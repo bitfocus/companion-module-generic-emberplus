@@ -3,6 +3,7 @@ import type {
 	CompanionActionDefinitions,
 	CompanionActionEvent,
 	CompanionActionInfo,
+	CompanionInputFieldDropdown,
 	CompanionInputFieldNumber,
 	CompanionInputFieldTextInput,
 	InstanceBase,
@@ -16,11 +17,20 @@ import type { EmberPlusConfig } from './config'
 import { FeedbackId } from './feedback'
 import type { EmberPlusInstance } from './index'
 import { EmberPlusState } from './state'
-import { parseEscapeCharacters, substituteEscapeCharacters } from './util'
-import type { CompanionCommonCallbackContext } from '@companion-module/base/dist/module-api/common'
+import {
+	calcRelativeNumber,
+	checkNumberLimits,
+	filterPathChoices,
+	parseEscapeCharacters,
+	resolveEventPath,
+	resolvePath,
+	substituteEscapeCharacters,
+} from './util'
 
 export interface setValueActionOptions extends CompanionOptionValues {
 	path: string
+	pathVar: string
+	usePathVar: boolean
 	value: string | number | boolean
 	useVar?: boolean
 	variable: boolean
@@ -46,6 +56,31 @@ export enum ActionId {
 	Clear = 'clear',
 	SetSelectedSource = 'setSelectedSource',
 	SetSelectedTarget = 'setSelectedTarget',
+}
+
+const pathDropDown: CompanionInputFieldDropdown = {
+	type: 'dropdown',
+	label: 'Select registered path',
+	id: 'path',
+	choices: [],
+	default: 'No paths configured!',
+	allowCustom: true,
+}
+
+const pathString: CompanionInputFieldTextInput = {
+	type: 'textinput',
+	label: 'Path',
+	id: 'pathVar',
+	required: true,
+	useVariables: { local: true },
+	default: '',
+	tooltip: `Path may be supplied in decimals: 1.2.3, text: path.to.ember.element, or with a descriptor and the decimals wrapped in brackets: path to ember element[1.2.3.4]`,
+}
+const usePathVar: CompanionInputFieldCheckbox = {
+	type: 'checkbox',
+	label: 'Path from String',
+	id: 'usePathVar',
+	default: false,
 }
 
 const pathInput: CompanionInputFieldTextInput = {
@@ -125,85 +160,54 @@ const matrixInputs: Array<CompanionInputFieldTextInput | CompanionInputFieldNumb
 	},
 ]
 
-export async function resolvePath(context: CompanionCommonCallbackContext, path: string): Promise<string> {
-	const pathString: string = (await context.parseVariablesInString(path)).replaceAll('/', '.')
-	if (pathString.includes('[') && pathString.includes(']')) {
-		return pathString.substring(pathString.indexOf('[') + 1, pathString.indexOf(']'))
-	}
-	return pathString
-}
-
-function checkNumberLimits(value: number, min: number, max: number): number {
-	return value > max ? max : value < min ? min : value
-}
-
-export async function calcRelativeNumber(
-	value: number,
-	path: string,
-	min: string,
-	max: string,
-	type: EmberModel.ParameterType,
-	context: CompanionActionContext,
-	state: EmberPlusState,
-): Promise<number> {
-	let oldValue = Number(state.parameters.get(path)?.value)
-	if (isNaN(oldValue)) oldValue = 0
-	let newValue = value + oldValue
-	const minLimit = Number(await context.parseVariablesInString(min))
-	const maxLimit = Number(await context.parseVariablesInString(max))
-	if (type === EmberModel.ParameterType.Integer) {
-		newValue = Math.round(newValue)
-	}
-	if (type === EmberModel.ParameterType.Enum) {
-		newValue = Math.round(newValue)
-		newValue = newValue < 0 ? 0 : newValue
-	}
-	if (!isNaN(minLimit)) newValue = newValue < minLimit ? minLimit : newValue
-	if (!isNaN(maxLimit)) newValue = newValue > maxLimit ? maxLimit : newValue
-	return newValue
-}
-
 const learnSetValueActionOptions =
 	(state: EmberPlusState, type: EmberModel.ParameterType) =>
 	async (action: CompanionActionEvent, context: CompanionActionContext): Promise<setValueActionOptions | undefined> => {
-		const path = await resolvePath(context, action.options['path']?.toString() ?? '')
+		const path = await resolveEventPath(action, context)
 		if (!state.parameters.has(path)) return undefined
 		const emberPath = state.parameters.get(path)
 		if (type !== emberPath?.parameterType) return undefined
 		const options = action.options as setValueActionOptions
 		switch (type) {
 			case EmberModel.ParameterType.String:
-				if (emberPath?.value) {
-					options.value = substituteEscapeCharacters(emberPath?.value?.toString())
+				if (emberPath?.value !== null && emberPath?.value !== undefined) {
+					options.value = substituteEscapeCharacters(emberPath.value.toString())
 					options.parseEscapeChars = true
 				}
 				break
 			case EmberModel.ParameterType.Boolean:
-				if (emberPath?.value) options.value = Boolean(emberPath?.value)
-				if (emberPath?.value) options.valueVar = emberPath?.value.toString()
+				if (emberPath?.value !== null && emberPath?.value !== undefined) options.value = Boolean(emberPath.value)
+				if (emberPath?.value !== null && emberPath?.value !== undefined) options.valueVar = emberPath.value.toString()
 				break
 			case EmberModel.ParameterType.Enum:
-				if (emberPath?.value) options.value = Number(emberPath?.value)
-				if (emberPath?.value) options.valueVar = emberPath?.value.toString()
-				if (emberPath?.minimum) options.min = (emberPath?.minimum ?? 0).toString()
-				if (emberPath?.maximum) options.max = emberPath?.maximum.toString()
+				if (emberPath?.value !== null && emberPath?.value !== undefined) options.value = Number(emberPath.value)
+				if (emberPath?.value !== null && emberPath?.value !== undefined) options.valueVar = emberPath.value.toString()
+				if (emberPath?.minimum !== null && emberPath?.minimum !== undefined) {
+					options.min = emberPath.minimum.toString()
+				} else {
+					options.min = '0'
+				}
+
+				if (emberPath?.maximum !== null && emberPath?.maximum !== undefined) options.max = emberPath.maximum.toString()
 				break
 			case EmberModel.ParameterType.Integer:
-				if (emberPath?.value) options.value = Number(emberPath?.value)
-				if (emberPath?.value) options.valueVar = emberPath?.value.toString()
-				if (emberPath?.minimum) options.min = emberPath?.minimum.toString()
-				if (emberPath?.maximum) options.max = emberPath?.maximum.toString()
-				if (emberPath?.factor) {
+				if (emberPath?.value !== null && emberPath?.value !== undefined) options.value = Number(emberPath.value)
+				if (emberPath?.value !== null && emberPath?.value !== undefined) options.valueVar = emberPath.value.toString()
+				if (emberPath?.minimum !== null && emberPath?.minimum !== undefined) options.min = emberPath.minimum.toString()
+				if (emberPath?.maximum !== null && emberPath?.maximum !== undefined) options.max = emberPath.maximum.toString()
+				if (emberPath?.factor !== null && emberPath?.factor !== undefined) {
 					options.factor = emberPath.factor.toString()
-					options.value = Number(emberPath.value) / emberPath.factor
+					options.value = Number(options.value) / emberPath.factor
 					options.valueVar = options.value.toString()
+				} else if (emberPath?.value !== null && emberPath?.value !== undefined) {
+					options.factor = '1'
 				}
 				break
 			case EmberModel.ParameterType.Real:
-				if (emberPath?.value) options.value = Number(emberPath?.value)
-				if (emberPath?.value) options.valueVar = emberPath?.value.toString()
-				if (emberPath?.minimum) options.min = emberPath?.minimum.toString()
-				if (emberPath?.maximum) options.max = emberPath?.maximum.toString()
+				if (emberPath?.value !== null && emberPath?.value !== undefined) options.value = Number(emberPath.value)
+				if (emberPath?.value !== null && emberPath?.value !== undefined) options.valueVar = emberPath.value.toString()
+				if (emberPath?.minimum !== null && emberPath?.minimum !== undefined) options.min = emberPath.minimum.toString()
+				if (emberPath?.maximum !== null && emberPath?.maximum !== undefined) options.max = emberPath.maximum.toString()
 				break
 			default:
 				return undefined
@@ -220,7 +224,7 @@ const setValue =
 		queue: PQueue,
 	) =>
 	async (action: CompanionActionEvent, context: CompanionActionContext): Promise<void> => {
-		const path = await resolvePath(context, action.options['path']?.toString() ?? '')
+		const path = await resolveEventPath(action, context)
 		if (action.options.variable || action.options.toggle || action.options.relative) {
 			await self.registerNewParameter(path)
 		}
@@ -380,7 +384,7 @@ const registerParameter =
 	(self: EmberPlusInstance) =>
 	async (action: CompanionActionInfo, context: CompanionActionContext): Promise<void> => {
 		if (action.options.variable || action.options.toggle || action.options.relative) {
-			await self.registerNewParameter(await resolvePath(context, action.options['path']?.toString() ?? ''))
+			await self.registerNewParameter(await resolveEventPath(action, context))
 		}
 	}
 
@@ -391,8 +395,8 @@ const doMatrixAction =
 		method: EmberClient['matrixConnect'] | EmberClient['matrixDisconnect'] | EmberClient['matrixSetConnection'],
 		queue: PQueue,
 	) =>
-	async (action: CompanionActionEvent): Promise<void> => {
-		const path = await resolvePath(self, action.options['path']?.toString() ?? '')
+	async (action: CompanionActionEvent, context: CompanionActionContext): Promise<void> => {
+		const path = await resolvePath(context, action.options['path']?.toString() ?? '')
 		self.log('debug', 'Get node ' + path)
 		await queue
 			.add(async () => {
@@ -585,7 +589,22 @@ export function GetActionsList(
 		[ActionId.SetValueInt]: {
 			name: 'Set Value Integer',
 			options: [
-				pathInput,
+				{
+					...pathDropDown,
+					choices: filterPathChoices(state, EmberModel.ParameterType.Integer) ?? [],
+					default:
+						filterPathChoices(state, EmberModel.ParameterType.Integer).find(() => true)?.id ?? 'No paths configured!',
+					isVisible: (options) => {
+						return !options.usePathVar
+					},
+				},
+				{
+					...pathString,
+					isVisible: (options) => {
+						return !!options.usePathVar
+					},
+				},
+				usePathVar,
 				{
 					type: 'number',
 					label: 'Value',
@@ -611,12 +630,6 @@ export function GetActionsList(
 					},
 				},
 				useVariable,
-				{
-					...createVariable,
-					isVisible: (options) => {
-						return !options.relative
-					},
-				},
 				relative,
 				{
 					...minLimit,
@@ -633,6 +646,12 @@ export function GetActionsList(
 					tooltip: 'Relative action maximum value will be limited to this value. Value is not factored',
 				},
 				factorOpt,
+				{
+					...createVariable,
+					isVisible: (options) => {
+						return !options.relative
+					},
+				},
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.Integer, state, queue),
 			subscribe: registerParameter(self),
@@ -641,7 +660,22 @@ export function GetActionsList(
 		[ActionId.SetValueReal]: {
 			name: 'Set Value Real',
 			options: [
-				pathInput,
+				{
+					...pathDropDown,
+					choices: filterPathChoices(state, EmberModel.ParameterType.Real) ?? [],
+					default:
+						filterPathChoices(state, EmberModel.ParameterType.Real).find(() => true)?.id ?? 'No paths configured!',
+					isVisible: (options) => {
+						return !options.usePathVar
+					},
+				},
+				{
+					...pathString,
+					isVisible: (options) => {
+						return !!options.usePathVar
+					},
+				},
+				usePathVar,
 				{
 					type: 'number',
 					label: 'Value',
@@ -666,12 +700,6 @@ export function GetActionsList(
 					},
 				},
 				useVariable,
-				{
-					...createVariable,
-					isVisible: (options) => {
-						return !options.relative
-					},
-				},
 				relative,
 				{
 					...minLimit,
@@ -685,6 +713,12 @@ export function GetActionsList(
 						return !!options.relative
 					},
 				},
+				{
+					...createVariable,
+					isVisible: (options) => {
+						return !options.relative
+					},
+				},
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.Real, state, queue),
 			subscribe: registerParameter(self),
@@ -693,7 +727,22 @@ export function GetActionsList(
 		[ActionId.SetValueBoolean]: {
 			name: 'Set Value Boolean',
 			options: [
-				pathInput,
+				{
+					...pathDropDown,
+					choices: filterPathChoices(state, EmberModel.ParameterType.Boolean) ?? [],
+					default:
+						filterPathChoices(state, EmberModel.ParameterType.Boolean).find(() => true)?.id ?? 'No paths configured!',
+					isVisible: (options) => {
+						return !options.usePathVar
+					},
+				},
+				{
+					...pathString,
+					isVisible: (options) => {
+						return !!options.usePathVar
+					},
+				},
+				usePathVar,
 				{
 					type: 'checkbox',
 					label: 'Toggle',
@@ -734,17 +783,28 @@ export function GetActionsList(
 				},
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.Boolean, state, queue),
-			subscribe: async (action, context) => {
-				if (action.options.variable) {
-					await self.registerNewParameter(await resolvePath(context, action.options['path']?.toString() ?? ''))
-				}
-			},
+			subscribe: registerParameter(self),
 			learn: learnSetValueActionOptions(state, EmberModel.ParameterType.Boolean),
 		},
 		[ActionId.SetValueEnum]: {
 			name: 'Set Value ENUM (as Integer)',
 			options: [
-				pathInput,
+				{
+					...pathDropDown,
+					choices: filterPathChoices(state, EmberModel.ParameterType.Enum) ?? [],
+					default:
+						filterPathChoices(state, EmberModel.ParameterType.Enum).find(() => true)?.id ?? 'No paths configured!',
+					isVisible: (options) => {
+						return !options.usePathVar
+					},
+				},
+				{
+					...pathString,
+					isVisible: (options) => {
+						return !!options.usePathVar
+					},
+				},
+				usePathVar,
 				{
 					type: 'number',
 					label: 'Value',
@@ -771,12 +831,6 @@ export function GetActionsList(
 					},
 				},
 				useVariable,
-				{
-					...createVariable,
-					isVisible: (options) => {
-						return !options.relative
-					},
-				},
 				relative,
 				{
 					...minLimit,
@@ -791,6 +845,12 @@ export function GetActionsList(
 						return !!options.relative
 					},
 				},
+				{
+					...createVariable,
+					isVisible: (options) => {
+						return !options.relative
+					},
+				},
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.Enum, state, queue),
 			subscribe: registerParameter(self),
@@ -799,7 +859,22 @@ export function GetActionsList(
 		[ActionId.SetValueString]: {
 			name: 'Set Value String',
 			options: [
-				pathInput,
+				{
+					...pathDropDown,
+					choices: filterPathChoices(state, EmberModel.ParameterType.String) ?? [],
+					default:
+						filterPathChoices(state, EmberModel.ParameterType.String).find(() => true)?.id ?? 'No paths configured!',
+					isVisible: (options) => {
+						return !options.usePathVar
+					},
+				},
+				{
+					...pathString,
+					isVisible: (options) => {
+						return !!options.usePathVar
+					},
+				},
+				usePathVar,
 				{
 					type: 'textinput',
 					label: 'Value',
