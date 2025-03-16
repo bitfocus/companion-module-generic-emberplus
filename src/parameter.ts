@@ -101,6 +101,7 @@ export const setValue =
 				const node = await emberClient.getElementByPath(path)
 				// TODO - do we handle not found?
 				if (node && node.contents.type === EmberModel.ElementType.Parameter) {
+					self.updateParameterMap(path, node)
 					if (node.contents.parameterType === paramType) {
 						if (
 							node.contents?.access === EmberModel.ParameterAccess.None ||

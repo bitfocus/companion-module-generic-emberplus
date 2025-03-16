@@ -104,7 +104,11 @@ export function substituteEscapeCharacters(msg: string): string {
  * Return array of dropdown choices of registered paths of the specified parameter type(s)
  */
 
-export function filterPathChoices(state: EmberPlusState, ...paramFilter: EmberModel.ParameterType[]): DropdownChoice[] {
+export function filterPathChoices(
+	state: EmberPlusState,
+	isWriteable: boolean,
+	...paramFilter: EmberModel.ParameterType[]
+): DropdownChoice[] {
 	const choices: DropdownChoice[] = []
 	for (const [path, value] of state.parameters) {
 		let label = `${path}`
@@ -116,7 +120,16 @@ export function filterPathChoices(state: EmberPlusState, ...paramFilter: EmberMo
 				if (value.description) {
 					label += ` (${value.description})`
 				}
-				choices.push({ id: path, label: label })
+				if (isWriteable) {
+					if (
+						value.access === EmberModel.ParameterAccess.ReadWrite ||
+						value.access === EmberModel.ParameterAccess.Write
+					) {
+						choices.push({ id: path, label: label })
+					}
+				} else {
+					choices.push({ id: path, label: label })
+				}
 			}
 		})
 	}

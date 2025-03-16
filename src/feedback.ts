@@ -240,6 +240,7 @@ export function GetFeedbacksList(
 					choices:
 						filterPathChoices(
 							state,
+							false,
 							EmberModel.ParameterType.Enum,
 							EmberModel.ParameterType.Real,
 							EmberModel.ParameterType.Integer,
@@ -247,6 +248,7 @@ export function GetFeedbacksList(
 					default:
 						filterPathChoices(
 							state,
+							false,
 							EmberModel.ParameterType.Enum,
 							EmberModel.ParameterType.Real,
 							EmberModel.ParameterType.Integer,
@@ -325,9 +327,10 @@ export function GetFeedbacksList(
 			options: [
 				{
 					...pathDropDown,
-					choices: filterPathChoices(state, EmberModel.ParameterType.String) ?? [],
+					choices: filterPathChoices(state, false, EmberModel.ParameterType.String) ?? [],
 					default:
-						filterPathChoices(state, EmberModel.ParameterType.String).find(() => true)?.id ?? 'No paths configured!',
+						filterPathChoices(state, false, EmberModel.ParameterType.String).find(() => true)?.id ??
+						'No paths configured!',
 					isVisible: (options) => {
 						return !options.usePathVar
 					},
@@ -376,9 +379,10 @@ export function GetFeedbacksList(
 			options: [
 				{
 					...pathDropDown,
-					choices: filterPathChoices(state, EmberModel.ParameterType.Enum) ?? [],
+					choices: filterPathChoices(state, false, EmberModel.ParameterType.Enum) ?? [],
 					default:
-						filterPathChoices(state, EmberModel.ParameterType.Enum).find(() => true)?.id ?? 'No paths configured!',
+						filterPathChoices(state, false, EmberModel.ParameterType.Enum).find(() => true)?.id ??
+						'No paths configured!',
 					isVisible: (options) => {
 						return !options.usePathVar
 					},
@@ -425,9 +429,10 @@ export function GetFeedbacksList(
 			options: [
 				{
 					...pathDropDown,
-					choices: filterPathChoices(state, EmberModel.ParameterType.Boolean) ?? [],
+					choices: filterPathChoices(state, false, EmberModel.ParameterType.Boolean) ?? [],
 					default:
-						filterPathChoices(state, EmberModel.ParameterType.Boolean).find(() => true)?.id ?? 'No paths configured!',
+						filterPathChoices(state, false, EmberModel.ParameterType.Boolean).find(() => true)?.id ??
+						'No paths configured!',
 					isVisible: (options) => {
 						return !options.usePathVar
 					},
