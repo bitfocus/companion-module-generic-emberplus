@@ -38,6 +38,7 @@ export enum ActionId {
 	SetValueString = 'setValueString',
 	SetValueBoolean = 'setValueBoolean',
 	SetValueEnum = 'setValueEnum',
+	SetValueEnumLookup = 'setValueEnumLookup',
 	MatrixConnect = 'matrixConnect',
 	MatrixDisconnect = 'matrixDisconnect',
 	MatrixSetConnection = 'matrixSetConnection',
@@ -224,9 +225,9 @@ export function GetActionsList(
 					},
 				},
 			],
-			callback: setValue(self, emberClient, EmberModel.ParameterType.Integer, state, queue),
+			callback: setValue(self, emberClient, EmberModel.ParameterType.Integer, ActionId.SetValueInt, state, queue),
 			subscribe: registerParameter(self),
-			learn: learnSetValueActionOptions(state, EmberModel.ParameterType.Integer),
+			learn: learnSetValueActionOptions(state, EmberModel.ParameterType.Integer, ActionId.SetValueInt),
 		},
 		[ActionId.SetValueReal]: {
 			name: 'Set Value Real',
@@ -291,9 +292,9 @@ export function GetActionsList(
 					},
 				},
 			],
-			callback: setValue(self, emberClient, EmberModel.ParameterType.Real, state, queue),
+			callback: setValue(self, emberClient, EmberModel.ParameterType.Real, ActionId.SetValueReal, state, queue),
 			subscribe: registerParameter(self),
-			learn: learnSetValueActionOptions(state, EmberModel.ParameterType.Real),
+			learn: learnSetValueActionOptions(state, EmberModel.ParameterType.Real, ActionId.SetValueReal),
 		},
 		[ActionId.SetValueBoolean]: {
 			name: 'Set Value Boolean',
@@ -353,9 +354,9 @@ export function GetActionsList(
 					},
 				},
 			],
-			callback: setValue(self, emberClient, EmberModel.ParameterType.Boolean, state, queue),
+			callback: setValue(self, emberClient, EmberModel.ParameterType.Boolean, ActionId.SetValueBoolean, state, queue),
 			subscribe: registerParameter(self),
-			learn: learnSetValueActionOptions(state, EmberModel.ParameterType.Boolean),
+			learn: learnSetValueActionOptions(state, EmberModel.ParameterType.Boolean, ActionId.SetValueBoolean),
 		},
 		[ActionId.SetValueEnum]: {
 			name: 'Set Value ENUM (as Integer)',
@@ -423,9 +424,9 @@ export function GetActionsList(
 					},
 				},
 			],
-			callback: setValue(self, emberClient, EmberModel.ParameterType.Enum, state, queue),
+			callback: setValue(self, emberClient, EmberModel.ParameterType.Enum, ActionId.SetValueEnum, state, queue),
 			subscribe: registerParameter(self),
-			learn: learnSetValueActionOptions(state, EmberModel.ParameterType.Enum),
+			learn: learnSetValueActionOptions(state, EmberModel.ParameterType.Enum, ActionId.SetValueEnum),
 		},
 		[ActionId.SetValueString]: {
 			name: 'Set Value String',
@@ -461,9 +462,41 @@ export function GetActionsList(
 				},
 				createVariable,
 			],
-			callback: setValue(self, emberClient, EmberModel.ParameterType.String, state, queue),
+			callback: setValue(self, emberClient, EmberModel.ParameterType.String, ActionId.SetValueString, state, queue),
 			subscribe: registerParameter(self),
-			learn: learnSetValueActionOptions(state, EmberModel.ParameterType.String),
+			learn: learnSetValueActionOptions(state, EmberModel.ParameterType.String, ActionId.SetValueString),
+		},
+		[ActionId.SetValueEnumLookup]: {
+			name: 'Set Value ENUM (from String)',
+			options: [
+				{
+					...pathDropDown,
+					choices: filterPathChoices(state, EmberModel.ParameterType.Enum) ?? [],
+					default:
+						filterPathChoices(state, EmberModel.ParameterType.Enum).find(() => true)?.id ?? 'No paths configured!',
+					isVisible: (options) => {
+						return !options.usePathVar
+					},
+				},
+				{
+					...pathString,
+					isVisible: (options) => {
+						return !!options.usePathVar
+					},
+				},
+				usePathVar,
+				{
+					type: 'textinput',
+					label: 'Value',
+					id: 'value',
+					useVariables: { local: true },
+					tooltip: 'Must exactly match valid enumeration value',
+				},
+				createVariable,
+			],
+			callback: setValue(self, emberClient, EmberModel.ParameterType.Enum, ActionId.SetValueEnumLookup, state, queue),
+			subscribe: registerParameter(self),
+			learn: learnSetValueActionOptions(state, EmberModel.ParameterType.Enum, ActionId.SetValueEnumLookup),
 		},
 		[ActionId.MatrixConnect]: {
 			name: 'Matrix Connect',

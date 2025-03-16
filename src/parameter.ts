@@ -1,12 +1,14 @@
 import type { CompanionActionEvent, CompanionActionInfo, CompanionActionContext } from '@companion-module/base'
 import { EmberClient, Model as EmberModel } from 'emberplus-connection'
 import type PQueue from 'p-queue'
-import type { setValueActionOptions } from './actions'
+import { ActionId, type setValueActionOptions } from './actions'
 import type { EmberPlusInstance } from './index'
 import { EmberPlusState } from './state'
 import {
 	calcRelativeNumber,
 	checkNumberLimits,
+	getCurrentEnumValue,
+	getEnumIndex,
 	parseEscapeCharacters,
 	resolveEventPath,
 	substituteEscapeCharacters,
@@ -21,25 +23,25 @@ export const registerParameter =
 	}
 
 export const learnSetValueActionOptions =
-	(state: EmberPlusState, type: EmberModel.ParameterType) =>
+	(state: EmberPlusState, paramType: EmberModel.ParameterType, actionType: ActionId) =>
 	async (action: CompanionActionEvent, context: CompanionActionContext): Promise<setValueActionOptions | undefined> => {
 		const path = await resolveEventPath(action, context)
 		if (!state.parameters.has(path)) return undefined
 		const emberPath = state.parameters.get(path)
-		if (type !== emberPath?.parameterType) return undefined
+		if (paramType !== emberPath?.parameterType) return undefined
 		const options = action.options as setValueActionOptions
-		switch (type) {
-			case EmberModel.ParameterType.String:
+		switch (actionType) {
+			case ActionId.SetValueString:
 				if (emberPath?.value !== null && emberPath?.value !== undefined) {
 					options.value = substituteEscapeCharacters(emberPath.value.toString())
 					options.parseEscapeChars = true
 				}
 				break
-			case EmberModel.ParameterType.Boolean:
+			case ActionId.SetValueBoolean:
 				if (emberPath?.value !== null && emberPath?.value !== undefined) options.value = Boolean(emberPath.value)
 				if (emberPath?.value !== null && emberPath?.value !== undefined) options.valueVar = emberPath.value.toString()
 				break
-			case EmberModel.ParameterType.Enum:
+			case ActionId.SetValueEnum:
 				if (emberPath?.value !== null && emberPath?.value !== undefined) options.value = Number(emberPath.value)
 				if (emberPath?.value !== null && emberPath?.value !== undefined) options.valueVar = emberPath.value.toString()
 				if (emberPath?.minimum !== null && emberPath?.minimum !== undefined) {
@@ -50,7 +52,7 @@ export const learnSetValueActionOptions =
 
 				if (emberPath?.maximum !== null && emberPath?.maximum !== undefined) options.max = emberPath.maximum.toString()
 				break
-			case EmberModel.ParameterType.Integer:
+			case ActionId.SetValueInt:
 				if (emberPath?.value !== null && emberPath?.value !== undefined) options.value = Number(emberPath.value)
 				if (emberPath?.value !== null && emberPath?.value !== undefined) options.valueVar = emberPath.value.toString()
 				if (emberPath?.minimum !== null && emberPath?.minimum !== undefined) options.min = emberPath.minimum.toString()
@@ -63,11 +65,16 @@ export const learnSetValueActionOptions =
 					options.factor = '1'
 				}
 				break
-			case EmberModel.ParameterType.Real:
+			case ActionId.SetValueReal:
 				if (emberPath?.value !== null && emberPath?.value !== undefined) options.value = Number(emberPath.value)
 				if (emberPath?.value !== null && emberPath?.value !== undefined) options.valueVar = emberPath.value.toString()
 				if (emberPath?.minimum !== null && emberPath?.minimum !== undefined) options.min = emberPath.minimum.toString()
 				if (emberPath?.maximum !== null && emberPath?.maximum !== undefined) options.max = emberPath.maximum.toString()
+				break
+			case ActionId.SetValueEnumLookup:
+				if (emberPath?.value !== null && emberPath?.value !== undefined && emberPath.enumeration !== undefined) {
+					options.value = getCurrentEnumValue(state, path)
+				} else return undefined
 				break
 			default:
 				return undefined
@@ -79,7 +86,8 @@ export const setValue =
 	(
 		self: EmberPlusInstance,
 		emberClient: EmberClient,
-		type: EmberModel.ParameterType,
+		paramType: EmberModel.ParameterType,
+		actionType: ActionId,
 		state: EmberPlusState,
 		queue: PQueue,
 	) =>
@@ -93,7 +101,7 @@ export const setValue =
 				const node = await emberClient.getElementByPath(path)
 				// TODO - do we handle not found?
 				if (node && node.contents.type === EmberModel.ElementType.Parameter) {
-					if (node.contents.parameterType === type) {
+					if (node.contents.parameterType === paramType) {
 						if (
 							node.contents?.access === EmberModel.ParameterAccess.None ||
 							node.contents?.access === EmberModel.ParameterAccess.Read
@@ -104,12 +112,12 @@ export const setValue =
 						self.log('debug', 'Got node on ' + path)
 						let value: string | number | boolean
 						let factor: number
-						switch (type) {
-							case EmberModel.ParameterType.String:
+						switch (actionType) {
+							case ActionId.SetValueString:
 								value = await context.parseVariablesInString(action.options['value']?.toString() ?? '')
 								if (action.options['parseEscapeChars']) value = parseEscapeCharacters(value)
 								break
-							case EmberModel.ParameterType.Integer:
+							case ActionId.SetValueInt:
 								factor = parseInt(await context.parseVariablesInString(action.options['factor']?.toString() ?? '1'))
 								if (isNaN(factor)) factor = 1
 								value = action.options['useVar']
@@ -127,7 +135,7 @@ export const setValue =
 										path,
 										action.options['min']?.toString() ?? '',
 										action.options['max']?.toString() ?? '',
-										type,
+										paramType,
 										context,
 										state,
 									)
@@ -138,7 +146,7 @@ export const setValue =
 									state.parameters.get(path)?.maximum ?? 4294967295,
 								)
 								break
-							case EmberModel.ParameterType.Real:
+							case ActionId.SetValueReal:
 								value = action.options['useVar']
 									? Number(await context.parseVariablesInString(action.options['valueVar']?.toString() ?? ''))
 									: Number(action.options['value'])
@@ -151,7 +159,7 @@ export const setValue =
 										path,
 										action.options['min']?.toString() ?? '',
 										action.options['max']?.toString() ?? '',
-										type,
+										paramType,
 										context,
 										state,
 									)
@@ -162,7 +170,7 @@ export const setValue =
 									state.parameters.get(path)?.maximum ?? 4294967295,
 								)
 								break
-							case EmberModel.ParameterType.Enum:
+							case ActionId.SetValueEnum:
 								value = action.options['useVar']
 									? parseInt(await context.parseVariablesInString(action.options['valueVar']?.toString() ?? ''))
 									: Math.floor(Number(action.options['value']))
@@ -175,7 +183,7 @@ export const setValue =
 										path,
 										action.options['min']?.toString() ?? '',
 										action.options['max']?.toString() ?? '',
-										type,
+										paramType,
 										context,
 										state,
 									)
@@ -186,7 +194,15 @@ export const setValue =
 									state.parameters.get(path)?.maximum ?? 4294967295,
 								)
 								break
-							case EmberModel.ParameterType.Boolean:
+							case ActionId.SetValueEnumLookup:
+								value = await context.parseVariablesInString(action.options['value']?.toString() ?? '')
+								value = getEnumIndex(state, path, value) ?? -1
+								if (value < 0) {
+									self.log('warn', `Index of ${value} not found in enum map of ${path}`)
+									return
+								}
+								break
+							case ActionId.SetValueBoolean:
 								if (action.options['toggle']) {
 									value = !state.parameters.get(path)?.value
 								} else if (action.options['useVar']) {
@@ -225,7 +241,7 @@ export const setValue =
 							'Node ' +
 								action.options['path'] +
 								' is not of type ' +
-								type +
+								paramType +
 								' (is ' +
 								node.contents.parameterType +
 								')',

@@ -53,6 +53,7 @@ For Set Value Actions one must ensure the correct data type is selected. In part
 - Set Value Real
 - Set Value Boolean
 - Set Value ENUM (as Integer)
+- Set Value ENUM (from String)
 - Set Value String
 - Matrix Connect
 - Matrix Disconnect
