@@ -11,7 +11,6 @@ import type {
 } from '@companion-module/base'
 import type { EmberPlusInstance } from './index'
 import { EmberClient, Model as EmberModel } from 'emberplus-connection'
-import { factorOpt } from './actions'
 import type { EmberPlusConfig } from './config'
 import { EmberPlusState } from './state'
 import {
@@ -118,6 +117,15 @@ const asIntCheckbox: CompanionInputFieldCheckbox = {
 	tooltip: '',
 }
 
+const factorOpt: CompanionInputFieldTextInput = {
+	type: 'textinput',
+	label: 'Factor',
+	id: 'factor',
+	useVariables: { local: true },
+	default: '1',
+	tooltip: `Value will be multiplied by this field`,
+}
+
 const parseEscapeCharactersCheckBox: CompanionInputFieldCheckbox = {
 	type: 'checkbox',
 	label: 'Parse escape characters',
@@ -160,11 +168,13 @@ export async function resolveFeedback(
 	self: EmberPlusInstance,
 	context: CompanionFeedbackContext,
 	state: EmberPlusState,
+	feedbackId: string,
 	type: EmberModel.ParameterType,
 	path: string,
 	value?: boolean | number | string,
 	options: resolveFeedbackOptions = { comparitor: NumberComparitor.Equal, factor: `1`, parse: true },
 ): Promise<boolean> {
+	addIdtoPathMap(state, feedbackId, path)
 	let fact = parseInt(await context.parseVariablesInString(options.factor ?? '1'))
 	options.comparitor = options.comparitor ?? NumberComparitor.Equal
 	if (isNaN(fact) || fact < 1) fact = 1
@@ -196,30 +206,39 @@ export async function resolveFeedback(
 	}
 }
 
+const addIdtoPathMap = (state: EmberPlusState, id: string, path: string): void => {
+	updatePathOnIdMap(state, id, path)
+	const fbIds = state.feedbacks.byPath.get(path) ?? []
+	if (fbIds.includes(id)) return
+	state.feedbacks.byPath.set(path, [...fbIds, id])
+}
+
+const updatePathOnIdMap = (state: EmberPlusState, id: string, path: string): void => {
+	if (state.feedbacks.byId.has(id)) {
+		const oldPath = state.feedbacks.byId.get(id) ?? ''
+		if (oldPath === path) return
+		const oldIdArray = state.feedbacks.byPath.get(oldPath)
+		if (oldIdArray !== undefined && oldIdArray.indexOf(id) >= 0) {
+			oldIdArray.splice(oldIdArray.indexOf(id), 1)
+			state.feedbacks.byPath.set(oldPath, oldIdArray)
+		}
+	}
+	state.feedbacks.byId.set(id, path)
+}
+
 const subscribeParameterFeedback =
 	(state: EmberPlusState, self: EmberPlusInstance) =>
 	async (feedback: CompanionFeedbackInfo, context: CompanionFeedbackContext): Promise<void> => {
 		const path = await resolveEventPath(feedback, context)
 		await self.registerNewParameter(path)
-		if (state.feedbacks.has(path)) {
-			const fbIds = state.feedbacks.get(path) ?? []
-			if (fbIds.includes(feedback.id)) return
-			state.feedbacks.set(path, [...fbIds, feedback.id])
-		} else {
-			state.feedbacks.set(path, [feedback.id])
-		}
+		addIdtoPathMap(state, feedback.id, path)
 	}
 
 const unsubscribeParameterFeedback =
 	(state: EmberPlusState) =>
-	async (feedback: CompanionFeedbackInfo, context: CompanionFeedbackContext): Promise<void> => {
-		const path = await resolveEventPath(feedback, context)
-		const fbIds = state.feedbacks.get(path) ?? []
-		const index = fbIds.indexOf(feedback.id)
-		if (index > -1) {
-			fbIds.splice(index, 1)
-			state.feedbacks.set(path, fbIds)
-		}
+	async (feedback: CompanionFeedbackInfo, _context: CompanionFeedbackContext): Promise<void> => {
+		//const path = await resolveEventPath(feedback, context)
+		updatePathOnIdMap(state, feedback.id, '')
 	}
 
 export function GetFeedbacksList(
@@ -293,6 +312,7 @@ export function GetFeedbacksList(
 					self,
 					context,
 					state,
+					feedback.id,
 					feedback.options['asInt'] ? EmberModel.ParameterType.Integer : EmberModel.ParameterType.Real,
 					await resolveEventPath(feedback, context),
 					feedback.options['useVar'] ? String(feedback.options['valueVar']) : Number(feedback.options['value']),
@@ -350,6 +370,7 @@ export function GetFeedbacksList(
 					self,
 					context,
 					state,
+					feedback.id,
 					EmberModel.ParameterType.String,
 					await resolveEventPath(feedback, context),
 					feedback.options['value']?.toString() ?? '',
@@ -401,6 +422,7 @@ export function GetFeedbacksList(
 					self,
 					context,
 					state,
+					feedback.id,
 					EmberModel.ParameterType.Enum,
 					await resolveEventPath(feedback, context),
 					feedback.options['value']?.toString() ?? '',
@@ -450,6 +472,7 @@ export function GetFeedbacksList(
 					self,
 					context,
 					state,
+					feedback.id,
 					EmberModel.ParameterType.Boolean,
 					await resolveEventPath(feedback, context),
 				)

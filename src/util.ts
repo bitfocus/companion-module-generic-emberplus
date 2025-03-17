@@ -149,7 +149,7 @@ export function getCurrentEnumValue(state: EmberPlusState, path: string): string
  */
 
 export function getEnumIndex(state: EmberPlusState, path: string, enumStr: string): number | undefined {
-	return state.parameters.get(path)?.enumMap?.get(enumStr)
+	return state.parameters.get(path)?.enumeration?.split('\n').indexOf(enumStr)
 }
 
 /**

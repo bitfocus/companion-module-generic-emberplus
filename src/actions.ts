@@ -121,7 +121,7 @@ const useVariable: CompanionInputFieldCheckbox = {
 	default: false,
 }
 
-export const factorOpt: CompanionInputFieldTextInput = {
+const factorOpt: CompanionInputFieldTextInput = {
 	type: 'textinput',
 	label: 'Factor',
 	id: 'factor',

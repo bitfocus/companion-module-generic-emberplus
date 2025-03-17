@@ -93,23 +93,26 @@ export const setValue =
 	) =>
 	async (action: CompanionActionEvent, context: CompanionActionContext): Promise<void> => {
 		const path = await resolveEventPath(action, context)
-		if (action.options.variable || action.options.toggle || action.options.relative) {
-			await self.registerNewParameter(path)
+		const node = await self.registerNewParameter(
+			path,
+			Boolean(action.options.variable || action.options.toggle || action.options.relative),
+		)
+		if (node === undefined || node.contents.type !== EmberModel.ElementType.Parameter) {
+			self.log('warn', 'Parameter ' + action.options['path'] + ' not found or not a parameter')
+			return
+		}
+		if (
+			node.contents?.access === EmberModel.ParameterAccess.None ||
+			node.contents?.access === EmberModel.ParameterAccess.Read
+		) {
+			self.log('warn', `Can't write to ${path} insufficent permissions: ${node.contents.access}`)
+			return
 		}
 		await queue
 			.add(async () => {
-				const node = await emberClient.getElementByPath(path)
 				// TODO - do we handle not found?
-				if (node && node.contents.type === EmberModel.ElementType.Parameter) {
-					self.updateParameterMap(path, node)
+				if (node.contents.type === EmberModel.ElementType.Parameter) {
 					if (node.contents.parameterType === paramType) {
-						if (
-							node.contents?.access === EmberModel.ParameterAccess.None ||
-							node.contents?.access === EmberModel.ParameterAccess.Read
-						) {
-							self.log('warn', `Can't write to ${path} insufficent permissions: ${node.contents.access}`)
-							return
-						}
 						self.log('debug', 'Got node on ' + path)
 						let value: string | number | boolean
 						let factor: number
@@ -248,8 +251,6 @@ export const setValue =
 								')',
 						)
 					}
-				} else {
-					self.log('warn', 'Parameter ' + action.options['path'] + ' not found or not a parameter')
 				}
 			})
 			.catch((e: any) => {

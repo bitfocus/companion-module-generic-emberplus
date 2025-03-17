@@ -1,4 +1,5 @@
 import type { Model as EmberModel } from 'emberplus-connection'
+import type { TreeElement, EmberElement } from 'emberplus-connection/dist/model'
 
 export interface CurrentSelected {
 	target: number
@@ -6,10 +7,19 @@ export interface CurrentSelected {
 	matrix: number
 }
 
+interface feedbacks {
+	byId: Map<string, string>
+	byPath: Map<string, string[]>
+}
+
 export class EmberPlusState {
 	selected: CurrentSelected
 	parameters: Map<string, EmberModel.Parameter> = new Map<string, EmberModel.Parameter>()
-	feedbacks: Map<string, string[]> = new Map<string, string[]>()
+	feedbacks: feedbacks = {
+		byId: new Map<string, string>(),
+		byPath: new Map<string, string[]>(),
+	}
+	emberElement: Map<string, TreeElement<EmberElement>> = new Map<string, TreeElement<EmberElement>>()
 
 	constructor() {
 		this.selected = {

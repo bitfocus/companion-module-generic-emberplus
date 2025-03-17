@@ -104,7 +104,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	 * Update defintions of actions, feedbacks, variables. Optionally presets
 	 */
 
-	private updateCompanionBits(
+	public updateCompanionBits(
 		options: updateCompanionBitsOptions = {
 			updateActions: false,
 			updateFeedbacks: false,
@@ -238,8 +238,14 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 		}
 	}
 
-	public async registerNewParameter(path: string): Promise<TreeElement<EmberElement> | undefined> {
-		if (this.config.monitoredParameters?.includes(path) === true) return
+	public async registerNewParameter(
+		path: string,
+		createVar: boolean = true,
+	): Promise<TreeElement<EmberElement> | undefined> {
+		if (this.state.emberElement.has(path)) {
+			if ((this.config.monitoredParameters?.includes(path) === true && createVar) || !createVar)
+				return this.state.emberElement.get(path)
+		}
 		return (await this.emberQueue
 			.add(async (): Promise<TreeElement<EmberElement> | undefined> => {
 				try {
@@ -284,6 +290,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 		} else {
 			this.state.parameters.set(path, node.contents)
 		}
+		this.state.emberElement.set(path, node)
 	}
 
 	// Track whether actions are being recorded
@@ -320,7 +327,8 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 				default:
 					value = node.contents.value as string
 			}
-			if (this.state.feedbacks.get(path)) this.checkFeedbacksById(...(this.state.feedbacks.get(path) ?? []))
+			if ((this.state.feedbacks.byPath.get(path) ?? []).length > 0)
+				this.checkFeedbacksById(...(this.state.feedbacks.byPath.get(path) ?? []))
 			const variableValues: CompanionVariableValues = {
 				[path.replaceAll(/[# ]/gm, '_')]: value,
 			}
