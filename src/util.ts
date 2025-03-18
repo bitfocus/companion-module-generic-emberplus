@@ -86,6 +86,7 @@ export function parseEscapeCharacters(msg: string): string {
 
 export function substituteEscapeCharacters(msg: string): string {
 	const message = msg
+		.replaceAll('\\', '\\\\')
 		.replaceAll('\n', '\\n')
 		.replaceAll('\r', '\\r')
 		.replaceAll('\t', '\\t')
@@ -96,7 +97,6 @@ export function substituteEscapeCharacters(msg: string): string {
 		.replaceAll('\x01', '\\x01')
 		.replaceAll('\x02', '\\x02')
 		.replaceAll('\x03', '\\x03')
-		.replaceAll('\\', '\\\\')
 	return message
 }
 
