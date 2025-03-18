@@ -376,7 +376,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 						actOptions.max = this.state.parameters.get(path)?.maximum?.toString() ?? ''
 						break
 					case ActionId.SetValueString:
-						actOptions.parseEscapeChars = true
+						actOptions.parseEscapeChars = false
 						break
 					default:
 						return
