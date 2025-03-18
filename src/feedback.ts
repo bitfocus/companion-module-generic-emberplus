@@ -21,6 +21,7 @@ import {
 	NumberComparitor,
 	parseEscapeCharacters,
 	resolveEventPath,
+	substituteEscapeCharacters,
 } from './util'
 
 export enum FeedbackId {
@@ -386,7 +387,8 @@ export function GetFeedbacksList(
 					if (val === undefined || val === null) return undefined
 					return {
 						...feedback.options,
-						value: val?.toString(),
+						parseEscapeChars: true,
+						value: substituteEscapeCharacters(val?.toString()),
 					}
 				}
 				return undefined
