@@ -26,7 +26,7 @@ Paths defined here will be registed with the host on initialisation, they are av
 
 ## Paths
 
-Central to the concept of ember+ is the address or path of the data element you wish to monitor or change. There are several ways to enter this in the module.
+Central to the concept of ember+ is the address or path of the data element you wish to monitor or change. There are several ways to represent these in the module. Principally as decimals and strings. Regardless of the preferred method, one should be consistent, undesired behaviour can occur if the same path is specified in both methods across different actions and variables.
 
 - #### Decimal: 1.2.3.4
 
@@ -74,7 +74,7 @@ For Set Value Actions one must ensure the correct data type is selected. In part
 - Source Background If Selected
 - Target Background if Selected
 
-Parameter Compare Number, Parameter Equals String, and Parameter True type coerce all data to the respective data type, thus can be used on any node type. Ie, you can check a boolean node with the Parameter Equals String feedback by setting the Value to _true_. Prior to version 2.5 all data was coerced to strings prior to equality tests. The path field for Parameter Compare Number and Parameter Equals String presents a dropdown of registered paths. New paths (including variables) can be entered and if valid will be automatically registered and added to the dropdowns and variable list.
+Parameter Compare Number, Parameter Equals String, and Parameter True type coerce all data to the respective data type, thus can be used on any node type. Ie, you can check a boolean node with the Parameter Equals String feedback by setting the Value to _true_. However, the path dropdown for each feedback is filtered to parameters of the appropriate type(s) for ease of use. Prior to version 2.5 all data was coerced to strings prior to equality tests. The path field for Parameter Compare Number and Parameter Equals String presents a dropdown of registered paths. New paths (including variables) can be entered and if valid will be automatically registered and added to the dropdowns and variable list.
 
 ## Presets
 
