@@ -215,6 +215,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	private async registerParameters() {
 		this.log('debug', 'Start parameter registration')
 		for (const path of this.config.monitoredParameters ?? []) {
+			if (path === '') break
 			this.log('debug', 'Attempt to subscribe to ' + path)
 			await this.emberQueue
 				.add(async () => {
@@ -242,6 +243,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 		path: string,
 		createVar: boolean = true,
 	): Promise<TreeElement<EmberElement> | undefined> {
+		if (path === '') return undefined
 		if (this.state.emberElement.has(path)) {
 			if ((this.config.monitoredParameters?.includes(path) === true && createVar) || !createVar)
 				return this.state.emberElement.get(path)
