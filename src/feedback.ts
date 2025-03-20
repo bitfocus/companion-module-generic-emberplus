@@ -16,7 +16,7 @@ import {
 	parameterFeedbackCallback,
 	subscribeParameterFeedback,
 	unsubscribeParameterFeedback,
-} from './parameter'
+} from './feedbacks/parameter'
 import { EmberPlusState } from './state'
 import { comparitorOptions, filterPathChoices, NumberComparitor } from './util'
 

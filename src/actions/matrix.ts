@@ -1,10 +1,10 @@
 import type { CompanionActionEvent, InstanceBase, CompanionActionContext } from '@companion-module/base'
 import { EmberClient, Model as EmberModel } from 'emberplus-connection'
 import type PQueue from 'p-queue'
-import type { EmberPlusConfig } from './config'
-import { FeedbackId } from './feedback'
-import { EmberPlusState } from './state'
-import { resolvePath } from './util'
+import type { EmberPlusConfig } from '../config'
+import { FeedbackId } from '../feedback'
+import { EmberPlusState } from '../state'
+import { resolvePath } from '../util'
 
 export const doMatrixAction =
 	(

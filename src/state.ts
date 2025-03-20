@@ -30,13 +30,14 @@ export class EmberPlusState {
 	}
 
 	/**
-	 * Register feedback ID as using ember path
+	 * Register feedback ID against an ember path
 	 * @param id Feedback ID
 	 * @param path Ember Path
 	 */
 
 	public addIdtoPathMap = (id: string, path: string): void => {
 		this.updatePathOnIdMap(id, path)
+		if (path === '') return
 		const fbIds = this.feedbacks.byPath.get(path) ?? []
 		if (fbIds.includes(id)) return
 		this.feedbacks.byPath.set(path, [...fbIds, id])
@@ -48,7 +49,7 @@ export class EmberPlusState {
 	 * @param path Ember Path
 	 */
 
-	public updatePathOnIdMap = (id: string, path: string): void => {
+	private updatePathOnIdMap = (id: string, path: string): void => {
 		if (this.feedbacks.byId.has(id)) {
 			const oldPath = this.feedbacks.byId.get(id) ?? ''
 			if (oldPath === path) return
