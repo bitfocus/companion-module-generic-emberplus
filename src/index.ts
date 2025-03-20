@@ -14,7 +14,7 @@ import { EmberClient, Model as EmberModel } from 'emberplus-connection' // note 
 import { ElementType, ParameterType } from 'emberplus-connection/dist/model'
 import type { TreeElement, EmberElement } from 'emberplus-connection/dist/model'
 import { UpgradeScripts } from './upgrades'
-import { getCurrentEnumValue, substituteEscapeCharacters } from './util'
+import { substituteEscapeCharacters } from './util'
 import { GetVariablesList } from './variables'
 import delay from 'delay'
 import PQueue from 'p-queue'
@@ -75,10 +75,6 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 			this.config.host = config.bonjourHost?.split(':')[0]
 			this.config.port = Number(config.bonjourHost?.split(':')[1])
 		}
-		//this.emberClient.discard()
-		//this.emberClient.removeAllListeners()
-
-		this.setupEmberConnection()
 		this.setupMatrices()
 		this.setupMonitoredParams()
 		this.updateCompanionBits({ updateActions: true, updateFeedbacks: true, updatePresets: true, updateVariables: true })
@@ -225,7 +221,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 						})
 						if (initial_node) {
 							this.log('debug', 'Registered for path "' + path + '"')
-							this.updateParameterMap(path, initial_node)
+							this.state.updateParameterMap(path, initial_node)
 							this.updateCompanionBits({ updateActions: true, updateFeedbacks: true, updateVariables: true })
 							await this.handleChangedValue(path, initial_node)
 						}
@@ -264,7 +260,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 							this.config.monitoredParameters = [path]
 						}
 						if (initial_node.contents.type == ElementType.Parameter) {
-							this.updateParameterMap(path, initial_node)
+							this.state.updateParameterMap(path, initial_node)
 							this.updateCompanionBits({ updateActions: true, updateFeedbacks: true, updateVariables: true })
 							await this.handleChangedValue(path, initial_node)
 						}
@@ -281,20 +277,6 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 			})) as TreeElement<EmberElement> | undefined
 	}
 
-	// Add or merge node data to this.state.parameters Map
-	updateParameterMap(path: string, node: TreeElement<EmberElement>): void {
-		if (node.contents.type !== ElementType.Parameter) return
-		if (this.state.parameters.has(path)) {
-			this.state.parameters.set(path, {
-				...this.state.parameters.get(path),
-				...node.contents,
-			})
-		} else {
-			this.state.parameters.set(path, node.contents)
-		}
-		this.state.emberElement.set(path, node)
-	}
-
 	// Track whether actions are being recorded
 	public handleStartStopRecordActions(isRecording: boolean): void {
 		this.isRecordingActions = isRecording
@@ -304,7 +286,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 			this.log('debug', 'Got parameter value for ' + path + ': ' + (node.contents.value ?? ''))
 			let value: boolean | number | string
 			let actionType: ActionId | undefined
-			this.updateParameterMap(path, node)
+			this.state.updateParameterMap(path, node)
 			switch (node.contents.parameterType) {
 				case EmberModel.ParameterType.Boolean:
 					actionType = ActionId.SetValueBoolean
@@ -329,15 +311,15 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 				default:
 					value = node.contents.value as string
 			}
-			if ((this.state.feedbacks.byPath.get(path) ?? []).length > 0)
-				this.checkFeedbacksById(...(this.state.feedbacks.byPath.get(path) ?? []))
+			if (this.state.getFeedbacksByPath(path).length > 0)
+				this.checkFeedbacksById(...this.state.getFeedbacksByPath(path))
 			const variableValues: CompanionVariableValues = {
 				[path.replaceAll(/[# ]/gm, '_')]: value,
 			}
 			if (node.contents.parameterType === ParameterType.Integer && !this.config.factor) {
 				variableValues[path.replaceAll(/[# ]/gm, '_')] = Number(node.contents.value)
 			} else if (node.contents.parameterType === ParameterType.Enum) {
-				variableValues[`${path.replaceAll(/[# ]/gm, '_')}_ENUM`] = getCurrentEnumValue(this.state, path)
+				variableValues[`${path.replaceAll(/[# ]/gm, '_')}_ENUM`] = this.state.getCurrentEnumValue(path)
 			}
 			this.setVariableValues(variableValues)
 

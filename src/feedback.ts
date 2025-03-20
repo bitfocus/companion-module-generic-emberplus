@@ -2,27 +2,23 @@ import { combineRgb /*InstanceBase*/ } from '@companion-module/base'
 import type {
 	CompanionFeedbackDefinition,
 	CompanionFeedbackDefinitions,
-	CompanionFeedbackContext,
 	CompanionInputFieldDropdown,
 	CompanionInputFieldTextInput,
 	CompanionInputFieldCheckbox,
 	CompanionInputFieldNumber,
-	CompanionFeedbackInfo,
+	CompanionOptionValues,
 } from '@companion-module/base'
 import type { EmberPlusInstance } from './index'
 import { EmberClient, Model as EmberModel } from 'emberplus-connection'
 import type { EmberPlusConfig } from './config'
-import { EmberPlusState } from './state'
 import {
-	compareNumber,
-	comparitorOptions,
-	filterPathChoices,
-	getCurrentEnumValue,
-	NumberComparitor,
-	parseEscapeCharacters,
-	resolveEventPath,
-	substituteEscapeCharacters,
-} from './util'
+	learnParameterFeedbackOptions,
+	parameterFeedbackCallback,
+	subscribeParameterFeedback,
+	unsubscribeParameterFeedback,
+} from './parameter'
+import { EmberPlusState } from './state'
+import { comparitorOptions, filterPathChoices, NumberComparitor } from './util'
 
 export enum FeedbackId {
 	Parameter = 'parameter',
@@ -35,10 +31,18 @@ export enum FeedbackId {
 	TargetBackgroundSelected = 'targetBackgroundSelected',
 }
 
-interface resolveFeedbackOptions {
-	comparitor?: NumberComparitor
+export interface parameterFeedbackOptions extends CompanionOptionValues {
+	path: string
+	pathVar: string
+	usePathVar: boolean
+	value: string | number | boolean
+	useVar?: boolean
+	valueVar?: string
+	comparitor: NumberComparitor
+	relative?: boolean
 	factor?: string
-	parse?: boolean
+	asInt?: boolean
+	parseEscapeChars?: boolean
 }
 
 const styles = {
@@ -165,83 +169,6 @@ const targetNumber: CompanionInputFieldNumber = {
 	default: 0,
 }
 
-export async function resolveFeedback(
-	self: EmberPlusInstance,
-	context: CompanionFeedbackContext,
-	state: EmberPlusState,
-	feedbackId: string,
-	type: EmberModel.ParameterType,
-	path: string,
-	value?: boolean | number | string,
-	options: resolveFeedbackOptions = { comparitor: NumberComparitor.Equal, factor: `1`, parse: true },
-): Promise<boolean> {
-	addIdtoPathMap(state, feedbackId, path)
-	let fact = parseInt(await context.parseVariablesInString(options.factor ?? '1'))
-	options.comparitor = options.comparitor ?? NumberComparitor.Equal
-	if (isNaN(fact) || fact < 1) fact = 1
-	if (typeof value === 'string') {
-		value = await context.parseVariablesInString(value)
-	}
-	if (state.parameters.has(path)) {
-		switch (type) {
-			case EmberModel.ParameterType.Boolean:
-				return Boolean(state.parameters.get(path)?.value)
-			case EmberModel.ParameterType.Real:
-				return compareNumber(Number(value), options.comparitor, Number(state.parameters.get(path)?.value))
-			case EmberModel.ParameterType.Integer:
-				return compareNumber(
-					Math.floor(Number(value) * fact),
-					options.comparitor,
-					Math.floor(Number(state.parameters.get(path)?.value)),
-				)
-			case EmberModel.ParameterType.Enum:
-				return getCurrentEnumValue(state, path) == value
-			case EmberModel.ParameterType.String:
-			default:
-				if (options.parse) value = parseEscapeCharacters(value?.toString() ?? '')
-				return state.parameters.get(path)?.value?.toString() == value
-		}
-	} else {
-		self.registerNewParameter(path).catch(() => {})
-		return false
-	}
-}
-
-const addIdtoPathMap = (state: EmberPlusState, id: string, path: string): void => {
-	updatePathOnIdMap(state, id, path)
-	const fbIds = state.feedbacks.byPath.get(path) ?? []
-	if (fbIds.includes(id)) return
-	state.feedbacks.byPath.set(path, [...fbIds, id])
-}
-
-const updatePathOnIdMap = (state: EmberPlusState, id: string, path: string): void => {
-	if (state.feedbacks.byId.has(id)) {
-		const oldPath = state.feedbacks.byId.get(id) ?? ''
-		if (oldPath === path) return
-		const oldIdArray = state.feedbacks.byPath.get(oldPath)
-		if (oldIdArray !== undefined && oldIdArray.indexOf(id) >= 0) {
-			oldIdArray.splice(oldIdArray.indexOf(id), 1)
-			state.feedbacks.byPath.set(oldPath, oldIdArray)
-		}
-	}
-	state.feedbacks.byId.set(id, path)
-}
-
-const subscribeParameterFeedback =
-	(state: EmberPlusState, self: EmberPlusInstance) =>
-	async (feedback: CompanionFeedbackInfo, context: CompanionFeedbackContext): Promise<void> => {
-		const path = await resolveEventPath(feedback, context)
-		await self.registerNewParameter(path)
-		addIdtoPathMap(state, feedback.id, path)
-	}
-
-const unsubscribeParameterFeedback =
-	(state: EmberPlusState) =>
-	async (feedback: CompanionFeedbackInfo, _context: CompanionFeedbackContext): Promise<void> => {
-		//const path = await resolveEventPath(feedback, context)
-		updatePathOnIdMap(state, feedback.id, '')
-	}
-
 export function GetFeedbacksList(
 	self: EmberPlusInstance, //InstanceBase<EmberPlusConfig>,
 	_emberClient: EmberClient,
@@ -257,14 +184,13 @@ export function GetFeedbacksList(
 			options: [
 				{
 					...pathDropDown,
-					choices:
-						filterPathChoices(
-							state,
-							false,
-							EmberModel.ParameterType.Enum,
-							EmberModel.ParameterType.Real,
-							EmberModel.ParameterType.Integer,
-						) ?? [],
+					choices: filterPathChoices(
+						state,
+						false,
+						EmberModel.ParameterType.Enum,
+						EmberModel.ParameterType.Real,
+						EmberModel.ParameterType.Integer,
+					),
 					default:
 						filterPathChoices(
 							state,
@@ -308,37 +234,10 @@ export function GetFeedbacksList(
 					},
 				},
 			],
-			callback: async (feedback, context) => {
-				return await resolveFeedback(
-					self,
-					context,
-					state,
-					feedback.id,
-					feedback.options['asInt'] ? EmberModel.ParameterType.Integer : EmberModel.ParameterType.Real,
-					await resolveEventPath(feedback, context),
-					feedback.options['useVar'] ? String(feedback.options['valueVar']) : Number(feedback.options['value']),
-					{
-						comparitor: feedback.options['comparitor'] as NumberComparitor,
-						factor: feedback.options['factor']?.toString() ?? '1',
-					},
-				)
-			},
+			callback: parameterFeedbackCallback(self, state, FeedbackId.Parameter),
 			subscribe: subscribeParameterFeedback(state, self),
 			unsubscribe: unsubscribeParameterFeedback(state),
-			learn: async (feedback, context) => {
-				const path = await resolveEventPath(feedback, context)
-				if (state.parameters.has(path)) {
-					const val = state.parameters.get(path)
-					if (typeof val?.value !== 'number') return undefined
-					return {
-						...feedback.options,
-						value: val.value,
-						valueVar: val?.value.toString(),
-						factor: val.factor ?? feedback.options.factor,
-					}
-				}
-				return undefined
-			},
+			learn: learnParameterFeedbackOptions(state, FeedbackId.Parameter),
 		},
 		[FeedbackId.String]: {
 			name: 'Parameter Equals String',
@@ -348,7 +247,7 @@ export function GetFeedbacksList(
 			options: [
 				{
 					...pathDropDown,
-					choices: filterPathChoices(state, false, EmberModel.ParameterType.String) ?? [],
+					choices: filterPathChoices(state, false, EmberModel.ParameterType.String),
 					default:
 						filterPathChoices(state, false, EmberModel.ParameterType.String).find(() => true)?.id ??
 						'No paths configured!',
@@ -366,32 +265,10 @@ export function GetFeedbacksList(
 				valueText,
 				parseEscapeCharactersCheckBox,
 			],
-			callback: async (feedback, context) => {
-				return await resolveFeedback(
-					self,
-					context,
-					state,
-					feedback.id,
-					EmberModel.ParameterType.String,
-					await resolveEventPath(feedback, context),
-					feedback.options['value']?.toString() ?? '',
-					{ parse: Boolean(feedback.options['parseEscapeChars']) },
-				)
-			},
+			callback: parameterFeedbackCallback(self, state, FeedbackId.String),
 			subscribe: subscribeParameterFeedback(state, self),
 			unsubscribe: unsubscribeParameterFeedback(state),
-			learn: async (feedback, context) => {
-				const path = await resolveEventPath(feedback, context)
-				if (state.parameters.has(path)) {
-					const val = state.parameters.get(path)?.value
-					if (val === undefined || val === null) return undefined
-					return {
-						...feedback.options,
-						value: feedback.options.parseEscapeChars ? substituteEscapeCharacters(val?.toString()) : val?.toString(),
-					}
-				}
-				return undefined
-			},
+			learn: learnParameterFeedbackOptions(state, FeedbackId.String),
 		},
 		[FeedbackId.ENUM]: {
 			name: 'Parameter ENUM Equals String',
@@ -401,7 +278,7 @@ export function GetFeedbacksList(
 			options: [
 				{
 					...pathDropDown,
-					choices: filterPathChoices(state, false, EmberModel.ParameterType.Enum) ?? [],
+					choices: filterPathChoices(state, false, EmberModel.ParameterType.Enum),
 					default:
 						filterPathChoices(state, false, EmberModel.ParameterType.Enum).find(() => true)?.id ??
 						'No paths configured!',
@@ -418,31 +295,10 @@ export function GetFeedbacksList(
 				usePathVar,
 				valueText,
 			],
-			callback: async (feedback, context) => {
-				return await resolveFeedback(
-					self,
-					context,
-					state,
-					feedback.id,
-					EmberModel.ParameterType.Enum,
-					await resolveEventPath(feedback, context),
-					feedback.options['value']?.toString() ?? '',
-				)
-			},
+			callback: parameterFeedbackCallback(self, state, FeedbackId.ENUM),
 			subscribe: subscribeParameterFeedback(state, self),
 			unsubscribe: unsubscribeParameterFeedback(state),
-			learn: async (feedback, context) => {
-				const path = await resolveEventPath(feedback, context)
-				if (state.parameters.has(path)) {
-					const val = getCurrentEnumValue(state, path)
-					if (val === '') return undefined
-					return {
-						...feedback.options,
-						value: val,
-					}
-				}
-				return undefined
-			},
+			learn: learnParameterFeedbackOptions(state, FeedbackId.ENUM),
 		},
 		[FeedbackId.Boolean]: {
 			name: 'Parameter True',
@@ -452,7 +308,7 @@ export function GetFeedbacksList(
 			options: [
 				{
 					...pathDropDown,
-					choices: filterPathChoices(state, false, EmberModel.ParameterType.Boolean) ?? [],
+					choices: filterPathChoices(state, false, EmberModel.ParameterType.Boolean),
 					default:
 						filterPathChoices(state, false, EmberModel.ParameterType.Boolean).find(() => true)?.id ??
 						'No paths configured!',
@@ -468,16 +324,7 @@ export function GetFeedbacksList(
 				},
 				usePathVar,
 			],
-			callback: async (feedback, context) => {
-				return await resolveFeedback(
-					self,
-					context,
-					state,
-					feedback.id,
-					EmberModel.ParameterType.Boolean,
-					await resolveEventPath(feedback, context),
-				)
-			},
+			callback: parameterFeedbackCallback(self, state, FeedbackId.Boolean),
 			subscribe: subscribeParameterFeedback(state, self),
 			unsubscribe: unsubscribeParameterFeedback(state),
 		},

@@ -12,7 +12,7 @@ import type PQueue from 'p-queue'
 import type { EmberPlusConfig } from './config'
 import type { EmberPlusInstance } from './index'
 import { doMatrixAction, doTake, doClear, setSelectedSource, setSelectedTarget } from './matrix'
-import { learnSetValueActionOptions, setValue, registerParameter } from './parameter'
+import { learnSetValueActionOptions, setValue, subscribeParameterAction } from './parameter'
 import { EmberPlusState } from './state'
 import { filterPathChoices } from './util'
 
@@ -163,7 +163,7 @@ export function GetActionsList(
 			options: [
 				{
 					...pathDropDown,
-					choices: filterPathChoices(state, true, EmberModel.ParameterType.Integer) ?? [],
+					choices: filterPathChoices(state, true, EmberModel.ParameterType.Integer),
 					default:
 						filterPathChoices(state, true, EmberModel.ParameterType.Integer).find(() => true)?.id ??
 						'No paths configured!',
@@ -227,7 +227,7 @@ export function GetActionsList(
 				},
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.Integer, ActionId.SetValueInt, state, queue),
-			subscribe: registerParameter(self),
+			subscribe: subscribeParameterAction(self),
 			learn: learnSetValueActionOptions(state, EmberModel.ParameterType.Integer, ActionId.SetValueInt),
 		},
 		[ActionId.SetValueReal]: {
@@ -235,7 +235,7 @@ export function GetActionsList(
 			options: [
 				{
 					...pathDropDown,
-					choices: filterPathChoices(state, true, EmberModel.ParameterType.Real) ?? [],
+					choices: filterPathChoices(state, true, EmberModel.ParameterType.Real),
 					default:
 						filterPathChoices(state, true, EmberModel.ParameterType.Real).find(() => true)?.id ??
 						'No paths configured!',
@@ -295,7 +295,7 @@ export function GetActionsList(
 				},
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.Real, ActionId.SetValueReal, state, queue),
-			subscribe: registerParameter(self),
+			subscribe: subscribeParameterAction(self),
 			learn: learnSetValueActionOptions(state, EmberModel.ParameterType.Real, ActionId.SetValueReal),
 		},
 		[ActionId.SetValueBoolean]: {
@@ -303,7 +303,7 @@ export function GetActionsList(
 			options: [
 				{
 					...pathDropDown,
-					choices: filterPathChoices(state, true, EmberModel.ParameterType.Boolean) ?? [],
+					choices: filterPathChoices(state, true, EmberModel.ParameterType.Boolean),
 					default:
 						filterPathChoices(state, true, EmberModel.ParameterType.Boolean).find(() => true)?.id ??
 						'No paths configured!',
@@ -358,7 +358,7 @@ export function GetActionsList(
 				},
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.Boolean, ActionId.SetValueBoolean, state, queue),
-			subscribe: registerParameter(self),
+			subscribe: subscribeParameterAction(self),
 			learn: learnSetValueActionOptions(state, EmberModel.ParameterType.Boolean, ActionId.SetValueBoolean),
 		},
 		[ActionId.SetValueEnum]: {
@@ -366,7 +366,7 @@ export function GetActionsList(
 			options: [
 				{
 					...pathDropDown,
-					choices: filterPathChoices(state, true, EmberModel.ParameterType.Enum) ?? [],
+					choices: filterPathChoices(state, true, EmberModel.ParameterType.Enum),
 					default:
 						filterPathChoices(state, true, EmberModel.ParameterType.Enum).find(() => true)?.id ??
 						'No paths configured!',
@@ -429,7 +429,7 @@ export function GetActionsList(
 				},
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.Enum, ActionId.SetValueEnum, state, queue),
-			subscribe: registerParameter(self),
+			subscribe: subscribeParameterAction(self),
 			learn: learnSetValueActionOptions(state, EmberModel.ParameterType.Enum, ActionId.SetValueEnum),
 		},
 		[ActionId.SetValueString]: {
@@ -437,7 +437,7 @@ export function GetActionsList(
 			options: [
 				{
 					...pathDropDown,
-					choices: filterPathChoices(state, true, EmberModel.ParameterType.String) ?? [],
+					choices: filterPathChoices(state, true, EmberModel.ParameterType.String),
 					default:
 						filterPathChoices(state, true, EmberModel.ParameterType.String).find(() => true)?.id ??
 						'No paths configured!',
@@ -468,7 +468,7 @@ export function GetActionsList(
 				createVariable,
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.String, ActionId.SetValueString, state, queue),
-			subscribe: registerParameter(self),
+			subscribe: subscribeParameterAction(self),
 			learn: learnSetValueActionOptions(state, EmberModel.ParameterType.String, ActionId.SetValueString),
 		},
 		[ActionId.SetValueEnumLookup]: {
@@ -476,7 +476,7 @@ export function GetActionsList(
 			options: [
 				{
 					...pathDropDown,
-					choices: filterPathChoices(state, true, EmberModel.ParameterType.Enum) ?? [],
+					choices: filterPathChoices(state, true, EmberModel.ParameterType.Enum),
 					default:
 						filterPathChoices(state, true, EmberModel.ParameterType.Enum).find(() => true)?.id ??
 						'No paths configured!',
@@ -501,7 +501,7 @@ export function GetActionsList(
 				createVariable,
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.Enum, ActionId.SetValueEnumLookup, state, queue),
-			subscribe: registerParameter(self),
+			subscribe: subscribeParameterAction(self),
 			learn: learnSetValueActionOptions(state, EmberModel.ParameterType.Enum, ActionId.SetValueEnumLookup),
 		},
 		[ActionId.MatrixConnect]: {

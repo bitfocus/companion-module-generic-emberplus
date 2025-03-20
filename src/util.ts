@@ -126,28 +126,12 @@ export function filterPathChoices(
 						choices.push({ id: path, label: label })
 					}
 				} else {
-					choices.push({ id: path, label: label })
+					if (value.access !== EmberModel.ParameterAccess.None) choices.push({ id: path, label: label })
 				}
 			}
 		})
 	}
 	return choices
-}
-
-/**
- * Returns the current enumeration string of the parameter
- */
-
-export function getCurrentEnumValue(state: EmberPlusState, path: string): string {
-	return state.parameters.get(path)?.enumeration?.split('\n')[Number(state.parameters.get(path)?.value)] ?? ''
-}
-
-/**
- * Returns the index value of enum string
- */
-
-export function getEnumIndex(state: EmberPlusState, path: string, enumStr: string): number | undefined {
-	return state.parameters.get(path)?.enumeration?.split('\n').indexOf(enumStr)
 }
 
 /**
