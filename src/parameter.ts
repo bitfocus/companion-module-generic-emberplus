@@ -33,8 +33,9 @@ export const learnSetValueActionOptions =
 		switch (actionType) {
 			case ActionId.SetValueString:
 				if (emberPath?.value !== null && emberPath?.value !== undefined) {
-					options.value = substituteEscapeCharacters(emberPath.value.toString())
-					options.parseEscapeChars = true
+					options.value = action.options.parseEscapeChars
+						? substituteEscapeCharacters(emberPath.value.toString())
+						: emberPath.value.toString()
 				}
 				break
 			case ActionId.SetValueBoolean:

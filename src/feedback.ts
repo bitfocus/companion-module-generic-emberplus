@@ -387,8 +387,7 @@ export function GetFeedbacksList(
 					if (val === undefined || val === null) return undefined
 					return {
 						...feedback.options,
-						parseEscapeChars: true,
-						value: substituteEscapeCharacters(val?.toString()),
+						value: feedback.options.parseEscapeChars ? substituteEscapeCharacters(val?.toString()) : val?.toString(),
 					}
 				}
 				return undefined
