@@ -70,10 +70,15 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	 * Process an updated configuration array.
 	 */
 	public async configUpdated(config: EmberPlusConfig): Promise<void> {
+		const oldConfig = this.config
 		this.config = config
 		if (this.config.bonjourHost) {
 			this.config.host = config.bonjourHost?.split(':')[0]
 			this.config.port = Number(config.bonjourHost?.split(':')[1])
+		}
+		if (this.config.host !== oldConfig.host || this.config.port !== oldConfig.port) {
+			this.setupEmberConnection()
+			this.state = new EmberPlusState()
 		}
 		this.setupMatrices()
 		this.setupMonitoredParams()
@@ -150,7 +155,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 		this.emberClient = new EmberClient(this.config.host || '', this.config.port)
 		this.emberClient.on('error', (e) => {
 			this.log('error', 'Connection Error ' + e)
-			this.updateStatus(InstanceStatus.UnknownError)
+			this.updateStatus(InstanceStatus.ConnectionFailure)
 			this.reconnectTimerStart()
 		})
 		this.emberClient.on('connected', () => {
