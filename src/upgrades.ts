@@ -114,12 +114,10 @@ function v270(
 		updatedFeedbacks: [],
 	}
 
-	if (props.config?.factor === undefined) {
-		result.updatedConfig = {
-			...props.config,
-			factor: false,
-			recordEnumByIndex: props.config?.recordEnumByIndex ?? true,
-		}
+	result.updatedConfig = {
+		...props.config,
+		factor: props.config?.factor ?? false,
+		recordEnumByIndex: props.config?.recordEnumByIndex ?? true,
 	}
 
 	for (const action of props.actions) {
