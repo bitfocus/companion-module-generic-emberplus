@@ -13,6 +13,7 @@ export interface EmberPlusConfig {
 	monitoredParametersString?: string
 	monitoredParameters?: string[]
 	factor: boolean
+	recordEnumByIndex: boolean
 }
 
 export function GetConfigFields(): SomeCompanionConfigField[] {
@@ -88,6 +89,14 @@ export function GetConfigFields(): SomeCompanionConfigField[] {
 			width: 6,
 			default: true,
 			tooltip: 'Variables from Integer Parameters will be divided by the Factor field where reported',
+		},
+		{
+			type: 'checkbox',
+			id: 'recordEnumByIndex',
+			label: 'Record ENUM actions by Index?',
+			width: 6,
+			default: true,
+			tooltip: 'If disabled ENUM actions will be recorded as Set Value ENUM (from String) actions.',
 		},
 	]
 }

@@ -118,6 +118,7 @@ function v270(
 		result.updatedConfig = {
 			...props.config,
 			factor: false,
+			recordEnumByIndex: props.config?.recordEnumByIndex ?? true,
 		}
 	}
 
