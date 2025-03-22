@@ -70,7 +70,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	 * Process an updated configuration array.
 	 */
 	public async configUpdated(config: EmberPlusConfig): Promise<void> {
-		const oldConfig = this.config
+		const oldConfig = structuredClone(this.config)
 		this.config = config
 		if (this.config.bonjourHost) {
 			this.config.host = config.bonjourHost?.split(':')[0]
