@@ -15,7 +15,7 @@ import {
 export const subscribeParameterAction =
 	(self: EmberPlusInstance) =>
 	async (action: CompanionActionInfo, context: CompanionActionContext): Promise<void> => {
-		if (action.options.variable || action.options.toggle || action.options.relative) {
+		if (action.options.variable || action.options.toggle || action.options.relative || action.options.asEnum) {
 			await self.registerNewParameter(await resolveEventPath(action, context))
 		}
 	}
@@ -48,8 +48,10 @@ export const learnSetValueActionOptions =
 				} else {
 					options.min = '0'
 				}
-
 				if (emberPath?.maximum !== null && emberPath?.maximum !== undefined) options.max = emberPath.maximum.toString()
+				if (emberPath?.value !== null && emberPath?.value !== undefined && emberPath.enumeration !== undefined) {
+					options.enumValue = state.getCurrentEnumValue(path)
+				}
 				break
 			case ActionId.SetValueInt:
 				if (emberPath?.value !== null && emberPath?.value !== undefined) options.value = Number(emberPath.value)
@@ -69,11 +71,6 @@ export const learnSetValueActionOptions =
 				if (emberPath?.value !== null && emberPath?.value !== undefined) options.valueVar = emberPath.value.toString()
 				if (emberPath?.minimum !== null && emberPath?.minimum !== undefined) options.min = emberPath.minimum.toString()
 				if (emberPath?.maximum !== null && emberPath?.maximum !== undefined) options.max = emberPath.maximum.toString()
-				break
-			case ActionId.SetValueEnumLookup:
-				if (emberPath?.value !== null && emberPath?.value !== undefined && emberPath.enumeration !== undefined) {
-					options.value = state.getCurrentEnumValue(path)
-				} else return undefined
 				break
 			default:
 				return undefined
@@ -174,35 +171,38 @@ export const setValue =
 								)
 								break
 							case ActionId.SetValueEnum:
-								value = action.options['useVar']
-									? parseInt(await context.parseVariablesInString(action.options['valueVar']?.toString() ?? ''))
-									: Math.floor(Number(action.options['value']))
-								if (isNaN(value) || value > 4294967295) {
-									return
-								}
-								if (action.options['relative']) {
-									value = await calcRelativeNumber(
+								if (action.options['asEnum']) {
+									value = await context.parseVariablesInString(action.options['enumValue']?.toString() ?? '')
+									value = state.getEnumIndex(path, value) ?? -1
+									if (value < 0) {
+										self.logger.warn(
+											`Index of ${await context.parseVariablesInString(action.options['enumValue']?.toString() ?? '')} not found in enum map of ${path}`,
+										)
+										return
+									}
+								} else {
+									value = action.options['useVar']
+										? parseInt(await context.parseVariablesInString(action.options['valueVar']?.toString() ?? ''))
+										: Math.floor(Number(action.options['value']))
+									if (isNaN(value) || value > 4294967295) {
+										return
+									}
+									if (action.options['relative']) {
+										value = await calcRelativeNumber(
+											value,
+											path,
+											action.options['min']?.toString() ?? '',
+											action.options['max']?.toString() ?? '',
+											paramType,
+											context,
+											state,
+										)
+									}
+									value = checkNumberLimits(
 										value,
-										path,
-										action.options['min']?.toString() ?? '',
-										action.options['max']?.toString() ?? '',
-										paramType,
-										context,
-										state,
+										state.parameters.get(path)?.minimum ?? 0,
+										state.parameters.get(path)?.maximum ?? 4294967295,
 									)
-								}
-								value = checkNumberLimits(
-									value,
-									state.parameters.get(path)?.minimum ?? 0,
-									state.parameters.get(path)?.maximum ?? 4294967295,
-								)
-								break
-							case ActionId.SetValueEnumLookup:
-								value = await context.parseVariablesInString(action.options['value']?.toString() ?? '')
-								value = state.getEnumIndex(path, value) ?? -1
-								if (value < 0) {
-									self.logger.warn(`Index of ${value} not found in enum map of ${path}`)
-									return
 								}
 								break
 							case ActionId.SetValueBoolean:

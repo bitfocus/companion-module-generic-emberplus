@@ -169,4 +169,37 @@ function v270(
 	return result
 }
 
-export const UpgradeScripts: CompanionStaticUpgradeScript<EmberPlusConfig>[] = [v250, v260, v270]
+function mergeEnumActions(
+	_context: CompanionUpgradeContext<EmberPlusConfig>,
+	props: CompanionStaticUpgradeProps<EmberPlusConfig>,
+): CompanionStaticUpgradeResult<EmberPlusConfig> {
+	const result: CompanionStaticUpgradeResult<EmberPlusConfig> = {
+		updatedActions: [],
+		updatedConfig: null,
+		updatedFeedbacks: [],
+	}
+
+	for (const action of props.actions) {
+		switch (action.actionId) {
+			case 'setValueEnum':
+				action.options.asEnum = action.options.asEnum ?? false
+				action.options.enumValue = action.options.enumValue ?? ''
+				result.updatedActions.push(action)
+				break
+			case 'setValueEnumLookup':
+				action.actionId = 'setValueEnum'
+				action.options.enumValue = action.options.value
+				action.options.value = 0
+				action.options.valueVar = '0'
+				action.options.useVar = false
+				action.options.relative = false
+				action.options.min = '0'
+				action.options.max = ''
+				result.updatedActions.push(action)
+				break
+		}
+	}
+	return result
+}
+
+export const UpgradeScripts: CompanionStaticUpgradeScript<EmberPlusConfig>[] = [v250, v260, v270, mergeEnumActions]

@@ -26,7 +26,7 @@ Paths defined here will be registed with the host on initialisation, they are av
 
 ## Paths
 
-Central to the concept of ember+ is the address or path of the data element you wish to monitor or change. There are several ways to represent these in the module. Principally as decimals and strings. Regardless of the preferred method, one should be consistent, undesired behaviour can occur if the same path is specified in both methods across different actions and variables.
+Central to the concept of ember+ is the address or path of the data element you wish to monitor or change. There are several ways to represent these in the module. Principally as decimals and strings. Regardless of the preferred method, one should be consistent - undesired behaviour can occur if the same path is specified in both methods across different actions and feedbacks.
 
 - #### Decimal: 1.2.3.4
 
@@ -52,8 +52,7 @@ For Set Value Actions one must ensure the correct data type is selected. In part
 - Set Value Integer
 - Set Value Real
 - Set Value Boolean
-- Set Value ENUM (as Integer)
-- Set Value ENUM (from String)
+- Set Value ENUM
 - Set Value String
 - Matrix Connect
 - Matrix Disconnect
@@ -83,4 +82,4 @@ Parameter Compare Number, Parameter Equals String, and Parameter True type coerc
 
 ## Action Recorder
 
-The Action Recorder can record Set Value actions for ember nodes you are currently subscribed to.
+The Action Recorder can record Set Value actions for ember parameters you are currently subscribed to.

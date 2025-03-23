@@ -30,6 +30,8 @@ export interface setValueActionOptions extends CompanionOptionValues {
 	factor?: string
 	toggle?: boolean
 	parseEscapeChars?: boolean
+	asEnum?: boolean
+	enumValue?: string
 }
 
 export enum ActionId {
@@ -38,7 +40,6 @@ export enum ActionId {
 	SetValueString = 'setValueString',
 	SetValueBoolean = 'setValueBoolean',
 	SetValueEnum = 'setValueEnum',
-	SetValueEnumLookup = 'setValueEnumLookup',
 	MatrixConnect = 'matrixConnect',
 	MatrixDisconnect = 'matrixDisconnect',
 	MatrixSetConnection = 'matrixSetConnection',
@@ -128,6 +129,23 @@ const factorOpt: CompanionInputFieldTextInput = {
 	useVariables: { local: true },
 	default: '1',
 	tooltip: `Value will be multiplied by this field`,
+}
+
+const asEnum: CompanionInputFieldCheckbox = {
+	type: 'checkbox',
+	label: 'Set from Enumeration Value?',
+	id: 'asEnum',
+	default: false,
+}
+
+const enumVal: CompanionInputFieldTextInput = {
+	type: 'textinput',
+	label: 'Enumeration',
+	id: 'enumValue',
+	required: true,
+	useVariables: { local: true },
+	default: '',
+	tooltip: 'Must exactly match a valid enumaeration value',
 }
 
 const matrixInputs: Array<CompanionInputFieldTextInput | CompanionInputFieldNumber> = [
@@ -362,7 +380,7 @@ export function GetActionsList(
 			learn: learnSetValueActionOptions(state, EmberModel.ParameterType.Boolean, ActionId.SetValueBoolean),
 		},
 		[ActionId.SetValueEnum]: {
-			name: 'Set Value ENUM (as Integer)',
+			name: 'Set Value ENUM',
 			options: [
 				{
 					...pathDropDown,
@@ -391,7 +409,7 @@ export function GetActionsList(
 					default: 0,
 					step: 1,
 					isVisible: (options) => {
-						return !options.useVar
+						return !options.useVar && !options.asEnum
 					},
 				},
 				{
@@ -403,28 +421,45 @@ export function GetActionsList(
 					default: '0',
 					tooltip: 'Return an integer between 0 and 4294967295',
 					isVisible: (options) => {
-						return !!options.useVar
+						return !!options.useVar && !options.asEnum
 					},
 				},
-				useVariable,
-				relative,
+				{
+					...enumVal,
+					isVisible: (options) => {
+						return !!options.asEnum
+					},
+				},
+				asEnum,
+				{
+					...useVariable,
+					isVisible: (options) => {
+						return !options.asEnum
+					},
+				},
+				{
+					...relative,
+					isVisible: (options) => {
+						return !options.asEnum
+					},
+				},
 				{
 					...minLimit,
 					default: '0',
 					isVisible: (options) => {
-						return !!options.relative
+						return !!options.relative && !options.asEnum
 					},
 				},
 				{
 					...maxLimit,
 					isVisible: (options) => {
-						return !!options.relative
+						return !!options.relative && !options.asEnum
 					},
 				},
 				{
 					...createVariable,
 					isVisible: (options) => {
-						return !options.relative
+						return !options.relative && !options.asEnum
 					},
 				},
 			],
@@ -470,39 +505,6 @@ export function GetActionsList(
 			callback: setValue(self, emberClient, EmberModel.ParameterType.String, ActionId.SetValueString, state, queue),
 			subscribe: subscribeParameterAction(self),
 			learn: learnSetValueActionOptions(state, EmberModel.ParameterType.String, ActionId.SetValueString),
-		},
-		[ActionId.SetValueEnumLookup]: {
-			name: 'Set Value ENUM (from String)',
-			options: [
-				{
-					...pathDropDown,
-					choices: filterPathChoices(state, true, EmberModel.ParameterType.Enum),
-					default:
-						filterPathChoices(state, true, EmberModel.ParameterType.Enum).find(() => true)?.id ??
-						'No paths configured!',
-					isVisible: (options) => {
-						return !options.usePathVar
-					},
-				},
-				{
-					...pathString,
-					isVisible: (options) => {
-						return !!options.usePathVar
-					},
-				},
-				usePathVar,
-				{
-					type: 'textinput',
-					label: 'Value',
-					id: 'value',
-					useVariables: { local: true },
-					tooltip: 'Must exactly match valid enumeration value',
-				},
-				createVariable,
-			],
-			callback: setValue(self, emberClient, EmberModel.ParameterType.Enum, ActionId.SetValueEnumLookup, state, queue),
-			subscribe: subscribeParameterAction(self),
-			learn: learnSetValueActionOptions(state, EmberModel.ParameterType.Enum, ActionId.SetValueEnumLookup),
 		},
 		[ActionId.MatrixConnect]: {
 			name: 'Matrix Connect',

@@ -98,7 +98,6 @@ export function GetConfigFields(): SomeCompanionConfigField[] {
 			label: 'Record ENUM actions by Index?',
 			width: 6,
 			default: true,
-			tooltip: 'If disabled ENUM actions will be recorded as Set Value ENUM (from String) actions',
 		},
 		{
 			type: 'dropdown',
