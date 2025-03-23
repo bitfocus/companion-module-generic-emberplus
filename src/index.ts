@@ -355,7 +355,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 						actOptions.relative = false
 						actOptions.min = this.state.parameters.get(path)?.minimum?.toString() ?? '0'
 						actOptions.max = this.state.parameters.get(path)?.maximum?.toString() ?? ''
-						actOptions.asEnum = !this.config.recordEnumByIndex
+						actOptions.asEnum = true
 						actOptions.enumValue = this.state.getCurrentEnumValue(path)
 						break
 					case ActionId.SetValueInt:

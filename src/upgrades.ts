@@ -118,7 +118,6 @@ function v270(
 	result.updatedConfig = {
 		...props.config,
 		factor: props.config?.factor ?? false,
-		recordEnumByIndex: props.config?.recordEnumByIndex ?? true,
 		logging: props.config?.logging ?? LoggerLevel.Information,
 	}
 
