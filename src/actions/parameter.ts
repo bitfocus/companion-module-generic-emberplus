@@ -97,14 +97,14 @@ export const setValue =
 			Boolean(action.options.variable || action.options.toggle || action.options.relative),
 		)
 		if (node === undefined || node.contents.type !== EmberModel.ElementType.Parameter) {
-			self.log('warn', 'Parameter ' + action.options['path'] + ' not found or not a parameter')
+			self.logger.warn('Parameter ' + action.options['path'] + ' not found or not a parameter')
 			return
 		}
 		if (
 			node.contents?.access === EmberModel.ParameterAccess.None ||
 			node.contents?.access === EmberModel.ParameterAccess.Read
 		) {
-			self.log('warn', `Can't write to ${path} insufficent permissions: ${node.contents.access}`)
+			self.logger.warn(`Can't write to ${path} insufficent permissions: ${node.contents.access}`)
 			return
 		}
 		await queue
@@ -112,7 +112,7 @@ export const setValue =
 				// TODO - do we handle not found?
 				if (node.contents.type === EmberModel.ElementType.Parameter) {
 					if (node.contents.parameterType === paramType) {
-						self.log('debug', 'Got node on ' + path)
+						self.logger.debug('Got node on ' + path)
 						let value: string | number | boolean
 						let factor: number
 						switch (actionType) {
@@ -201,7 +201,7 @@ export const setValue =
 								value = await context.parseVariablesInString(action.options['value']?.toString() ?? '')
 								value = state.getEnumIndex(path, value) ?? -1
 								if (value < 0) {
-									self.log('warn', `Index of ${value} not found in enum map of ${path}`)
+									self.logger.warn(`Index of ${value} not found in enum map of ${path}`)
 									return
 								}
 								break
@@ -239,8 +239,7 @@ export const setValue =
 						)
 						request.response?.catch(() => null) // Ensure the response is 'handled'
 					} else {
-						self.log(
-							'warn',
+						self.logger.warn(
 							'Node ' +
 								action.options['path'] +
 								' is not of type ' +
@@ -253,6 +252,6 @@ export const setValue =
 				}
 			})
 			.catch((e: any) => {
-				self.log('debug', `Failed to set value: ${e.toString()}`)
+				self.logger.warn(`Failed to set value: ${e.toString()}`)
 			})
 	}

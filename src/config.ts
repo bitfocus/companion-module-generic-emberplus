@@ -1,5 +1,6 @@
 import { Regex } from '@companion-module/base'
 import type { SomeCompanionConfigField } from '@companion-module/base'
+import { LoggerLevel, loggerLevelChoices } from './logger.js'
 
 export const portDefault = 9000
 
@@ -14,6 +15,7 @@ export interface EmberPlusConfig {
 	monitoredParameters?: string[]
 	factor: boolean
 	recordEnumByIndex: boolean
+	logging: LoggerLevel
 }
 
 export function GetConfigFields(): SomeCompanionConfigField[] {
@@ -96,7 +98,16 @@ export function GetConfigFields(): SomeCompanionConfigField[] {
 			label: 'Record ENUM actions by Index?',
 			width: 6,
 			default: true,
-			tooltip: 'If disabled ENUM actions will be recorded as Set Value ENUM (from String) actions.',
+			tooltip: 'If disabled ENUM actions will be recorded as Set Value ENUM (from String) actions',
+		},
+		{
+			type: 'dropdown',
+			id: 'logging',
+			label: 'Minimum Log Level',
+			default: LoggerLevel.Information,
+			choices: loggerLevelChoices,
+			allowCustom: false,
+			width: 8,
 		},
 	]
 }

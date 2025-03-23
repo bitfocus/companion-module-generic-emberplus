@@ -1,27 +1,28 @@
-import type { CompanionActionEvent, InstanceBase, CompanionActionContext } from '@companion-module/base'
+import type { CompanionActionEvent, CompanionActionContext, InstanceBase } from '@companion-module/base'
 import { EmberClient, Model as EmberModel } from 'emberplus-connection'
 import type PQueue from 'p-queue'
 import type { EmberPlusConfig } from '../config'
 import { FeedbackId } from '../feedback'
+import type { EmberPlusInstance } from '../index'
 import { EmberPlusState } from '../state'
 import { resolvePath } from '../util'
 
 export const doMatrixAction =
 	(
-		self: InstanceBase<EmberPlusConfig>,
+		self: EmberPlusInstance,
 		emberClient: EmberClient,
 		method: EmberClient['matrixConnect'] | EmberClient['matrixDisconnect'] | EmberClient['matrixSetConnection'],
 		queue: PQueue,
 	) =>
 	async (action: CompanionActionEvent, context: CompanionActionContext): Promise<void> => {
 		const path = await resolvePath(context, action.options['path']?.toString() ?? '')
-		self.log('debug', 'Get node ' + path)
+		self.logger.debug('Get node ' + path)
 		await queue
 			.add(async () => {
 				const node = await emberClient.getElementByPath(path)
 				// TODO - do we handle not found?
 				if (node && node.contents.type === EmberModel.ElementType.Matrix) {
-					self.log('debug', 'Got node on ' + path)
+					self.logger.debug('Got node on ' + path)
 					const target = Number(action.options['target'])
 					const sources = (action.options['sources'] as string)
 						.split(',')
@@ -29,11 +30,11 @@ export const doMatrixAction =
 						.map((s) => Number(s))
 					await method(node as EmberModel.NumberedTreeNode<EmberModel.Matrix>, target, sources)
 				} else {
-					self.log('warn', 'Matrix ' + action.options['path'] + ' not found or not a parameter')
+					self.logger.warn('Matrix ' + action.options['path'] + ' not found or not a parameter')
 				}
 			})
 			.catch((e: any) => {
-				self.log('debug', `Failed to doMatrixAction: ${e.toString()}`)
+				self.logger.debug(`Failed to doMatrixAction: ${e.toString()}`)
 			})
 	}
 
@@ -46,13 +47,13 @@ export const doMatrixAction =
  * @param queue reference to the PQueue of the module
  */
 export const doMatrixActionFunction = async function (
-	self: InstanceBase<EmberPlusConfig>,
+	self: EmberPlusInstance,
 	emberClient: EmberClient,
 	config: EmberPlusConfig,
 	state: EmberPlusState,
 	queue: PQueue,
 ): Promise<void> {
-	self.log('debug', 'Get node ' + state.selected.matrix)
+	self.logger.debug('Get node ' + state.selected.matrix)
 	await queue
 		.add(async () => {
 			if (
@@ -67,18 +68,18 @@ export const doMatrixActionFunction = async function (
 					.then((node) => {
 						// TODO - do we handle not found?
 						if (node && node.contents.type === EmberModel.ElementType.Matrix) {
-							self.log('debug', 'Got node on ' + state.selected.matrix)
+							self.logger.debug('Got node on ' + state.selected.matrix)
 							const target = state.selected.target
 							const sources = [state.selected.source]
 							emberClient
 								.matrixConnect(node as EmberModel.NumberedTreeNode<EmberModel.Matrix>, target, sources)
-								.then((r) => self.log('debug', String(JSON.stringify(r))))
-								.catch((r) => self.log('debug', r))
+								.then((r) => self.logger.debug(r))
+								.catch((r) => self.logger.debug(r))
 						} else {
-							self.log('warn', 'Matrix ' + state.selected.matrix + ' not found or not a parameter')
+							self.logger.warn('Matrix ' + state.selected.matrix + ' not found or not a parameter')
 						}
 					})
-					.catch((reason) => self.log('debug', reason))
+					.catch((reason) => self.logger.debug(reason))
 					.finally(() => {
 						state.selected.matrix = state.selected.source = state.selected.target = -1
 						self.checkFeedbacks(
@@ -90,7 +91,7 @@ export const doMatrixActionFunction = async function (
 			}
 		})
 		.catch((e: any) => {
-			self.log('debug', `Failed to doMatrixActionFunction: ${e.toString()}`)
+			self.logger.debug(`Failed to doMatrixActionFunction: ${e.toString()}`)
 		})
 }
 
@@ -104,13 +105,7 @@ export const doMatrixActionFunction = async function (
  * @param queue reference to the PQueue of the module
  */
 export const doTake =
-	(
-		self: InstanceBase<EmberPlusConfig>,
-		emberClient: EmberClient,
-		config: EmberPlusConfig,
-		state: EmberPlusState,
-		queue: PQueue,
-	) =>
+	(self: EmberPlusInstance, emberClient: EmberClient, config: EmberPlusConfig, state: EmberPlusState, queue: PQueue) =>
 	async (action: CompanionActionEvent): Promise<void> => {
 		if (
 			state.selected.target !== -1 &&
@@ -118,8 +113,7 @@ export const doTake =
 			state.selected.matrix !== -1 &&
 			config.matrices
 		) {
-			self.log(
-				'debug',
+			self.logger.debug(
 				'TAKE: selectedDest: ' +
 					state.selected.target +
 					' selected.source: ' +
@@ -129,7 +123,7 @@ export const doTake =
 			)
 			await doMatrixActionFunction(self, emberClient, config, state, queue)
 		} else {
-			self.log('debug', 'TAKE went wrong.')
+			self.logger.debug('TAKE went wrong.')
 		}
 	}
 
@@ -157,20 +151,14 @@ export const doClear = (self: InstanceBase<EmberPlusConfig>, state: EmberPlusSta
  * @param state reference to the state of the module
  */
 export const setSelectedSource =
-	(
-		self: InstanceBase<EmberPlusConfig>,
-		emberClient: EmberClient,
-		config: EmberPlusConfig,
-		state: EmberPlusState,
-		queue: PQueue,
-	) =>
+	(self: EmberPlusInstance, emberClient: EmberClient, config: EmberPlusConfig, state: EmberPlusState, queue: PQueue) =>
 	async (action: CompanionActionEvent): Promise<void> => {
 		if (action.options['source'] != -1 && Number(action.options['matrix']) == state.selected.matrix) {
 			state.selected.source = Number(action.options['source'])
-			self.log('debug', 'Take is: ' + config.take)
+			self.logger.debug('Take is: ' + config.take)
 			if (config.take) await doMatrixActionFunction(self, emberClient, config, state, queue)
 			self.checkFeedbacks(FeedbackId.SourceBackgroundSelected, FeedbackId.Clear, FeedbackId.Take)
-			self.log('debug', 'setSelectedSource: ' + action.options['source'] + ' on Matrix: ' + state.selected.matrix)
+			self.logger.debug('setSelectedSource: ' + action.options['source'] + ' on Matrix: ' + state.selected.matrix)
 		}
 	}
 
@@ -180,7 +168,7 @@ export const setSelectedSource =
  * @param state reference to the state of the module
  */
 export const setSelectedTarget =
-	(self: InstanceBase<EmberPlusConfig>, state: EmberPlusState) =>
+	(self: EmberPlusInstance, state: EmberPlusState) =>
 	(action: CompanionActionEvent): void => {
 		if (action.options['target'] != -1) {
 			state.selected.target = Number(action.options['target'])
@@ -193,5 +181,5 @@ export const setSelectedTarget =
 			FeedbackId.Take,
 			FeedbackId.Clear,
 		)
-		self.log('debug', 'setSelectedTarget: ' + action.options['target'] + ' on Matrix: ' + state.selected.matrix)
+		self.logger.debug('setSelectedTarget: ' + action.options['target'] + ' on Matrix: ' + state.selected.matrix)
 	}

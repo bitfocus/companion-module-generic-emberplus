@@ -6,6 +6,7 @@ import {
 } from '@companion-module/base'
 import { ActionId } from './actions.js'
 import type { EmberPlusConfig } from './config.js'
+import { LoggerLevel } from './logger.js'
 import { comparitorOptions } from './util'
 
 function v250(
@@ -118,6 +119,7 @@ function v270(
 		...props.config,
 		factor: props.config?.factor ?? false,
 		recordEnumByIndex: props.config?.recordEnumByIndex ?? true,
+		logging: props.config?.logging ?? LoggerLevel.Information,
 	}
 
 	for (const action of props.actions) {
