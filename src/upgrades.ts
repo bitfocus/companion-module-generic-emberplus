@@ -188,6 +188,7 @@ function mergeEnumActions(
 			case 'setValueEnumLookup':
 				action.actionId = 'setValueEnum'
 				action.options.enumValue = action.options.value
+				action.options.asEnum = true
 				action.options.value = 0
 				action.options.valueVar = '0'
 				action.options.useVar = false
