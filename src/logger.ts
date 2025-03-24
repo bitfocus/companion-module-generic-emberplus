@@ -41,11 +41,8 @@ export class Logger {
 	 * @returns True if actioned
 	 */
 
-	public log(level: LoggerLevel, data: loggableTypes): boolean {
-		const logData =
-			typeof data === 'object'
-				? `[${new Date().toJSON()}] ${JSON.stringify(data)}`
-				: `[${new Date().toJSON()}] ${data.toString()}`
+	public log(level: LoggerLevel, data: string): boolean {
+		const logData = `[${new Date().toJSON()}] ${data}`
 		if (level > this.#minLogLevel) return false
 		if (level === LoggerLevel.Console) {
 			console.log(logData)
@@ -80,34 +77,34 @@ export class Logger {
 	 * Log to Console
 	 */
 	public console(...data: loggableTypes[]): boolean {
-		return this.log(LoggerLevel.Console, this.buildMsgString(data))
+		return this.log(LoggerLevel.Console, this.buildMsgString(...data))
 	}
 
 	/**
 	 * Log at debug level
 	 */
 	public debug(...data: loggableTypes[]): boolean {
-		return this.log(LoggerLevel.Debug, this.buildMsgString(data))
+		return this.log(LoggerLevel.Debug, this.buildMsgString(...data))
 	}
 
 	/**
 	 * Log at info level
 	 */
 	public info(...data: loggableTypes[]): boolean {
-		return this.log(LoggerLevel.Information, this.buildMsgString(data))
+		return this.log(LoggerLevel.Information, this.buildMsgString(...data))
 	}
 
 	/**
 	 * Log at warning level
 	 */
 	public warn(...data: loggableTypes[]): boolean {
-		return this.log(LoggerLevel.Warning, this.buildMsgString(data))
+		return this.log(LoggerLevel.Warning, this.buildMsgString(...data))
 	}
 
 	/**
 	 * Log at error level
 	 */
 	public error(...data: loggableTypes[]): boolean {
-		return this.log(LoggerLevel.Error, this.buildMsgString(data))
+		return this.log(LoggerLevel.Error, this.buildMsgString(...data))
 	}
 }
