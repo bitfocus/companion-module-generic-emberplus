@@ -37,8 +37,8 @@ interface updateCompanionBitsOptions {
 export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	private emberClient!: EmberClient
 	private config!: EmberPlusConfig
-	private state!: EmberPlusState
-	private emberQueue!: PQueue
+	private state: EmberPlusState = new EmberPlusState()
+	private emberQueue: PQueue = new PQueue({ concurrency: 1, autoStart: false })
 	private reconnectTimer: ReturnType<typeof setTimeout> | undefined = undefined
 	private isRecordingActions: boolean = false
 	private statusManager = new StatusManager(this, { status: InstanceStatus.Connecting, message: 'Initialising' }, 2000)
@@ -63,8 +63,6 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 			this.config.host = config.bonjourHost?.split(':')[0]
 			this.config.port = Number(config.bonjourHost?.split(':')[1])
 		}
-		this.state = new EmberPlusState()
-		this.emberQueue = new PQueue({ concurrency: 1 })
 		this.setupEmberConnection()
 		this.setupMatrices()
 		this.setupMonitoredParams()
@@ -83,6 +81,8 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 			this.config.port = Number(config.bonjourHost?.split(':')[1])
 		}
 		if (this.config.host !== oldConfig.host || this.config.port !== oldConfig.port) {
+			this.emberQueue.clear()
+			this.emberQueue.pause()
 			this.setupEmberConnection()
 			this.state = new EmberPlusState()
 		}
@@ -148,20 +148,20 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 		this.emberQueue.clear()
 		this.reconnectTimerStop()
 		if (this.emberClient !== undefined) {
+			this.emberClient.removeAllListeners()
 			this.emberClient.discard()
-			//this.emberClient.removeAllListeners()
 		}
 		if (this.config.host === undefined || this.config.host === '') {
 			this.logger.warn(`No Host`)
 			this.statusManager.updateStatus(InstanceStatus.BadConfig, 'No Host')
 			return
 		}
-		this.logger.debug('Connecting ' + (this.config.host || '') + ':' + this.config.port)
+		this.logger.debug('Connecting ', this.config.host || '', ':', this.config.port ?? '')
 		this.statusManager.updateStatus(InstanceStatus.Connecting)
 
 		this.emberClient = new EmberClient(this.config.host || '', this.config.port)
 		this.emberClient.on('error', (e) => {
-			this.logger.error('Connection Error ' + e)
+			this.logger.error('Connection Error', e)
 			this.statusManager.updateStatus(InstanceStatus.ConnectionFailure)
 			this.reconnectTimerStart()
 		})
@@ -172,6 +172,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 				.then(async () => {
 					const request = await this.emberClient.getDirectory(this.emberClient.tree)
 					await request.response
+					this.emberQueue.start()
 					await this.registerParameters()
 					this.subscribeActions()
 					this.subscribeFeedbacks()
@@ -179,7 +180,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 				})
 				.catch(async (e) => {
 					// get root
-					this.logger.error('Failed to discover root or subscribe to path: ' + e)
+					this.logger.error('Failed to discover root or subscribe to path:', e)
 					this.statusManager.updateStatus(InstanceStatus.UnknownWarning, e.toString())
 					await this.emberClient.disconnect()
 					await delay(reconnectOnFailDelay)
@@ -194,7 +195,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 		this.reconnectTimerStart()
 		this.emberClient.connect().catch((e) => {
 			this.statusManager.updateStatus(InstanceStatus.ConnectionFailure)
-			this.logger.error('Connection Failure: ' + e)
+			this.logger.error('Connection Failure:' + e)
 			this.reconnectTimerStart()
 		})
 	}
@@ -224,25 +225,25 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 		this.logger.debug('Start parameter registration')
 		for (const path of this.config.monitoredParameters ?? []) {
 			if (path === '') break
-			this.logger.debug('Attempt to subscribe to ' + path)
+			this.logger.debug('Attempt to subscribe to', path)
 			await this.emberQueue
 				.add(async () => {
 					try {
 						const initial_node = await this.emberClient.getElementByPath(path, (node) => {
-							this.handleChangedValue(path, node).catch((e) => this.logger.error('Error handling parameter ' + e))
+							this.handleChangedValue(path, node).catch((e) => this.logger.error('Error handling parameter', e))
 						})
 						if (initial_node) {
-							this.logger.debug('Registered for path "' + path + '"')
+							this.logger.debug('Registered for path', path)
 							this.state.updateParameterMap(path, initial_node)
 							this.updateCompanionBits({ updateActions: true, updateFeedbacks: true, updateVariables: true })
 							await this.handleChangedValue(path, initial_node)
 						}
-					} catch (e) {
-						this.logger.error('Failed to subscribe to path "' + path + '": ' + e)
+					} catch {
+						this.logger.error('Failed to subscribe to path', path)
 					}
 				})
 				.catch((e) => {
-					this.logger.debug(`Failed to register parameter: ${e.toString()}`)
+					this.logger.debug(`Failed to register parameter:`, e)
 				})
 		}
 	}
@@ -252,26 +253,26 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 		createVar: boolean = true,
 	): Promise<TreeElement<EmberElement> | undefined> {
 		if (path === '') return undefined
-		if (this.state.emberElement.has(path)) {
-			if ((this.config.monitoredParameters?.includes(path) === true && createVar) || !createVar)
-				return this.state.emberElement.get(path)
-		}
 		return (await this.emberQueue
 			.add(async (): Promise<TreeElement<EmberElement> | undefined> => {
+				if (this.state.emberElement.has(path) && (this.config.monitoredParameters?.includes(path) || !createVar)) {
+					return this.state.emberElement.get(path)
+				}
 				try {
 					const initial_node = await this.emberClient.getElementByPath(path, (node) => {
-						this.handleChangedValue(path, node).catch((e) => this.logger.error('Error handling parameter ' + e))
+						this.handleChangedValue(path, node).catch((e) => this.logger.error('Error handling parameter', e))
 					})
 					if (initial_node?.contents.type === ElementType.Parameter) {
-						this.logger.debug('Registered for path "' + path + '"')
-						if (this.config.monitoredParameters) {
-							if (this.config.monitoredParameters?.includes(path) === false) {
-								this.config.monitoredParameters.push(path)
-							}
-						} else {
-							this.config.monitoredParameters = [path]
-						}
+						this.logger.debug('Registered for path', path)
+						this.logger.console(path, ':', initial_node.contents)
 						if (initial_node.contents.type == ElementType.Parameter) {
+							if (this.config.monitoredParameters && createVar) {
+								if (this.config.monitoredParameters?.includes(path) === false) {
+									this.config.monitoredParameters.push(path)
+								}
+							} else if (createVar) {
+								this.config.monitoredParameters = [path]
+							}
 							this.state.updateParameterMap(path, initial_node)
 							this.updateCompanionBits({ updateActions: true, updateFeedbacks: true, updateVariables: true })
 							await this.handleChangedValue(path, initial_node)
@@ -279,12 +280,12 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 					}
 					return initial_node
 				} catch (e) {
-					this.logger.error('Failed to subscribe to path "' + path + '": ' + e)
+					this.logger.error('Failed to subscribe to path', path, String(e))
 					return undefined
 				}
 			})
 			.catch((e) => {
-				this.logger.debug(`Failed to register parameter: ${e.toString()}`)
+				this.logger.debug(`Failed to register parameter:`, e)
 				return undefined
 			})) as TreeElement<EmberElement> | undefined
 	}
@@ -295,7 +296,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	}
 	public async handleChangedValue(path: string, node: TreeElement<EmberElement>): Promise<void> {
 		if (node.contents.type == ElementType.Parameter) {
-			this.logger.debug('Got parameter value for ' + path + ': ' + (node.contents.value ?? ''))
+			this.logger.debug('Got parameter value for', path, ':', node.contents.value ?? '')
 			let value: boolean | number | string
 			let actionType: ActionId | undefined
 			this.state.updateParameterMap(path, node)

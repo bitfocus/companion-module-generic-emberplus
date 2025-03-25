@@ -91,10 +91,10 @@ export const setValue =
 		const path = await resolveEventPath(action, context)
 		const node = await self.registerNewParameter(
 			path,
-			Boolean(action.options.variable || action.options.toggle || action.options.relative),
+			Boolean(action.options.variable || action.options.toggle || action.options.relative || action.options.asEnum),
 		)
 		if (node === undefined || node.contents.type !== EmberModel.ElementType.Parameter) {
-			self.logger.warn('Parameter ' + action.options['path'] + ' not found or not a parameter')
+			self.logger.warn('Parameter', action.options['path'] ?? '', 'not found or not a parameter')
 			return
 		}
 		if (
@@ -102,6 +102,7 @@ export const setValue =
 			node.contents?.access === EmberModel.ParameterAccess.Read
 		) {
 			self.logger.warn(`Can't write to ${path} insufficent permissions: ${node.contents.access}`)
+			self.logger.console(node.contents)
 			return
 		}
 		await queue
@@ -109,7 +110,7 @@ export const setValue =
 				// TODO - do we handle not found?
 				if (node.contents.type === EmberModel.ElementType.Parameter) {
 					if (node.contents.parameterType === paramType) {
-						self.logger.debug('Got node on ' + path)
+						self.logger.debug('Got node on', path)
 						let value: string | number | boolean
 						let factor: number
 						switch (actionType) {
@@ -176,7 +177,7 @@ export const setValue =
 									value = state.getEnumIndex(path, value) ?? -1
 									if (value < 0) {
 										self.logger.warn(
-											`Index of ${await context.parseVariablesInString(action.options['enumValue']?.toString() ?? '')} not found in enum map of ${path}`,
+											`Index of ${await context.parseVariablesInString(action.options['enumValue']?.toString() ?? '')} not found in enum table of ${path}`,
 										)
 										return
 									}
@@ -252,6 +253,6 @@ export const setValue =
 				}
 			})
 			.catch((e: any) => {
-				self.logger.warn(`Failed to set value: ${e.toString()}`)
+				self.logger.warn(`Failed to set value:`, e)
 			})
 	}
