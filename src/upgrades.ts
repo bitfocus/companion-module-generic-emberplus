@@ -6,6 +6,7 @@ import {
 } from '@companion-module/base'
 import { ActionId } from './actions.js'
 import type { EmberPlusConfig } from './config.js'
+import { LoggerLevel } from './logger.js'
 import { comparitorOptions } from './util'
 
 function v250(
@@ -104,4 +105,101 @@ function v260(
 	return result
 }
 
-export const UpgradeScripts: CompanionStaticUpgradeScript<EmberPlusConfig>[] = [v250, v260]
+function v270(
+	_context: CompanionUpgradeContext<EmberPlusConfig>,
+	props: CompanionStaticUpgradeProps<EmberPlusConfig>,
+): CompanionStaticUpgradeResult<EmberPlusConfig> {
+	const result: CompanionStaticUpgradeResult<EmberPlusConfig> = {
+		updatedActions: [],
+		updatedConfig: null,
+		updatedFeedbacks: [],
+	}
+
+	result.updatedConfig = {
+		...props.config,
+		factor: props.config?.factor ?? false,
+		logging: props.config?.logging ?? LoggerLevel.Information,
+	}
+
+	for (const action of props.actions) {
+		switch (action.actionId) {
+			case 'setValueInt':
+				action.options.factor = action.options.factor ?? '1'
+				action.options.pathVar = action.options.pathVar ?? action.options.path
+				action.options.usePathVar = action.options.usePathVar ?? true
+				result.updatedActions.push(action)
+				break
+			case 'setValueString':
+				action.options.parseEscapeChars = action.options.parseEscapeChars ?? false
+				action.options.pathVar = action.options.pathVar ?? action.options.path
+				action.options.usePathVar = action.options.usePathVar ?? true
+				result.updatedActions.push(action)
+				break
+			case 'setValueReal':
+			case 'setValueEnum':
+			case 'setValueBoolean':
+				action.options.pathVar = action.options.pathVar ?? action.options.path
+				action.options.usePathVar = action.options.usePathVar ?? true
+				result.updatedActions.push(action)
+				break
+		}
+	}
+	for (const feedback of props.feedbacks) {
+		switch (feedback.feedbackId) {
+			case 'parameter':
+				feedback.options.factor = feedback.options.factor ?? '1'
+				feedback.options.pathVar = feedback.options.pathVar ?? feedback.options.path
+				feedback.options.usePathVar = feedback.options.usePathVar ?? false
+				result.updatedFeedbacks.push(feedback)
+				break
+			case 'string':
+				feedback.options.pathVar = feedback.options.pathVar ?? feedback.options.path
+				feedback.options.usePathVar = feedback.options.usePathVar ?? false
+				feedback.options.parseEscapeChars = feedback.options.parseEscapeChars ?? false
+				result.updatedFeedbacks.push(feedback)
+				break
+			case 'boolean':
+				feedback.options.pathVar = feedback.options.pathVar ?? feedback.options.path
+				feedback.options.usePathVar = feedback.options.usePathVar ?? false
+				result.updatedFeedbacks.push(feedback)
+				break
+		}
+	}
+	return result
+}
+
+function mergeEnumActions(
+	_context: CompanionUpgradeContext<EmberPlusConfig>,
+	props: CompanionStaticUpgradeProps<EmberPlusConfig>,
+): CompanionStaticUpgradeResult<EmberPlusConfig> {
+	const result: CompanionStaticUpgradeResult<EmberPlusConfig> = {
+		updatedActions: [],
+		updatedConfig: null,
+		updatedFeedbacks: [],
+	}
+
+	for (const action of props.actions) {
+		switch (action.actionId) {
+			case 'setValueEnum':
+				action.options.asEnum = action.options.asEnum ?? false
+				action.options.enumValue = action.options.enumValue ?? ''
+				result.updatedActions.push(action)
+				break
+			case 'setValueEnumLookup':
+				action.actionId = 'setValueEnum'
+				action.options.enumValue = action.options.value
+				action.options.asEnum = true
+				action.options.value = 0
+				action.options.valueVar = '0'
+				action.options.useVar = false
+				action.options.relative = false
+				action.options.min = '0'
+				action.options.max = ''
+				result.updatedActions.push(action)
+				break
+		}
+	}
+	return result
+}
+
+export const UpgradeScripts: CompanionStaticUpgradeScript<EmberPlusConfig>[] = [v250, v260, v270, mergeEnumActions]

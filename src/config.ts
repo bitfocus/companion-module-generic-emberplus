@@ -1,5 +1,6 @@
 import { Regex } from '@companion-module/base'
 import type { SomeCompanionConfigField } from '@companion-module/base'
+import { LoggerLevel, loggerLevelChoices } from './logger.js'
 
 export const portDefault = 9000
 
@@ -12,6 +13,8 @@ export interface EmberPlusConfig {
 	matricesString?: string
 	monitoredParametersString?: string
 	monitoredParameters?: string[]
+	factor: boolean
+	logging: LoggerLevel
 }
 
 export function GetConfigFields(): SomeCompanionConfigField[] {
@@ -79,6 +82,23 @@ export function GetConfigFields(): SomeCompanionConfigField[] {
 			label: 'Paths to parameters to monitor',
 			tooltip: 'Please separate by coma',
 			width: 12,
+		},
+		{
+			type: 'checkbox',
+			id: 'factor',
+			label: 'Factorise Integer Parameter Variables?',
+			width: 6,
+			default: true,
+			tooltip: 'Variables from Integer Parameters will be divided by the Factor field where reported',
+		},
+		{
+			type: 'dropdown',
+			id: 'logging',
+			label: 'Minimum Log Level',
+			default: LoggerLevel.Information,
+			choices: loggerLevelChoices,
+			allowCustom: false,
+			width: 8,
 		},
 	]
 }
