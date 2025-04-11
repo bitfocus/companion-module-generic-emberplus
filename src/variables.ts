@@ -1,6 +1,7 @@
 import type { CompanionVariableDefinition } from '@companion-module/base'
 import type { EmberPlusConfig } from './config'
 import type { EmberPlusState } from './state'
+import { sanitiseVariableId } from './util'
 import { ParameterType } from 'emberplus-connection/dist/model'
 
 export function GetVariablesList(config: EmberPlusConfig, state: EmberPlusState): CompanionVariableDefinition[] {
@@ -16,17 +17,17 @@ export function GetVariablesList(config: EmberPlusConfig, state: EmberPlusState)
 				return [
 					{
 						name: fbName,
-						variableId: fb.replaceAll(/[# ]/gm, '_'),
+						variableId: sanitiseVariableId(fb),
 					},
 					{
 						name: `ENUM: ${fbName}`,
-						variableId: `${fb.replaceAll(/[# ]/gm, '_')}_ENUM`,
+						variableId: `${sanitiseVariableId(fb)}_ENUM`,
 					},
 				]
 			}
 			return {
 				name: fbName,
-				variableId: fb.replaceAll(/[# ]/gm, '_'),
+				variableId: sanitiseVariableId(fb),
 			}
 		}) ?? []
 	)

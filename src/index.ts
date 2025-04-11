@@ -16,7 +16,7 @@ import type { TreeElement, EmberElement } from 'emberplus-connection/dist/model'
 import { Logger, LoggerLevel } from './logger.js'
 import { StatusManager } from './status.js'
 import { UpgradeScripts } from './upgrades'
-import { substituteEscapeCharacters } from './util'
+import { sanitiseVariableId, substituteEscapeCharacters } from './util'
 import { GetVariablesList } from './variables'
 import delay from 'delay'
 import PQueue from 'p-queue'
@@ -327,12 +327,12 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 			if (this.state.getFeedbacksByPath(path).length > 0)
 				this.checkFeedbacksById(...this.state.getFeedbacksByPath(path))
 			const variableValues: CompanionVariableValues = {
-				[path.replaceAll(/[# ]/gm, '_')]: value,
+				[sanitiseVariableId(path)]: value,
 			}
 			if (node.contents.parameterType === ParameterType.Integer && !this.config.factor) {
-				variableValues[path.replaceAll(/[# ]/gm, '_')] = Number(node.contents.value)
+				variableValues[sanitiseVariableId(path)] = Number(node.contents.value)
 			} else if (node.contents.parameterType === ParameterType.Enum) {
-				variableValues[`${path.replaceAll(/[# ]/gm, '_')}_ENUM`] = this.state.getCurrentEnumValue(path)
+				variableValues[`${sanitiseVariableId(path)}_ENUM`] = this.state.getCurrentEnumValue(path)
 			}
 			this.setVariableValues(variableValues)
 
