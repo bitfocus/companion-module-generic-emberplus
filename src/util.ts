@@ -196,5 +196,5 @@ export async function resolveEventPath(
  * Remove illegal characters from variable id
  */
 
-export const sanitiseVariableId = (id: string, substitute: '' | '.' | '-' | '_' = '_') =>
+export const sanitiseVariableId = (id: string, substitute: '' | '.' | '-' | '_' = '_'): string =>
 	id.replaceAll(/[^a-zA-Z0-9-_.]/gm, substitute)
