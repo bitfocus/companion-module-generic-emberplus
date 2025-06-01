@@ -9,7 +9,7 @@ export interface CurrentSelected {
 
 interface feedbacks {
 	byId: Map<string, string>
-	byPath: Map<string, string[]>
+	byPath: Map<string, Set<string>>
 }
 
 export class EmberPlusState {
@@ -17,7 +17,7 @@ export class EmberPlusState {
 	parameters: Map<string, EmberModel.Parameter> = new Map<string, EmberModel.Parameter>()
 	private feedbacks: feedbacks = {
 		byId: new Map<string, string>(),
-		byPath: new Map<string, string[]>(),
+		byPath: new Map<string, Set<string>>(),
 	}
 	emberElement: Map<string, TreeElement<EmberElement>> = new Map<string, TreeElement<EmberElement>>()
 
@@ -38,9 +38,10 @@ export class EmberPlusState {
 	public addIdtoPathMap = (id: string, path: string): void => {
 		this.updatePathOnIdMap(id, path)
 		if (path === '') return
-		const fbIds = this.feedbacks.byPath.get(path) ?? []
-		if (fbIds.includes(id)) return
-		this.feedbacks.byPath.set(path, [...fbIds, id])
+		const fbIds = this.feedbacks.byPath.get(path) ?? new Set<string>()
+		if (fbIds.has(id)) return
+		fbIds.add(id)
+		this.feedbacks.byPath.set(path, fbIds)
 	}
 
 	/**
@@ -54,8 +55,8 @@ export class EmberPlusState {
 			const oldPath = this.feedbacks.byId.get(id) ?? ''
 			if (oldPath === path) return
 			const oldIdArray = this.feedbacks.byPath.get(oldPath)
-			if (oldIdArray !== undefined && oldIdArray.indexOf(id) >= 0) {
-				oldIdArray.splice(oldIdArray.indexOf(id), 1)
+			if (oldIdArray !== undefined && oldIdArray.has(id)) {
+				oldIdArray.delete(id)
 				this.feedbacks.byPath.set(oldPath, oldIdArray)
 			}
 		}
@@ -68,8 +69,8 @@ export class EmberPlusState {
 	 * @returns Array of Feedback IDs
 	 */
 
-	public getFeedbacksByPath(path: string): string[] {
-		return this.feedbacks.byPath.get(path) ?? []
+	public getFeedbacksByPath(path: string): Set<string> {
+		return this.feedbacks.byPath.get(path) ?? new Set<string>()
 	}
 
 	/**

@@ -324,8 +324,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 				default:
 					value = node.contents.value as string
 			}
-			if (this.state.getFeedbacksByPath(path).length > 0)
-				this.checkFeedbacksById(...this.state.getFeedbacksByPath(path))
+			if (this.state.getFeedbacksByPath(path).size > 0) this.checkFeedbacksById(...this.state.getFeedbacksByPath(path))
 			const variableValues: CompanionVariableValues = {
 				[sanitiseVariableId(path)]: value,
 			}
