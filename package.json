@@ -30,7 +30,7 @@
 		"node": "^22.15"
 	},
 	"dependencies": {
-		"@companion-module/base": "~1.12.1",
+		"@companion-module/base": "~1.11.3",
 		"delay": "^6.0.0",
 		"emberplus-connection": "0.2.1",
 		"p-queue": "^8.1.0"
