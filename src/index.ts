@@ -38,7 +38,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	private emberClient!: EmberClient
 	private config!: EmberPlusConfig
 	private state: EmberPlusState = new EmberPlusState()
-	private emberQueue: PQueue = new PQueue({ concurrency: 1, autoStart: false })
+	private emberQueue: PQueue = new PQueue({ concurrency: 1, autoStart: true })
 	private reconnectTimer: ReturnType<typeof setTimeout> | undefined = undefined
 	private isRecordingActions: boolean = false
 	private statusManager = new StatusManager(this, { status: InstanceStatus.Connecting, message: 'Initialising' }, 2000)
@@ -81,14 +81,16 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 			this.config.port = Number(config.bonjourHost?.split(':')[1])
 		}
 		if (this.config.host !== oldConfig.host || this.config.port !== oldConfig.port) {
+			this.config.monitoredParameters = [] // clear existing monitored params when changing host
 			this.emberQueue.clear()
-			this.emberQueue.pause()
 			this.setupEmberConnection()
 			this.state = new EmberPlusState()
 		}
 		this.setupMatrices()
 		this.setupMonitoredParams()
 		this.updateCompanionBits({ updateActions: true, updateFeedbacks: true, updatePresets: true, updateVariables: true })
+		this.subscribeActions()
+		this.subscribeFeedbacks()
 	}
 
 	/**
@@ -172,10 +174,9 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 				.then(async () => {
 					const request = await this.emberClient.getDirectory(this.emberClient.tree)
 					await request.response
-					this.emberQueue.start()
 					await this.registerParameters()
 					this.subscribeActions()
-					this.subscribeFeedbacks()
+					this.checkFeedbacks()
 					this.statusManager.updateStatus(InstanceStatus.Ok)
 				})
 				.catch(async (e) => {
@@ -195,7 +196,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 		this.reconnectTimerStart()
 		this.emberClient.connect().catch((e) => {
 			this.statusManager.updateStatus(InstanceStatus.ConnectionFailure)
-			this.logger.error('Connection Failure:' + e)
+			this.logger.error('Connection Failure: ', e)
 			this.reconnectTimerStart()
 		})
 	}
@@ -214,10 +215,11 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	}
 
 	private setupMonitoredParams(): void {
+		if (this.config.monitoredParameters === undefined) this.config.monitoredParameters = []
 		if (this.config.monitoredParametersString) {
-			this.config.monitoredParameters = this.config.monitoredParametersString.split(',')
-		} else {
-			this.config.monitoredParameters = []
+			this.config.monitoredParametersString.split(',').forEach((param) => {
+				if (!this.config.monitoredParameters?.includes(param)) this.config.monitoredParameters?.push(param)
+			})
 		}
 	}
 
@@ -324,8 +326,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 				default:
 					value = node.contents.value as string
 			}
-			if (this.state.getFeedbacksByPath(path).length > 0)
-				this.checkFeedbacksById(...this.state.getFeedbacksByPath(path))
+			if (this.state.getFeedbacksByPath(path).size > 0) this.checkFeedbacksById(...this.state.getFeedbacksByPath(path))
 			const variableValues: CompanionVariableValues = {
 				[sanitiseVariableId(path)]: value,
 			}
