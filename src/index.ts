@@ -20,6 +20,7 @@ import { sanitiseVariableId, substituteEscapeCharacters } from './util'
 import { GetVariablesList } from './variables'
 import delay from 'delay'
 import PQueue from 'p-queue'
+import { throttle } from 'lodash'
 
 const reconnectInterval: number = 300000 //emberplus-connection destroys socket after 5 minutes
 const reconnectOnFailDelay: number = 10000 //reattempt delay when initial connection queries throw an error
@@ -39,6 +40,8 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	private config!: EmberPlusConfig
 	private state: EmberPlusState = new EmberPlusState()
 	private emberQueue: PQueue = new PQueue({ concurrency: 1, autoStart: true })
+	private feedbacksToCheck: Set<string> = new Set<string>()
+	private variableValueUpdates: CompanionVariableValues = {}
 	private reconnectTimer: ReturnType<typeof setTimeout> | undefined = undefined
 	private isRecordingActions: boolean = false
 	private statusManager = new StatusManager(this, { status: InstanceStatus.Connecting, message: 'Initialising' }, 2000)
@@ -296,6 +299,23 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	public handleStartStopRecordActions(isRecording: boolean): void {
 		this.isRecordingActions = isRecording
 	}
+
+	// Throttled feedback checks and variable updates for better efficiency in busy systems
+	private throttledFeedbackChecksVariableUpdates = throttle(
+		() => {
+			if (this.feedbacksToCheck.size > 0) {
+				this.checkFeedbacksById(...this.feedbacksToCheck.values())
+				this.feedbacksToCheck.clear()
+			}
+			if (this.variableValueUpdates) {
+				this.setVariableValues(this.variableValueUpdates)
+				this.variableValueUpdates = {}
+			}
+		},
+		30,
+		{ leading: true, trailing: true },
+	)
+
 	public async handleChangedValue(path: string, node: TreeElement<EmberElement>): Promise<void> {
 		if (node.contents.type == ElementType.Parameter) {
 			this.logger.debug('Got parameter value for', path, ':', node.contents.value ?? '')
@@ -326,17 +346,14 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 				default:
 					value = node.contents.value as string
 			}
-			if (this.state.getFeedbacksByPath(path).size > 0) this.checkFeedbacksById(...this.state.getFeedbacksByPath(path))
-			const variableValues: CompanionVariableValues = {
-				[sanitiseVariableId(path)]: value,
-			}
+			this.state.getFeedbacksByPath(path).forEach((fbId) => this.feedbacksToCheck.add(fbId))
+			this.variableValueUpdates[sanitiseVariableId(path)] = value
 			if (node.contents.parameterType === ParameterType.Integer && !this.config.factor) {
-				variableValues[sanitiseVariableId(path)] = Number(node.contents.value)
+				this.variableValueUpdates[sanitiseVariableId(path)] = Number(node.contents.value)
 			} else if (node.contents.parameterType === ParameterType.Enum) {
-				variableValues[`${sanitiseVariableId(path)}_ENUM`] = this.state.getCurrentEnumValue(path)
+				this.variableValueUpdates[`${sanitiseVariableId(path)}_ENUM`] = this.state.getCurrentEnumValue(path)
 			}
-			this.setVariableValues(variableValues)
-
+			this.throttledFeedbackChecksVariableUpdates()
 			if (this.isRecordingActions && actionType !== undefined) {
 				const actOptions: setValueActionOptions = {
 					path: path,
