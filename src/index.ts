@@ -61,6 +61,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	 */
 	public async init(config: EmberPlusConfig): Promise<void> {
 		this.config = config
+		process.title = this.label
 		this.logger = new Logger(this, config.logging ?? LoggerLevel.Information)
 		if (this.config.bonjourHost) {
 			this.config.host = config.bonjourHost?.split(':')[0]
@@ -78,6 +79,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	public async configUpdated(config: EmberPlusConfig): Promise<void> {
 		const oldConfig = structuredClone(this.config)
 		this.config = config
+		process.title = this.label
 		this.logger = new Logger(this, config.logging)
 		if (this.config.bonjourHost) {
 			this.config.host = config.bonjourHost?.split(':')[0]
