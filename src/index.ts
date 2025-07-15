@@ -311,7 +311,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 				this.checkFeedbacksById(...this.feedbacksToCheck.values())
 				this.feedbacksToCheck.clear()
 			}
-			if (this.variableValueUpdates) {
+			if (Object.keys(this.variableValueUpdates).length > 0) {
 				this.setVariableValues(this.variableValueUpdates)
 				this.variableValueUpdates = {}
 			}
