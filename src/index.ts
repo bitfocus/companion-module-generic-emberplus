@@ -88,8 +88,10 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 		if (this.config.host !== oldConfig.host || this.config.port !== oldConfig.port) {
 			this.config.monitoredParameters = [] // clear existing monitored params when changing host
 			this.emberQueue.clear()
-			this.setupEmberConnection()
+			this.feedbacksToCheck.clear()
+			this.variableValueUpdates = {}
 			this.state = new EmberPlusState()
+			this.setupEmberConnection()
 		}
 		this.setupMatrices()
 		this.setupMonitoredParams()
