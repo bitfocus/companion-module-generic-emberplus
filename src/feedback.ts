@@ -63,6 +63,7 @@ const pathDropDown: CompanionInputFieldDropdown = {
 	choices: [],
 	default: 'No paths configured!',
 	allowCustom: true,
+	isVisibleExpression: '!$(options:usePathVar)',
 }
 
 const pathString: CompanionInputFieldTextInput = {
@@ -72,6 +73,7 @@ const pathString: CompanionInputFieldTextInput = {
 	required: true,
 	useVariables: { local: true },
 	default: '',
+	isVisibleExpression: '!!$(options:usePathVar)',
 }
 const usePathVar: CompanionInputFieldCheckbox = {
 	type: 'checkbox',
@@ -97,6 +99,7 @@ const valueNumber: CompanionInputFieldNumber = {
 	min: -0xffffffff,
 	max: 0xffffffff,
 	default: 0,
+	isVisibleExpression: '!$(options:useVar)',
 }
 
 const comparitorDropdown: CompanionInputFieldDropdown = {
@@ -129,6 +132,7 @@ const factorOpt: CompanionInputFieldTextInput = {
 	useVariables: { local: true },
 	default: '1',
 	tooltip: `Value will be multiplied by this field`,
+	isVisibleExpression: '!!$(options:asInt)',
 }
 
 const parseEscapeCharactersCheckBox: CompanionInputFieldCheckbox = {
@@ -199,40 +203,20 @@ export function GetFeedbacksList(
 							EmberModel.ParameterType.Real,
 							EmberModel.ParameterType.Integer,
 						).find(() => true)?.id ?? 'No paths configured!',
-					isVisible: (options) => {
-						return !options.usePathVar
-					},
 				},
-				{
-					...pathString,
-					isVisible: (options) => {
-						return !!options.usePathVar
-					},
-				},
+				pathString,
 				usePathVar,
 				comparitorDropdown,
-				{
-					...valueNumber,
-					isVisible: (options) => {
-						return !options.useVar
-					},
-				},
+				valueNumber,
 				{
 					...valueText,
 					id: 'valueVar',
 					default: '0',
-					isVisible: (options) => {
-						return !!options.useVar
-					},
+					isVisibleExpression: '!!$(options:useVar)',
 				},
 				useVarCheckbox,
 				asIntCheckbox,
-				{
-					...factorOpt,
-					isVisible: (options) => {
-						return !!options.asInt
-					},
-				},
+				factorOpt,
 			],
 			callback: parameterFeedbackCallback(self, state, FeedbackId.Parameter),
 			subscribe: subscribeParameterFeedback(state, self),
@@ -251,16 +235,8 @@ export function GetFeedbacksList(
 					default:
 						filterPathChoices(state, false, EmberModel.ParameterType.String).find(() => true)?.id ??
 						'No paths configured!',
-					isVisible: (options) => {
-						return !options.usePathVar
-					},
 				},
-				{
-					...pathString,
-					isVisible: (options) => {
-						return !!options.usePathVar
-					},
-				},
+				pathString,
 				usePathVar,
 				valueText,
 				parseEscapeCharactersCheckBox,
@@ -282,16 +258,8 @@ export function GetFeedbacksList(
 					default:
 						filterPathChoices(state, false, EmberModel.ParameterType.Enum).find(() => true)?.id ??
 						'No paths configured!',
-					isVisible: (options) => {
-						return !options.usePathVar
-					},
 				},
-				{
-					...pathString,
-					isVisible: (options) => {
-						return !!options.usePathVar
-					},
-				},
+				pathString,
 				usePathVar,
 				valueText,
 			],
@@ -312,16 +280,8 @@ export function GetFeedbacksList(
 					default:
 						filterPathChoices(state, false, EmberModel.ParameterType.Boolean).find(() => true)?.id ??
 						'No paths configured!',
-					isVisible: (options) => {
-						return !options.usePathVar
-					},
 				},
-				{
-					...pathString,
-					isVisible: (options) => {
-						return !!options.usePathVar
-					},
-				},
+				pathString,
 				usePathVar,
 			],
 			callback: parameterFeedbackCallback(self, state, FeedbackId.Boolean),
