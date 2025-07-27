@@ -63,6 +63,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 		this.config = config
 		process.title = this.label
 		this.logger = new Logger(this, config.logging ?? LoggerLevel.Information)
+		process.env.DEBUG = config.logging == LoggerLevel.Console ? 'emberplus-connection:*' : undefined
 		if (this.config.bonjourHost) {
 			this.config.host = config.bonjourHost?.split(':')[0]
 			this.config.port = Number(config.bonjourHost?.split(':')[1])
@@ -81,6 +82,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 		this.config = config
 		process.title = this.label
 		this.logger = new Logger(this, config.logging)
+		process.env.DEBUG = config.logging == LoggerLevel.Console ? 'emberplus-connection:*' : undefined
 		if (this.config.bonjourHost) {
 			this.config.host = config.bonjourHost?.split(':')[0]
 			this.config.port = Number(config.bonjourHost?.split(':')[1])
