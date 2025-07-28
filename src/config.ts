@@ -32,14 +32,14 @@ export function GetConfigFields(): SomeCompanionConfigField[] {
 			tooltip: 'The Hostname/IP of the ember+ provider',
 			width: 6,
 			regex: Regex.HOSTNAME,
-			isVisible: (options) => !options['bonjourHost'],
+			isVisibleExpression: `!$(options:bonjourHost)`,
 		},
 		{
 			type: 'static-text',
 			id: 'host-filler',
 			width: 6,
 			label: '',
-			isVisible: (options) => !!options['bonjourHost'],
+			isVisibleExpression: `!!$(options:bonjourHost)`,
 			value: '',
 		},
 		{
@@ -52,14 +52,14 @@ export function GetConfigFields(): SomeCompanionConfigField[] {
 			max: 0xffff,
 			step: 1,
 			default: portDefault,
-			isVisible: (options) => !options['bonjourHost'],
+			isVisibleExpression: `!$(options:bonjourHost)`,
 		},
 		{
 			type: 'static-text',
 			id: 'port-filler',
 			width: 6,
 			label: '',
-			isVisible: (options) => !!options['bonjourHost'],
+			isVisibleExpression: `!!$(options:bonjourHost)`,
 			value: '',
 		},
 		{
