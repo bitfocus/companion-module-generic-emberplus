@@ -153,7 +153,7 @@ const enumVal: CompanionInputFieldTextInput = {
 	isVisibleExpression: '!!$(options:asEnum)',
 }
 
-const matrixInputs: Array<CompanionInputFieldTextInput | CompanionInputFieldNumber> = [
+const matrixInputs: Array<CompanionInputFieldTextInput | CompanionInputFieldNumber | CompanionInputFieldCheckbox> = [
 	pathInput,
 	{
 		type: 'number',
@@ -164,12 +164,29 @@ const matrixInputs: Array<CompanionInputFieldTextInput | CompanionInputFieldNumb
 		max: 0xffffffff,
 		default: 0,
 		step: 1,
+		isVisibleExpression: '!$(options:useVar)',
+	},
+	{
+		type: 'textinput',
+		label: 'Target',
+		id: 'targetVar',
+		regex: '',
+		useVariables: { local: true },
+		default: '0',
+		isVisibleExpression: '!!$(options:useVar)',
 	},
 	{
 		type: 'textinput',
 		label: 'Sources',
 		id: 'sources',
 		regex: '/^((\\s*\\d+,)*(\\s*\\d+)$)|$/', // comma separated list
+		useVariables: { local: true },
+	},
+	{
+		type: 'checkbox',
+		label: 'Use Variable?',
+		id: 'useVar',
+		default: false,
 	},
 ]
 
@@ -313,9 +330,6 @@ export function GetActionsList(
 				},
 				{
 					...useVariable,
-					isVisible: (options) => {
-						return !options.toggle
-					},
 					isVisibleExpression: '!$(options:toggle)',
 				},
 				{
@@ -457,6 +471,16 @@ export function GetActionsList(
 					min: -0,
 					max: 0xffffffff,
 					default: 0,
+					isVisibleExpression: '!$(options:useVar)',
+				},
+				{
+					type: 'textinput',
+					label: 'Select Matrix Number',
+					id: 'matrixVar',
+					regex: '',
+					useVariables: { local: true },
+					default: '0',
+					isVisibleExpression: '!!$(options:useVar)',
 				},
 				{
 					type: 'number',
@@ -466,6 +490,22 @@ export function GetActionsList(
 					min: -0,
 					max: 0xffffffff,
 					default: 0,
+					isVisibleExpression: '!$(options:useVar)',
+				},
+				{
+					type: 'textinput',
+					label: 'Value',
+					id: 'sourceVar',
+					regex: '',
+					useVariables: { local: true },
+					default: '0',
+					isVisibleExpression: '!!$(options:useVar)',
+				},
+				{
+					type: 'checkbox',
+					label: 'Use Variable?',
+					id: 'useVar',
+					default: false,
 				},
 			],
 			callback: setSelectedSource(self, emberClient, config, state, queue),
@@ -481,6 +521,16 @@ export function GetActionsList(
 					min: -0,
 					max: 0xffffffff,
 					default: 0,
+					isVisibleExpression: '!$(options:useVar)',
+				},
+				{
+					type: 'textinput',
+					label: 'Select Matrix Number',
+					id: 'matrixVar',
+					regex: '',
+					useVariables: { local: true },
+					default: '0',
+					isVisibleExpression: '!!$(options:useVar)',
 				},
 				{
 					type: 'number',
@@ -490,6 +540,22 @@ export function GetActionsList(
 					min: -0,
 					max: 0xffffffff,
 					default: 0,
+					isVisibleExpression: '!$(options:useVar)',
+				},
+				{
+					type: 'textinput',
+					label: 'Value',
+					id: 'targetVar',
+					regex: '',
+					useVariables: { local: true },
+					default: '0',
+					isVisibleExpression: '!!$(options:useVar)',
+				},
+				{
+					type: 'checkbox',
+					label: 'Use Variable?',
+					id: 'useVar',
+					default: false,
 				},
 			],
 			callback: setSelectedTarget(self, state),

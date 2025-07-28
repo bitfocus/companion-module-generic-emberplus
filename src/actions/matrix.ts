@@ -23,14 +23,20 @@ export const doMatrixAction =
 				// TODO - do we handle not found?
 				if (node && node.contents.type === EmberModel.ElementType.Matrix) {
 					self.logger.debug('Got node on ' + path)
-					const target = Number(action.options['target'])
-					const sources = (action.options['sources'] as string)
+					const target = action.options['useVar']
+						? Number.parseInt(await context.parseVariablesInString(action.options['targetVar'] as string))
+						: Number(action.options['target'])
+					const sources = (await context.parseVariablesInString(action.options['sources'] as string))
 						.split(',')
 						.filter((v) => v !== '')
 						.map((s) => Number(s))
+					if (Number.isNaN(target) || target < 0) {
+						self.logger.warn(`Invalid target passed to ${method} : ${target}`)
+						return
+					}
 					await method(node as EmberModel.NumberedTreeNode<EmberModel.Matrix>, target, sources)
 				} else {
-					self.logger.warn('Matrix ' + action.options['path'] + ' not found or not a parameter')
+					self.logger.warn('Matrix ' + action.options['path'] + ' not found or not a matrix')
 				}
 			})
 			.catch((e: any) => {
@@ -152,13 +158,30 @@ export const doClear = (self: InstanceBase<EmberPlusConfig>, state: EmberPlusSta
  */
 export const setSelectedSource =
 	(self: EmberPlusInstance, emberClient: EmberClient, config: EmberPlusConfig, state: EmberPlusState, queue: PQueue) =>
-	async (action: CompanionActionEvent): Promise<void> => {
-		if (action.options['source'] != -1 && Number(action.options['matrix']) == state.selected.matrix) {
-			state.selected.source = Number(action.options['source'])
+	async (action: CompanionActionEvent, context: CompanionActionContext): Promise<void> => {
+		const source = action.options['useVar']
+			? Number.parseInt(await context.parseVariablesInString(action.options['sourceVar'] as string))
+			: Number(action.options['source'])
+		const matrix = action.options['useVar']
+			? Number.parseInt(await context.parseVariablesInString(action.options['matrixVar'] as string))
+			: Number(action.options['matrix'])
+		if (
+			Number.isNaN(source) ||
+			Number.isNaN(matrix) ||
+			source < 0 ||
+			matrix < 0 ||
+			source > 0xffffffff ||
+			matrix > 0xffffffff
+		) {
+			self.logger.warn(`Invalid source selection: Matrix: ${matrix}, Target: ${source}`)
+			return
+		}
+		if (source != -1 && matrix == state.selected.matrix) {
+			state.selected.source = source
 			self.logger.debug('Take is: ' + config.take)
 			if (config.take) await doMatrixActionFunction(self, emberClient, config, state, queue)
 			self.checkFeedbacks(FeedbackId.SourceBackgroundSelected, FeedbackId.Clear, FeedbackId.Take)
-			self.logger.debug('setSelectedSource: ' + action.options['source'] + ' on Matrix: ' + state.selected.matrix)
+			self.logger.debug('setSelectedSource: ' + source + ' on Matrix: ' + matrix)
 		}
 	}
 
@@ -169,10 +192,27 @@ export const setSelectedSource =
  */
 export const setSelectedTarget =
 	(self: EmberPlusInstance, state: EmberPlusState) =>
-	(action: CompanionActionEvent): void => {
-		if (action.options['target'] != -1) {
-			state.selected.target = Number(action.options['target'])
-			state.selected.matrix = Number(action.options['matrix'])
+	async (action: CompanionActionEvent, context: CompanionActionContext): Promise<void> => {
+		const target = action.options['useVar']
+			? Number.parseInt(await context.parseVariablesInString(action.options['targetVar'] as string))
+			: Number(action.options['target'])
+		const matrix = action.options['useVar']
+			? Number.parseInt(await context.parseVariablesInString(action.options['matrixVar'] as string))
+			: Number(action.options['matrix'])
+		if (
+			Number.isNaN(target) ||
+			Number.isNaN(matrix) ||
+			target < 0 ||
+			matrix < 0 ||
+			target > 0xffffffff ||
+			matrix > 0xffffffff
+		) {
+			self.logger.warn(`Invalid target selection: Matrix: ${matrix}, Target: ${target}`)
+			return
+		}
+		if (target != -1) {
+			state.selected.target = target
+			state.selected.matrix = matrix
 		}
 		state.selected.source = -1
 		self.checkFeedbacks(
@@ -181,5 +221,5 @@ export const setSelectedTarget =
 			FeedbackId.Take,
 			FeedbackId.Clear,
 		)
-		self.logger.debug('setSelectedTarget: ' + action.options['target'] + ' on Matrix: ' + state.selected.matrix)
+		self.logger.debug('setSelectedTarget: ' + target + ' on Matrix: ' + state.selected.matrix)
 	}

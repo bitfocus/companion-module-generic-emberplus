@@ -151,6 +151,17 @@ const matrixNumber: CompanionInputFieldNumber = {
 	min: -0,
 	max: 0xffffffff,
 	default: 0,
+	isVisibleExpression: '!$(options:useVar)',
+}
+
+const matrixVar: CompanionInputFieldTextInput = {
+	type: 'textinput',
+	label: 'Select Matrix Number',
+	id: 'matrixVar',
+	regex: '',
+	useVariables: { local: true },
+	default: '0',
+	isVisibleExpression: '!!$(options:useVar)',
 }
 
 const sourceNumber: CompanionInputFieldNumber = {
@@ -161,6 +172,17 @@ const sourceNumber: CompanionInputFieldNumber = {
 	min: -0,
 	max: 0xffffffff,
 	default: 0,
+	isVisibleExpression: '!$(options:useVar)',
+}
+
+const sourceVar: CompanionInputFieldTextInput = {
+	type: 'textinput',
+	label: 'Value',
+	id: 'sourceVar',
+	regex: '',
+	useVariables: { local: true },
+	default: '0',
+	isVisibleExpression: '!!$(options:useVar)',
 }
 
 const targetNumber: CompanionInputFieldNumber = {
@@ -171,6 +193,24 @@ const targetNumber: CompanionInputFieldNumber = {
 	min: -0,
 	max: 0xffffffff,
 	default: 0,
+	isVisibleExpression: '!$(options:useVar)',
+}
+
+const targetVar: CompanionInputFieldTextInput = {
+	type: 'textinput',
+	label: 'Value',
+	id: 'targetVar',
+	regex: '',
+	useVariables: { local: true },
+	default: '0',
+	isVisibleExpression: '!!$(options:useVar)',
+}
+
+const useVar: CompanionInputFieldCheckbox = {
+	type: 'checkbox',
+	label: 'Use Variable?',
+	id: 'useVar',
+	default: false,
 }
 
 export function GetFeedbacksList(
@@ -313,11 +353,15 @@ export function GetFeedbacksList(
 			description: 'Change Background of Source, when it is currently selected.',
 			type: 'boolean',
 			defaultStyle: styles.blackOnRed,
-			options: [matrixNumber, sourceNumber],
-			callback: (feedback) => {
-				return (
-					state.selected.source == feedback.options['source'] && state.selected.matrix == feedback.options['matrix']
-				)
+			options: [matrixNumber, matrixVar, sourceNumber, sourceVar, useVar],
+			callback: async (feedback, context) => {
+				const matrix = feedback.options['useVar']
+					? Number.parseInt(await context.parseVariablesInString(feedback.options['matrixVar']?.toString() ?? ''))
+					: (feedback.options['matrix'] as number)
+				const source = feedback.options['useVar']
+					? Number.parseInt(await context.parseVariablesInString(feedback.options['sourceVar']?.toString() ?? ''))
+					: (feedback.options['source'] as number)
+				return state.selected.source == source && state.selected.matrix == matrix
 			},
 		},
 		[FeedbackId.TargetBackgroundSelected]: {
@@ -325,11 +369,15 @@ export function GetFeedbacksList(
 			description: 'Change Background of Target, when it is currently selected.',
 			type: 'boolean',
 			defaultStyle: styles.blackOnRed,
-			options: [matrixNumber, targetNumber],
-			callback: (feedback) => {
-				return (
-					state.selected.target == feedback.options['target'] && state.selected.matrix == feedback.options['matrix']
-				)
+			options: [matrixNumber, matrixVar, targetNumber, targetVar, useVar],
+			callback: async (feedback, context) => {
+				const matrix = feedback.options['useVar']
+					? Number.parseInt(await context.parseVariablesInString(feedback.options['matrixVar']?.toString() ?? ''))
+					: (feedback.options['matrix'] as number)
+				const target = feedback.options['useVar']
+					? Number.parseInt(await context.parseVariablesInString(feedback.options['targetVar']?.toString() ?? ''))
+					: (feedback.options['target'] as number)
+				return state.selected.target == target && state.selected.matrix == matrix
 			},
 		},
 	}
