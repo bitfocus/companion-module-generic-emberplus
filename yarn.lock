@@ -3295,10 +3295,10 @@ asn1@evs-broadcast/node-asn1:
   linkType: hard
 
 "zx@npm:^8.3.2":
-  version: 8.4.0
-  resolution: "zx@npm:8.4.0"
+  version: 8.8.5
+  resolution: "zx@npm:8.8.5"
   bin:
     zx: build/cli.js
-  checksum: 10c0/92b9dc832916f09e5e0ff1863cd88cc090b0fe213a0f6eddc4688ecc7bc960527be0567afcff92071ceaab93bd2cc045493e4ad0b9e508c3411669d999c877ac
+  checksum: 10c0/1273e4f72cfe35a59041aef5a56fd87318bc4e11947d101810b67e5c486ab30574042938728e8a15e085de985e762b8585fcdaab4cf87fd113153b63a5846611
   languageName: node
   linkType: hard
