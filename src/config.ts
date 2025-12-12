@@ -80,7 +80,7 @@ export function GetConfigFields(): SomeCompanionConfigField[] {
 			type: 'textinput',
 			id: 'monitoredParametersString',
 			label: 'Paths to parameters to monitor',
-			tooltip: 'Please separate by coma',
+			tooltip: 'Please separate by comma',
 			width: 12,
 		},
 		{
