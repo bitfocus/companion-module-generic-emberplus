@@ -7,6 +7,7 @@ import type {
 	CompanionInputFieldCheckbox,
 	CompanionInputFieldNumber,
 	CompanionOptionValues,
+	CompanionInputFieldStaticText,
 } from '@companion-module/base'
 import type { EmberPlusInstance } from './index'
 import { EmberClient, Model as EmberModel } from 'emberplus-connection'
@@ -14,6 +15,7 @@ import type { EmberPlusConfig } from './config'
 import {
 	learnParameterFeedbackOptions,
 	parameterFeedbackCallback,
+	parameterValueFeedbackCallback,
 	subscribeParameterFeedback,
 	unsubscribeParameterFeedback,
 } from './feedbacks/parameter'
@@ -25,6 +27,7 @@ export enum FeedbackId {
 	String = 'string',
 	Boolean = 'boolean',
 	ENUM = 'enum',
+	Value = 'value',
 	Take = 'take',
 	Clear = 'clear',
 	SourceBackgroundSelected = 'sourceBackgroundSelected',
@@ -54,9 +57,9 @@ const styles = {
 		bgcolor: combineRgb(255, 0, 0),
 		color: combineRgb(0, 0, 0),
 	},
-}
+} as const
 
-const pathDropDown: CompanionInputFieldDropdown = {
+const pathDropDown = {
 	type: 'dropdown',
 	label: 'Select registered path',
 	id: 'path',
@@ -64,9 +67,9 @@ const pathDropDown: CompanionInputFieldDropdown = {
 	default: 'No paths configured!',
 	allowCustom: true,
 	isVisibleExpression: '!$(options:usePathVar)',
-}
+} as const satisfies CompanionInputFieldDropdown
 
-const pathString: CompanionInputFieldTextInput = {
+const pathString = {
 	type: 'textinput',
 	label: 'Path',
 	id: 'pathVar',
@@ -74,24 +77,25 @@ const pathString: CompanionInputFieldTextInput = {
 	useVariables: { local: true },
 	default: '',
 	isVisibleExpression: '!!$(options:usePathVar)',
-}
-const usePathVar: CompanionInputFieldCheckbox = {
+} as const satisfies CompanionInputFieldTextInput
+
+const usePathVar = {
 	type: 'checkbox',
 	label: 'Path from String',
 	id: 'usePathVar',
 	default: false,
-}
+} as const satisfies CompanionInputFieldCheckbox
 
-const valueText: CompanionInputFieldTextInput = {
+const valueText = {
 	type: 'textinput',
 	label: 'Value',
 	id: 'value',
 	required: true,
 	useVariables: { local: true },
 	default: '',
-}
+} as const satisfies CompanionInputFieldTextInput
 
-const valueNumber: CompanionInputFieldNumber = {
+const valueNumber = {
 	type: 'number',
 	label: 'Value',
 	id: 'value',
@@ -100,30 +104,31 @@ const valueNumber: CompanionInputFieldNumber = {
 	max: 0xffffffff,
 	default: 0,
 	isVisibleExpression: '!$(options:useVar)',
-}
+} as const satisfies CompanionInputFieldNumber
 
-const comparitorDropdown: CompanionInputFieldDropdown = {
+const comparitorDropdown = {
 	type: 'dropdown',
 	label: 'Comparitor',
 	id: 'comparitor',
 	choices: comparitorOptions,
 	default: comparitorOptions[0].id,
 	allowCustom: false,
-}
+} as const satisfies CompanionInputFieldDropdown
 
-const useVarCheckbox: CompanionInputFieldCheckbox = {
+const useVarCheckbox = {
 	type: 'checkbox',
 	label: 'Use Variable?',
 	id: 'useVar',
 	default: false,
-}
-const asIntCheckbox: CompanionInputFieldCheckbox = {
+} as const satisfies CompanionInputFieldCheckbox
+
+const asIntCheckbox = {
 	type: 'checkbox',
 	label: 'As Integers?',
 	id: 'asInt',
 	default: false,
 	tooltip: '',
-}
+} as const satisfies CompanionInputFieldCheckbox
 
 const factorOpt: CompanionInputFieldTextInput = {
 	type: 'textinput',
@@ -133,17 +138,17 @@ const factorOpt: CompanionInputFieldTextInput = {
 	default: '1',
 	tooltip: `Value will be multiplied by this field`,
 	isVisibleExpression: '!!$(options:asInt)',
-}
+} as const satisfies CompanionInputFieldTextInput
 
-const parseEscapeCharactersCheckBox: CompanionInputFieldCheckbox = {
+const parseEscapeCharactersCheckBox = {
 	type: 'checkbox',
 	label: 'Parse escape characters',
 	id: 'parseEscapeChars',
 	default: true,
 	tooltip: 'Parse escape characters such as \\r \\n \\t',
-}
+} as const satisfies CompanionInputFieldCheckbox
 
-const matrixNumber: CompanionInputFieldNumber = {
+const matrixNumber = {
 	type: 'number',
 	label: 'Select Matrix Number',
 	id: 'matrix',
@@ -152,9 +157,9 @@ const matrixNumber: CompanionInputFieldNumber = {
 	max: 0xffffffff,
 	default: 0,
 	isVisibleExpression: '!$(options:useVar)',
-}
+} as const satisfies CompanionInputFieldNumber
 
-const matrixVar: CompanionInputFieldTextInput = {
+const matrixVar = {
 	type: 'textinput',
 	label: 'Select Matrix Number',
 	id: 'matrixVar',
@@ -162,9 +167,9 @@ const matrixVar: CompanionInputFieldTextInput = {
 	useVariables: { local: true },
 	default: '0',
 	isVisibleExpression: '!!$(options:useVar)',
-}
+} as const satisfies CompanionInputFieldTextInput
 
-const sourceNumber: CompanionInputFieldNumber = {
+const sourceNumber = {
 	type: 'number',
 	label: 'Value',
 	id: 'source',
@@ -173,9 +178,9 @@ const sourceNumber: CompanionInputFieldNumber = {
 	max: 0xffffffff,
 	default: 0,
 	isVisibleExpression: '!$(options:useVar)',
-}
+} as const satisfies CompanionInputFieldNumber
 
-const sourceVar: CompanionInputFieldTextInput = {
+const sourceVar = {
 	type: 'textinput',
 	label: 'Value',
 	id: 'sourceVar',
@@ -183,9 +188,9 @@ const sourceVar: CompanionInputFieldTextInput = {
 	useVariables: { local: true },
 	default: '0',
 	isVisibleExpression: '!!$(options:useVar)',
-}
+} as const satisfies CompanionInputFieldTextInput
 
-const targetNumber: CompanionInputFieldNumber = {
+const targetNumber = {
 	type: 'number',
 	label: 'Value',
 	id: 'target',
@@ -194,9 +199,9 @@ const targetNumber: CompanionInputFieldNumber = {
 	max: 0xffffffff,
 	default: 0,
 	isVisibleExpression: '!$(options:useVar)',
-}
+} as const satisfies CompanionInputFieldNumber
 
-const targetVar: CompanionInputFieldTextInput = {
+const targetVar = {
 	type: 'textinput',
 	label: 'Value',
 	id: 'targetVar',
@@ -204,14 +209,21 @@ const targetVar: CompanionInputFieldTextInput = {
 	useVariables: { local: true },
 	default: '0',
 	isVisibleExpression: '!!$(options:useVar)',
-}
+} as const satisfies CompanionInputFieldTextInput
 
 const useVar: CompanionInputFieldCheckbox = {
 	type: 'checkbox',
 	label: 'Use Variable?',
 	id: 'useVar',
 	default: false,
-}
+} as const satisfies CompanionInputFieldCheckbox
+
+const valueFeedbackInfo = {
+	type: 'static-text',
+	id: 'info',
+	label: '',
+	value: 'Connection variables are not created from value feedbacks. Integer parameters are always factorialized.',
+} as const satisfies CompanionInputFieldStaticText
 
 export function GetFeedbacksList(
 	self: EmberPlusInstance, //InstanceBase<EmberPlusConfig>,
@@ -325,6 +337,24 @@ export function GetFeedbacksList(
 				usePathVar,
 			],
 			callback: parameterFeedbackCallback(self, state, FeedbackId.Boolean),
+			subscribe: subscribeParameterFeedback(state, self),
+			unsubscribe: unsubscribeParameterFeedback(state),
+		},
+		[FeedbackId.Value]: {
+			name: 'Parameter Value',
+			description: 'Return the value of a parameter to a local variable',
+			type: 'value',
+			options: [
+				{
+					...pathDropDown,
+					choices: filterPathChoices(state, false),
+					default: filterPathChoices(state, false).find(() => true)?.id ?? 'No paths configured!',
+				},
+				pathString,
+				usePathVar,
+				valueFeedbackInfo,
+			],
+			callback: parameterValueFeedbackCallback(self, state),
 			subscribe: subscribeParameterFeedback(state, self),
 			unsubscribe: unsubscribeParameterFeedback(state),
 		},

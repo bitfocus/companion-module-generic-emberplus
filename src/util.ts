@@ -1,12 +1,15 @@
 import type {
-	CompanionActionContext,
+	//CompanionActionContext,
 	CompanionActionInfo,
 	CompanionFeedbackInfo,
 	DropdownChoice,
 } from '@companion-module/base'
+import { ActionId, type setValueActionOptions } from './actions'
+import type { EmberPlusConfig } from './config'
+import type { EmberPlusInstance } from './index'
 import { EmberPlusState } from './state'
 import { Model as EmberModel } from 'emberplus-connection'
-import type { CompanionCommonCallbackContext } from '@companion-module/base/dist/module-api/common'
+//import type { CompanionCommonCallbackContext } from '@companion-module/base/dist/module-api/common'
 
 export function assertUnreachable(_never: never): void {
 	// throw new Error('Unreachable')
@@ -108,8 +111,13 @@ export function filterPathChoices(
 	...paramFilter: EmberModel.ParameterType[]
 ): DropdownChoice[] {
 	const choices: DropdownChoice[] = []
+	//If not filter specified allow all types
+	if (paramFilter.length === 0) {
+		paramFilter = Object.values(EmberModel.ParameterType)
+	}
 	for (const [path, value] of state.parameters) {
 		let label = `${path}`
+
 		paramFilter.forEach((element) => {
 			if (element === value.parameterType) {
 				if (value.identifier) {
@@ -146,20 +154,19 @@ export function checkNumberLimits(value: number, min: number, max: number): numb
  * Calculate absloute numeric value from relative action
  */
 
-export async function calcRelativeNumber(
+export function calcRelativeNumber(
 	value: number,
 	path: string,
 	min: string,
 	max: string,
-	type: EmberModel.ParameterType,
-	context: CompanionActionContext,
+	type: EmberModel.ParameterType.Integer | EmberModel.ParameterType.Real | EmberModel.ParameterType.Enum,
 	state: EmberPlusState,
-): Promise<number> {
+): number {
 	let oldValue = Number(state.parameters.get(path)?.value)
 	if (isNaN(oldValue)) oldValue = 0
 	let newValue = value + oldValue
-	const minLimit = Number(await context.parseVariablesInString(min))
-	const maxLimit = Number(await context.parseVariablesInString(max))
+	const minLimit = Number(min)
+	const maxLimit = Number(max)
 	if (type === EmberModel.ParameterType.Integer) {
 		newValue = Math.round(newValue)
 	}
@@ -172,20 +179,21 @@ export async function calcRelativeNumber(
 	return newValue
 }
 
-export async function resolvePath(context: CompanionCommonCallbackContext, path: string): Promise<string> {
-	const pathString: string = (await context.parseVariablesInString(path)).replaceAll('/', '.')
-	if (pathString.includes('[') && pathString.includes(']')) {
-		return pathString.substring(pathString.indexOf('[') + 1, pathString.indexOf(']'))
+export function resolvePath(path: string): string {
+	const pathString: string = path.replaceAll('/', '.').trim()
+	const lastOpenBracket = pathString.lastIndexOf('[')
+	const lastCloseBracket = pathString.lastIndexOf(']')
+
+	// Check if both brackets exist and close bracket comes after open bracket
+	if (lastOpenBracket !== -1 && lastCloseBracket !== -1 && lastCloseBracket > lastOpenBracket) {
+		return pathString.substring(lastOpenBracket + 1, lastCloseBracket)
 	}
+
 	return pathString
 }
 
-export async function resolveEventPath(
-	event: CompanionFeedbackInfo | CompanionActionInfo,
-	context: CompanionCommonCallbackContext,
-): Promise<string> {
-	return await resolvePath(
-		context,
+export function resolveEventPath(event: CompanionFeedbackInfo | CompanionActionInfo): string {
+	return resolvePath(
 		event.options['usePathVar']
 			? (event.options['pathVar']?.toString() ?? '')
 			: (event.options['path']?.toString() ?? ''),
@@ -198,3 +206,126 @@ export async function resolveEventPath(
 
 export const sanitiseVariableId = (id: string, substitute: '' | '.' | '-' | '_' = '_'): string =>
 	id.replaceAll(/[^a-zA-Z0-9-_.]/gm, substitute)
+
+/**
+ * Utility check that a value exists
+ */
+
+export const isDefined = <T>(value: T | null | undefined): value is T => value !== null && value !== undefined
+
+export function parseBonjourHost(config: EmberPlusConfig): [string, number] {
+	if (!config.bonjourHost) return [config.host ?? '', config.port ?? 9000]
+
+	const [host, port] = config.bonjourHost.split(':')
+	const parsedPort = Number.parseInt(port)
+
+	return [host, Number.isNaN(parsedPort) ? 9000 : parsedPort]
+}
+
+export function hasConnectionChanged(oldConfig: EmberPlusConfig, newConfig: EmberPlusConfig): boolean {
+	return newConfig.host !== oldConfig.host || newConfig.port !== oldConfig.port
+}
+
+export function recordParameterAction(
+	path: string,
+	actionType: ActionId,
+	value: boolean | number | string,
+	self: EmberPlusInstance,
+	state: EmberPlusState,
+): void {
+	const param = state.parameters.get(path)
+
+	const actOptions: setValueActionOptions = {
+		path: path,
+		pathVar: path,
+		usePathVar: false,
+		value: value,
+		variable: true,
+	}
+
+	switch (actionType) {
+		case ActionId.SetValueBoolean:
+			actOptions.useVar = false
+			actOptions.valueVar = value.toString()
+			actOptions.toggle = false
+			break
+
+		case ActionId.SetValueEnum:
+			actOptions.useVar = false
+			actOptions.valueVar = value.toString()
+			actOptions.relative = false
+			actOptions.min = param?.minimum?.toString() ?? '0'
+			actOptions.max = param?.maximum?.toString() ?? ''
+			actOptions.asEnum = true
+			actOptions.enumValue = state.getCurrentEnumValue(path)
+			break
+
+		case ActionId.SetValueInt:
+			actOptions.useVar = false
+			actOptions.valueVar = value.toString()
+			actOptions.relative = false
+			actOptions.min = param?.minimum?.toString() ?? ''
+			actOptions.max = param?.maximum?.toString() ?? ''
+			actOptions.factor = param?.factor?.toString() ?? '1'
+			break
+
+		case ActionId.SetValueReal:
+			actOptions.useVar = false
+			actOptions.valueVar = value.toString()
+			actOptions.relative = false
+			actOptions.min = param?.minimum?.toString() ?? ''
+			actOptions.max = param?.maximum?.toString() ?? ''
+			break
+
+		case ActionId.SetValueString:
+			actOptions.parseEscapeChars = false
+			break
+
+		default:
+			return
+	}
+
+	self.recordAction(
+		{
+			actionId: actionType,
+			options: actOptions,
+		},
+		path,
+	)
+}
+
+export function parseParameterValue(
+	path: string,
+	contents: EmberModel.Parameter,
+	state: EmberPlusState,
+): { actionType: ActionId | undefined; value: boolean | number | string } {
+	let value: boolean | number | string
+	let actionType: ActionId | undefined
+
+	switch (contents.parameterType) {
+		case EmberModel.ParameterType.Boolean:
+			actionType = ActionId.SetValueBoolean
+			value = contents.value as boolean
+			break
+		case EmberModel.ParameterType.Integer:
+			actionType = ActionId.SetValueInt
+			value = Number(contents.value) / (state.parameters.get(path)?.factor ?? 1)
+			break
+		case EmberModel.ParameterType.Real:
+			actionType = ActionId.SetValueReal
+			value = contents.value as number
+			break
+		case EmberModel.ParameterType.Enum:
+			actionType = ActionId.SetValueEnum
+			value = contents.value as number
+			break
+		case EmberModel.ParameterType.String:
+			actionType = ActionId.SetValueString
+			value = substituteEscapeCharacters(contents.value as string)
+			break
+		default:
+			value = contents.value as string
+	}
+
+	return { actionType, value }
+}

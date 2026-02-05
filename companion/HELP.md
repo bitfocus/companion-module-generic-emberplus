@@ -30,7 +30,7 @@ Central to the concept of ember+ is the address or path of the data element you 
 
 - ### Decimal: 1.2.3.4
 
-  Paths can always be entered as a decimal address (ie _1.2.3.4_).
+  Paths can always be entered as a decimal address (ie _1.2.3.4_). Forward slashes, as used in Ember+ Viewer, will be automatically substituted.
 
 - ### String: Path.To.Ember.Node
 
@@ -42,7 +42,7 @@ Central to the concept of ember+ is the address or path of the data element you 
 
 - ### Variables
 
-  Except in the module configuration, all of the above can be constructed with variables for both actions and feedbacks.
+  Except in the module configuration, all of the above can be constructed with variables for both actions and feedbacks when using the `Path from String` option.
 
 ## Value Fields
 
@@ -68,6 +68,7 @@ For Set Value Actions one must ensure the correct data type is selected. In part
 - Parameter Compare Number
 - Parameter Equals String
 - Parameter ENUM Equals String
+- Parameter Value
 - Parameter True
 - Take is possible
 - Clear is possible

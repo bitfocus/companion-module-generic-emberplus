@@ -14,8 +14,8 @@ export const doMatrixAction =
 		method: EmberClient['matrixConnect'] | EmberClient['matrixDisconnect'] | EmberClient['matrixSetConnection'],
 		queue: PQueue,
 	) =>
-	async (action: CompanionActionEvent, context: CompanionActionContext): Promise<void> => {
-		const path = await resolvePath(context, action.options['path']?.toString() ?? '')
+	async (action: CompanionActionEvent, _context: CompanionActionContext): Promise<void> => {
+		const path = resolvePath(action.options['path']?.toString() ?? '')
 		self.logger.debug('Get node ' + path)
 		await queue
 			.add(async () => {
@@ -24,17 +24,17 @@ export const doMatrixAction =
 				if (node && node.contents.type === EmberModel.ElementType.Matrix) {
 					self.logger.debug('Got node on ' + path)
 					const target = action.options['useVar']
-						? Number.parseInt(await context.parseVariablesInString(action.options['targetVar'] as string))
+						? Number.parseInt(action.options['targetVar']?.toString() ?? '')
 						: Number(action.options['target'])
-					const sources = (await context.parseVariablesInString(action.options['sources'] as string))
+					const sources = (action.options['sources']?.toString() ?? '')
 						.split(',')
 						.filter((v) => v !== '')
 						.map((s) => Number(s))
 					if (Number.isNaN(target) || target < 0) {
-						self.logger.warn(`Invalid target passed to ${method} : ${target}`)
-						return
+						throw new Error(`Invalid target passed to ${method} : ${target}`)
 					}
-					await method(node as EmberModel.NumberedTreeNode<EmberModel.Matrix>, target, sources)
+					const request = await method(node as EmberModel.NumberedTreeNode<EmberModel.Matrix>, target, sources)
+					await request.response
 				} else {
 					self.logger.warn('Matrix ' + action.options['path'] + ' not found or not a matrix')
 				}
@@ -69,31 +69,27 @@ export const doMatrixActionFunction = async function (
 				config.matrices &&
 				config.matrices[state.selected.matrix]
 			) {
-				emberClient
-					.getElementByPath(config.matrices[state.selected.matrix])
-					.then((node) => {
-						// TODO - do we handle not found?
-						if (node && node.contents.type === EmberModel.ElementType.Matrix) {
-							self.logger.debug('Got node on ' + state.selected.matrix)
-							const target = state.selected.target
-							const sources = [state.selected.source]
-							emberClient
-								.matrixConnect(node as EmberModel.NumberedTreeNode<EmberModel.Matrix>, target, sources)
-								.then((r) => self.logger.debug(r))
-								.catch((r) => self.logger.debug(r))
-						} else {
-							self.logger.warn('Matrix ' + state.selected.matrix + ' not found or not a parameter')
-						}
-					})
-					.catch((reason) => self.logger.debug(reason))
-					.finally(() => {
-						state.selected.matrix = state.selected.source = state.selected.target = -1
-						self.checkFeedbacks(
-							FeedbackId.TargetBackgroundSelected,
-							FeedbackId.SourceBackgroundSelected,
-							FeedbackId.Take,
+				try {
+					const node = await emberClient.getElementByPath(config.matrices[state.selected.matrix])
+					if (node && node.contents.type === EmberModel.ElementType.Matrix) {
+						self.logger.debug('Got node on ' + state.selected.matrix)
+						const target = state.selected.target
+						const sources = [state.selected.source]
+						const request = await emberClient.matrixConnect(
+							node as EmberModel.NumberedTreeNode<EmberModel.Matrix>,
+							target,
+							sources,
 						)
-					})
+						await request.response
+					} else {
+						self.logger.warn('Matrix ' + state.selected.matrix + ' not found or not a parameter')
+					}
+				} catch (e) {
+					self.logger.debug('Failed to doMatrixActionFunction: ' + e)
+				} finally {
+					state.selected.matrix = state.selected.source = state.selected.target = -1
+					self.checkFeedbacks(FeedbackId.TargetBackgroundSelected, FeedbackId.SourceBackgroundSelected, FeedbackId.Take)
+				}
 			}
 		})
 		.catch((e: any) => {
@@ -158,12 +154,12 @@ export const doClear = (self: InstanceBase<EmberPlusConfig>, state: EmberPlusSta
  */
 export const setSelectedSource =
 	(self: EmberPlusInstance, emberClient: EmberClient, config: EmberPlusConfig, state: EmberPlusState, queue: PQueue) =>
-	async (action: CompanionActionEvent, context: CompanionActionContext): Promise<void> => {
+	async (action: CompanionActionEvent): Promise<void> => {
 		const source = action.options['useVar']
-			? Number.parseInt(await context.parseVariablesInString(action.options['sourceVar'] as string))
+			? Number.parseInt(action.options['sourceVar']?.toString() ?? '')
 			: Number(action.options['source'])
 		const matrix = action.options['useVar']
-			? Number.parseInt(await context.parseVariablesInString(action.options['matrixVar'] as string))
+			? Number.parseInt(action.options['matrixVar']?.toString() ?? '')
 			: Number(action.options['matrix'])
 		if (
 			Number.isNaN(source) ||
@@ -173,8 +169,7 @@ export const setSelectedSource =
 			source > 0xffffffff ||
 			matrix > 0xffffffff
 		) {
-			self.logger.warn(`Invalid source selection: Matrix: ${matrix}, Target: ${source}`)
-			return
+			throw new Error(`Invalid source selection: Matrix: ${matrix}, Target: ${source}`)
 		}
 		if (source != -1 && matrix == state.selected.matrix) {
 			state.selected.source = source
@@ -192,12 +187,12 @@ export const setSelectedSource =
  */
 export const setSelectedTarget =
 	(self: EmberPlusInstance, state: EmberPlusState) =>
-	async (action: CompanionActionEvent, context: CompanionActionContext): Promise<void> => {
+	async (action: CompanionActionEvent): Promise<void> => {
 		const target = action.options['useVar']
-			? Number.parseInt(await context.parseVariablesInString(action.options['targetVar'] as string))
+			? Number.parseInt(action.options['targetVar']?.toString() ?? '')
 			: Number(action.options['target'])
 		const matrix = action.options['useVar']
-			? Number.parseInt(await context.parseVariablesInString(action.options['matrixVar'] as string))
+			? Number.parseInt(action.options['matrixVar']?.toString() ?? '')
 			: Number(action.options['matrix'])
 		if (
 			Number.isNaN(target) ||
@@ -207,8 +202,7 @@ export const setSelectedTarget =
 			target > 0xffffffff ||
 			matrix > 0xffffffff
 		) {
-			self.logger.warn(`Invalid target selection: Matrix: ${matrix}, Target: ${target}`)
-			return
+			throw new Error(`Invalid target selection: Matrix: ${matrix}, Target: ${target}`)
 		}
 		if (target != -1) {
 			state.selected.target = target

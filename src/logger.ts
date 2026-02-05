@@ -42,7 +42,7 @@ export class Logger {
 	 */
 
 	public log(level: LoggerLevel, data: string): boolean {
-		const logData = `[${new Date().toJSON()}] ${data}`
+		const logData = data
 		if (level > this.#minLogLevel) return false
 		if (level === LoggerLevel.Console) {
 			console.log(logData)

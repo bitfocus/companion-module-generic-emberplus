@@ -1,4 +1,4 @@
-import type { CompanionFeedbackContext, CompanionFeedbackInfo } from '@companion-module/base'
+import type { CompanionFeedbackContext, CompanionFeedbackInfo, JsonValue } from '@companion-module/base'
 import { Model as EmberModel } from 'emberplus-connection'
 import type { parameterFeedbackOptions } from '../feedback'
 import type { EmberPlusInstance } from '../index'
@@ -15,24 +15,24 @@ import { ParameterType } from 'emberplus-connection/dist/model'
 
 export const subscribeParameterFeedback =
 	(state: EmberPlusState, self: EmberPlusInstance) =>
-	async (feedback: CompanionFeedbackInfo, context: CompanionFeedbackContext): Promise<void> => {
-		const path = await resolveEventPath(feedback, context)
-		if (await self.registerNewParameter(path, true)) state.addIdtoPathMap(feedback.id, path)
+	async (feedback: CompanionFeedbackInfo, _context: CompanionFeedbackContext): Promise<void> => {
+		const path = resolveEventPath(feedback)
+		if (await self.registerNewParameter(path, true)) state.addIdToPathMap(feedback.id, path)
 	}
 
 export const unsubscribeParameterFeedback =
 	(state: EmberPlusState) =>
 	async (feedback: CompanionFeedbackInfo, _context: CompanionFeedbackContext): Promise<void> => {
-		state.addIdtoPathMap(feedback.id, '')
+		state.addIdToPathMap(feedback.id, '')
 	}
 
 export const learnParameterFeedbackOptions =
 	(state: EmberPlusState, feedbackType: FeedbackId) =>
 	async (
 		feedback: CompanionFeedbackInfo,
-		context: CompanionFeedbackContext,
+		_context: CompanionFeedbackContext,
 	): Promise<parameterFeedbackOptions | undefined> => {
-		const path = await resolveEventPath(feedback, context)
+		const path = resolveEventPath(feedback)
 		const val = state.parameters.get(path)
 		if (val === undefined || val === null || val.value === undefined || val.value === null) return undefined
 		const options = feedback.options as parameterFeedbackOptions
@@ -66,22 +66,16 @@ interface resolveFeedbackOptions {
 	parse?: boolean
 }
 
-export async function resolveFeedback(
-	context: CompanionFeedbackContext,
+export async function resolveBooleanFeedback(
 	state: EmberPlusState,
-	feedbackId: string,
 	type: EmberModel.ParameterType,
 	path: string,
 	value?: boolean | number | string,
 	options: resolveFeedbackOptions = { comparitor: NumberComparitor.Equal, factor: `1`, parse: true },
 ): Promise<boolean> {
-	state.addIdtoPathMap(feedbackId, path)
-	let fact = parseInt(await context.parseVariablesInString(options.factor ?? '1'))
+	let fact = Number.parseInt(options.factor ?? '1')
 	options.comparitor = options.comparitor ?? NumberComparitor.Equal
-	if (isNaN(fact) || fact < 1) fact = 1
-	if (typeof value === 'string') {
-		value = await context.parseVariablesInString(value)
-	}
+	if (Number.isNaN(fact) || fact < 1) fact = 1
 
 	switch (type) {
 		case EmberModel.ParameterType.Boolean:
@@ -105,26 +99,23 @@ export async function resolveFeedback(
 
 export const parameterFeedbackCallback =
 	(self: EmberPlusInstance, state: EmberPlusState, feedbackType: FeedbackId) =>
-	async (feedback: CompanionFeedbackInfo, context: CompanionFeedbackContext): Promise<boolean> => {
-		const path = await resolveEventPath(feedback, context)
+	async (feedback: CompanionFeedbackInfo, _context: CompanionFeedbackContext): Promise<boolean> => {
+		const path = resolveEventPath(feedback)
+		if (await self.registerNewParameter(path, true)) state.addIdToPathMap(feedback.id, path)
 		if (state.parameters.has(path)) {
 			switch (feedbackType) {
 				case FeedbackId.Boolean:
-					return await resolveFeedback(context, state, feedback.id, EmberModel.ParameterType.Boolean, path)
+					return await resolveBooleanFeedback(state, EmberModel.ParameterType.Boolean, path)
 				case FeedbackId.ENUM:
-					return await resolveFeedback(
-						context,
+					return await resolveBooleanFeedback(
 						state,
-						feedback.id,
 						EmberModel.ParameterType.Enum,
 						path,
 						feedback.options['value']?.toString() ?? '',
 					)
 				case FeedbackId.Parameter:
-					return await resolveFeedback(
-						context,
+					return await resolveBooleanFeedback(
 						state,
-						feedback.id,
 						feedback.options['asInt'] ? EmberModel.ParameterType.Integer : EmberModel.ParameterType.Real,
 						path,
 						feedback.options['useVar'] ? String(feedback.options['valueVar']) : Number(feedback.options['value']),
@@ -134,10 +125,8 @@ export const parameterFeedbackCallback =
 						},
 					)
 				case FeedbackId.String:
-					return await resolveFeedback(
-						context,
+					return await resolveBooleanFeedback(
 						state,
-						feedback.id,
 						EmberModel.ParameterType.String,
 						path,
 						feedback.options['value']?.toString() ?? '',
@@ -148,4 +137,25 @@ export const parameterFeedbackCallback =
 			self.registerNewParameter(path, true).catch(() => {})
 		}
 		return false
+	}
+
+export const parameterValueFeedbackCallback =
+	(self: EmberPlusInstance, state: EmberPlusState) =>
+	async (feedback: CompanionFeedbackInfo, _context: CompanionFeedbackContext): Promise<JsonValue> => {
+		const path = resolveEventPath(feedback)
+		if (await self.registerNewParameter(path, false)) state.addIdToPathMap(feedback.id, path)
+		if (state.parameters.has(path)) {
+			const value = state.parameters.get(path)?.value ?? null
+			if (state.parameters.get(path)?.parameterType == EmberModel.ParameterType.Integer && typeof value == 'number') {
+				const factor = state.parameters.get(path)?.factor ?? 1
+				return value / factor
+			}
+			if (Buffer.isBuffer(value)) {
+				return Array.from(value)
+			}
+			return value
+		} else {
+			self.registerNewParameter(path, false).catch(() => {})
+		}
+		return null
 	}

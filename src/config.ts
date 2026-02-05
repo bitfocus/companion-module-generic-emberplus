@@ -12,7 +12,7 @@ export interface EmberPlusConfig {
 	matrices?: string[]
 	matricesString?: string
 	monitoredParametersString?: string
-	monitoredParameters?: string[]
+	monitoredParameters?: Set<string>
 	factor: boolean
 	logging: LoggerLevel
 }
@@ -46,7 +46,6 @@ export function GetConfigFields(): SomeCompanionConfigField[] {
 			type: 'number',
 			id: 'port',
 			label: 'Target Port',
-			tooltip: 'Usually 9000 by default',
 			width: 6,
 			min: 1,
 			max: 0xffff,

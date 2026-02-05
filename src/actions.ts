@@ -49,7 +49,7 @@ export enum ActionId {
 	SetSelectedTarget = 'setSelectedTarget',
 }
 
-const pathDropDown: CompanionInputFieldDropdown = {
+const pathDropDown = {
 	type: 'dropdown',
 	label: 'Select registered path',
 	id: 'path',
@@ -57,9 +57,9 @@ const pathDropDown: CompanionInputFieldDropdown = {
 	default: 'No paths configured!',
 	allowCustom: true,
 	isVisibleExpression: '!$(options:usePathVar)',
-}
+} as const satisfies CompanionInputFieldDropdown
 
-const pathString: CompanionInputFieldTextInput = {
+const pathString = {
 	type: 'textinput',
 	label: 'Path',
 	id: 'pathVar',
@@ -68,23 +68,24 @@ const pathString: CompanionInputFieldTextInput = {
 	default: '',
 	tooltip: `Path may be supplied in decimals: 1.2.3, text: path.to.ember.element, or with a descriptor and the decimals wrapped in brackets: path to ember element[1.2.3.4]`,
 	isVisibleExpression: '!!$(options:usePathVar)',
-}
-const usePathVar: CompanionInputFieldCheckbox = {
+} as const satisfies CompanionInputFieldTextInput
+
+const usePathVar = {
 	type: 'checkbox',
 	label: 'Path from String',
 	id: 'usePathVar',
 	default: false,
-}
+} as const satisfies CompanionInputFieldCheckbox
 
-const pathInput: CompanionInputFieldTextInput = {
+const pathInput = {
 	type: 'textinput',
 	label: 'Path',
 	id: 'path',
 	useVariables: { local: true },
 	tooltip: `Path may be supplied in decimals: 1.2.3, text: path.to.ember.element, or with a descriptor and the decimals wrapped in brackets: path to ember element[1.2.3.4]`,
-}
+} as const satisfies CompanionInputFieldTextInput
 
-const minLimit: CompanionInputFieldTextInput = {
+const minLimit = {
 	type: 'textinput',
 	label: 'Minimum',
 	id: 'min',
@@ -92,9 +93,9 @@ const minLimit: CompanionInputFieldTextInput = {
 	useVariables: { local: true },
 	tooltip: 'Relative action minimum value will be limited to this value',
 	isVisibleExpression: '!!$(options:relative)',
-}
+} as const satisfies CompanionInputFieldTextInput
 
-const maxLimit: CompanionInputFieldTextInput = {
+const maxLimit = {
 	type: 'textinput',
 	label: 'Maximum',
 	id: 'max',
@@ -102,56 +103,56 @@ const maxLimit: CompanionInputFieldTextInput = {
 	useVariables: { local: true },
 	tooltip: 'Relative action maximum value will be limited to this value',
 	isVisibleExpression: '!!$(options:relative)',
-}
+} as const satisfies CompanionInputFieldTextInput
 
-const relative: CompanionInputFieldCheckbox = {
+const relative = {
 	type: 'checkbox',
 	label: 'Relative',
 	id: 'relative',
 	default: false,
 	tooltip: 'Adjust value by this amount. Variable will be auto-created.',
-}
+} as const satisfies CompanionInputFieldCheckbox
 
-const createVariable: CompanionInputFieldCheckbox = {
+const createVariable = {
 	type: 'checkbox',
 	label: 'Auto Create Variable',
 	id: 'variable',
 	default: false,
-}
+} as const satisfies CompanionInputFieldCheckbox
 
-const useVariable: CompanionInputFieldCheckbox = {
+const useVariable = {
 	type: 'checkbox',
 	label: 'Use Variable?',
 	id: 'useVar',
 	default: false,
-}
+} as const satisfies CompanionInputFieldCheckbox
 
-const factorOpt: CompanionInputFieldTextInput = {
+const factorOpt = {
 	type: 'textinput',
 	label: 'Factor',
 	id: 'factor',
 	useVariables: { local: true },
 	default: '1',
 	tooltip: `Value will be multiplied by this field`,
-}
+} as const satisfies CompanionInputFieldTextInput
 
-const asEnum: CompanionInputFieldCheckbox = {
+const asEnum = {
 	type: 'checkbox',
 	label: 'Set from Enumeration Value?',
 	id: 'asEnum',
 	default: false,
-}
+} as const satisfies CompanionInputFieldCheckbox
 
-const enumVal: CompanionInputFieldTextInput = {
+const enumVal = {
 	type: 'textinput',
 	label: 'Enumeration',
 	id: 'enumValue',
 	required: true,
 	useVariables: { local: true },
 	default: '',
-	tooltip: 'Must exactly match a valid enumaeration value',
+	tooltip: 'Must exactly match a valid enumeration value',
 	isVisibleExpression: '!!$(options:asEnum)',
-}
+} as const satisfies CompanionInputFieldTextInput
 
 const matrixInputs: Array<CompanionInputFieldTextInput | CompanionInputFieldNumber | CompanionInputFieldCheckbox> = [
 	pathInput,
