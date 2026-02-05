@@ -29,7 +29,7 @@ export function GetConfigFields(): SomeCompanionConfigField[] {
 			type: 'textinput',
 			id: 'host',
 			label: 'Target Host',
-			tooltip: 'The Hostname/IP of the ember+ provider',
+			tooltip: 'The Hostname/IP of the Ember+ provider',
 			width: 6,
 			regex: Regex.HOSTNAME,
 			isVisibleExpression: `!$(options:bonjourHost)`,
@@ -79,7 +79,7 @@ export function GetConfigFields(): SomeCompanionConfigField[] {
 			type: 'textinput',
 			id: 'monitoredParametersString',
 			label: 'Paths to parameters to monitor',
-			tooltip: 'Please separate by coma',
+			tooltip: 'Please separate by comma',
 			width: 12,
 		},
 		{
