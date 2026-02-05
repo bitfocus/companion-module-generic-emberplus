@@ -56,9 +56,6 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	public checkFeedbacks(...feedbackTypes: FeedbackId[]): void {
 		super.checkFeedbacks(...feedbackTypes)
 	}
-	public checkFeedbacksById(...feedbackIds: string[]): void {
-		super.checkFeedbacksById(...feedbackIds)
-	}
 
 	/**
 	 * Main initialization function called once the module
@@ -110,7 +107,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 		this.throttledFeedbackChecksVariableUpdates.cancel()
 		this.debouncedUpdateActionFeedbackDefs.cancel()
 		this.emberQueue.clear()
-		this.emberClient.discard()
+		this.destroyEmberClient()
 		this.statusManager.destroy()
 	}
 
@@ -127,6 +124,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 		this.emberQueue.clear()
 		this.feedbacksToCheck.clear()
 		this.debouncedUpdateActionFeedbackDefs.cancel()
+		this.destroyEmberClient()
 		this.variableValueUpdates = {}
 		this.state = new EmberPlusState()
 	}
@@ -179,21 +177,24 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 		{ edges: ['trailing'] },
 	)
 
-	private async setupEmberConnection(): Promise<void> {
-		this.throttledReconnect.cancel()
-
+	private destroyEmberClient(): void {
 		if (this.emberClient !== undefined) {
 			this.emberClient.removeAllListeners()
 			this.emberClient.discard()
 		}
+	}
+
+	private async setupEmberConnection(): Promise<void> {
+		this.throttledReconnect.cancel()
+
+		this.destroyEmberClient()
 
 		if (!this.config.host) {
-			this.logger.warn('No Host')
 			this.statusManager.updateStatus(InstanceStatus.BadConfig, 'No Host')
 			throw new Error('No host configured')
 		}
 
-		this.logger.debug(`Connecting to ${this.config.host}:${this.config.port}`)
+		this.logger.info(`Connecting to ${this.config.host}:${this.config.port}`)
 		this.statusManager.updateStatus(InstanceStatus.Connecting)
 
 		return new Promise<void>((resolve, reject) => {

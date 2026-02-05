@@ -4,7 +4,7 @@ import { sanitiseVariableId } from './util'
 import { ParameterType } from 'emberplus-connection/dist/model'
 
 export function GetVariablesList(state: EmberPlusState): CompanionVariableDefinition[] {
-	if (!state.monitoredParameters) return []
+	if (state.monitoredParameters.size == 0) return []
 	const variables = Array.from(state.monitoredParameters).flatMap((fb) => {
 		const fbId = sanitiseVariableId(fb)
 		let fbName = fb
