@@ -1,12 +1,11 @@
 import type { CompanionVariableDefinition } from '@companion-module/base'
-import type { EmberPlusConfig } from './config'
 import type { EmberPlusState } from './state'
 import { sanitiseVariableId } from './util'
 import { ParameterType } from 'emberplus-connection/dist/model'
 
-export function GetVariablesList(config: EmberPlusConfig, state: EmberPlusState): CompanionVariableDefinition[] {
-	if (!config.monitoredParameters) return []
-	const variables = Array.from(config.monitoredParameters).flatMap((fb) => {
+export function GetVariablesList(state: EmberPlusState): CompanionVariableDefinition[] {
+	if (!state.monitoredParameters) return []
+	const variables = Array.from(state.monitoredParameters).flatMap((fb) => {
 		const fbId = sanitiseVariableId(fb)
 		let fbName = fb
 		if (state.parameters.has(fb)) {

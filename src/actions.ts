@@ -454,7 +454,7 @@ export function GetActionsList(
 		[ActionId.Take]: {
 			name: 'Take',
 			options: [],
-			callback: doTake(self, emberClient, config, state, queue),
+			callback: doTake(self, emberClient, state, queue),
 		},
 		[ActionId.Clear]: {
 			name: 'Clear',

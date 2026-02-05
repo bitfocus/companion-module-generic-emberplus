@@ -26,7 +26,7 @@ import {
 } from './util'
 import { GetVariablesList } from './variables'
 import PQueue from 'p-queue'
-import { throttle } from 'es-toolkit'
+import { throttle, debounce } from 'es-toolkit'
 
 const ReconnectInterval = 30000 //emberplus-connection destroys socket after 5 minutes
 const FeedbackThrottleRate = 30
@@ -108,6 +108,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	public async destroy(): Promise<void> {
 		this.throttledReconnect.cancel()
 		this.throttledFeedbackChecksVariableUpdates.cancel()
+		this.debouncedUpdateActionFeedbackDefs.cancel()
 		this.emberQueue.clear()
 		this.emberClient.discard()
 		this.statusManager.destroy()
@@ -122,10 +123,10 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	}
 
 	private resetConnection(): void {
-		this.config.monitoredParameters = new Set<string>()
 		this.throttledFeedbackChecksVariableUpdates.cancel()
 		this.emberQueue.clear()
 		this.feedbacksToCheck.clear()
+		this.debouncedUpdateActionFeedbackDefs.cancel()
 		this.variableValueUpdates = {}
 		this.state = new EmberPlusState()
 	}
@@ -158,9 +159,13 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 			this.setActionDefinitions(GetActionsList(this, this.client, this.config, this.state, this.emberQueue))
 		if (options.updateFeedbacks)
 			this.setFeedbackDefinitions(GetFeedbacksList(this, this.client, this.config, this.state))
-		if (options.updateVariables) this.setVariableDefinitions(GetVariablesList(this.config, this.state))
+		if (options.updateVariables) this.setVariableDefinitions(GetVariablesList(this.state))
 		if (options.updatePresets) this.setPresetDefinitions(GetPresetsList())
 	}
+
+	public debouncedUpdateActionFeedbackDefs = debounce(() => {
+		this.updateCompanionBits()
+	}, 500)
 
 	private get client(): EmberClient {
 		return this.emberClient
@@ -289,21 +294,23 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 
 	private setupMatrices(): void {
 		if (this.config.matricesString) {
-			this.config.matrices = this.config.matricesString
-				.replaceAll('/', '.')
-				.split(',')
-				.map((matrix) => matrix.trim())
-				.filter((matrix) => matrix.length > 0)
+			this.state.matrices = new Set(
+				this.config.matricesString
+					.replaceAll('/', '.')
+					.split(',')
+					.map((matrix) => matrix.trim())
+					.filter((matrix) => matrix.length > 0),
+			)
 		}
 
-		if (this.config.matrices) {
+		if (this.state.matrices) {
 			this.state.selected.source = -1
 			this.state.selected.target = -1
 		}
 	}
 
 	private setupMonitoredParams(): void {
-		this.config.monitoredParameters = new Set<string>()
+		this.state.monitoredParameters = new Set<string>()
 		if (this.config.monitoredParametersString) {
 			const params = this.config.monitoredParametersString
 				.replaceAll('/', '.')
@@ -312,13 +319,13 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 				.filter((param) => param.length > 0)
 				.sort()
 
-			this.config.monitoredParameters = new Set(params)
+			this.state.monitoredParameters = new Set(params)
 		}
 	}
 
 	private async registerParameters() {
 		this.logger.debug('Start parameter registration')
-		for (const path of this.config.monitoredParameters ?? []) {
+		for (const path of this.state.monitoredParameters ?? []) {
 			if (path === '') break
 			this.logger.debug('Attempt to subscribe to', path)
 			await this.emberQueue
@@ -330,7 +337,6 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 						if (initial_node) {
 							this.logger.debug('Registered for path', path)
 							this.state.updateParameterMap(path, initial_node)
-							this.updateCompanionBits()
 							await this.handleChangedValue(path, initial_node)
 						}
 					} catch {
@@ -341,6 +347,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 					this.logger.debug(`Failed to register parameter:`, e)
 				})
 		}
+		this.debouncedUpdateActionFeedbackDefs()
 	}
 
 	public async registerNewParameter(
@@ -350,7 +357,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 		if (path === '') return undefined
 
 		// Return cached element if already registered
-		if (this.state.emberElement.has(path) && (this.config.monitoredParameters?.has(path) || !createVar)) {
+		if (this.state.emberElement.has(path) && (this.state.monitoredParameters?.has(path) || !createVar)) {
 			return this.state.emberElement.get(path)
 		}
 
@@ -369,14 +376,17 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 					this.logger.console(path, ':', node.contents)
 
 					if (createVar) {
-						if (!this.config.monitoredParameters) {
-							this.config.monitoredParameters = new Set<string>()
-						}
-						this.config.monitoredParameters.add(path)
+						this.state.monitoredParameters.add(path)
 					}
 
 					this.state.updateParameterMap(path, node)
-					this.updateCompanionBits()
+					this.updateCompanionBits({
+						updateVariables: true,
+						updateActions: false,
+						updateFeedbacks: false,
+						updatePresets: false,
+					})
+					this.debouncedUpdateActionFeedbackDefs()
 					await this.handleChangedValue(path, node)
 
 					return node

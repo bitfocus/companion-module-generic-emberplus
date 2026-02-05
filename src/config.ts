@@ -9,10 +9,8 @@ export interface EmberPlusConfig {
 	host?: string
 	port?: number
 	take?: boolean
-	matrices?: string[]
 	matricesString?: string
 	monitoredParametersString?: string
-	monitoredParameters?: Set<string>
 	factor: boolean
 	logging: LoggerLevel
 }

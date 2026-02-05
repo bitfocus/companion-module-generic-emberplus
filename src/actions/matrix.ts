@@ -55,7 +55,6 @@ export const doMatrixAction =
 export const doMatrixActionFunction = async function (
 	self: EmberPlusInstance,
 	emberClient: EmberClient,
-	config: EmberPlusConfig,
 	state: EmberPlusState,
 	queue: PQueue,
 ): Promise<void> {
@@ -66,11 +65,11 @@ export const doMatrixActionFunction = async function (
 				state.selected.source !== -1 &&
 				state.selected.target !== -1 &&
 				state.selected.matrix !== -1 &&
-				config.matrices &&
-				config.matrices[state.selected.matrix]
+				state.matrices &&
+				[...state.matrices][state.selected.matrix]
 			) {
 				try {
-					const node = await emberClient.getElementByPath(config.matrices[state.selected.matrix])
+					const node = await emberClient.getElementByPath([...state.matrices][state.selected.matrix])
 					if (node && node.contents.type === EmberModel.ElementType.Matrix) {
 						self.logger.debug('Got node on ' + state.selected.matrix)
 						const target = state.selected.target
@@ -107,13 +106,13 @@ export const doMatrixActionFunction = async function (
  * @param queue reference to the PQueue of the module
  */
 export const doTake =
-	(self: EmberPlusInstance, emberClient: EmberClient, config: EmberPlusConfig, state: EmberPlusState, queue: PQueue) =>
+	(self: EmberPlusInstance, emberClient: EmberClient, state: EmberPlusState, queue: PQueue) =>
 	async (action: CompanionActionEvent): Promise<void> => {
 		if (
 			state.selected.target !== -1 &&
 			state.selected.source !== -1 &&
 			state.selected.matrix !== -1 &&
-			config.matrices
+			state.matrices
 		) {
 			self.logger.debug(
 				'TAKE: selectedDest: ' +
@@ -123,7 +122,7 @@ export const doTake =
 					' on matrix ' +
 					Number(action.options['matrix']),
 			)
-			await doMatrixActionFunction(self, emberClient, config, state, queue)
+			await doMatrixActionFunction(self, emberClient, state, queue)
 		} else {
 			self.logger.debug('TAKE went wrong.')
 		}
@@ -174,7 +173,7 @@ export const setSelectedSource =
 		if (source != -1 && matrix == state.selected.matrix) {
 			state.selected.source = source
 			self.logger.debug('Take is: ' + config.take)
-			if (config.take) await doMatrixActionFunction(self, emberClient, config, state, queue)
+			if (config.take) await doMatrixActionFunction(self, emberClient, state, queue)
 			self.checkFeedbacks(FeedbackId.SourceBackgroundSelected, FeedbackId.Clear, FeedbackId.Take)
 			self.logger.debug('setSelectedSource: ' + source + ' on Matrix: ' + matrix)
 		}
