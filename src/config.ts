@@ -72,6 +72,7 @@ export function GetConfigFields(): SomeCompanionConfigField[] {
 			label: 'Paths to matrices',
 			tooltip: 'Please separate by comma',
 			width: 12,
+			multiline: true,
 		},
 		{
 			type: 'textinput',
@@ -79,6 +80,7 @@ export function GetConfigFields(): SomeCompanionConfigField[] {
 			label: 'Paths to parameters to monitor',
 			tooltip: 'Please separate by comma',
 			width: 12,
+			multiline: true,
 		},
 		{
 			type: 'checkbox',
