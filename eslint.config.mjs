@@ -15,6 +15,18 @@ const customConfig = [
 			'n/no-unpublished-import': 'off',
 		},
 	},
+	{
+		files: ['vitest.config.ts', '**/*.test.ts', '**/*.spec.ts'],
+		languageOptions: {
+			parserOptions: {
+				project: ['./tsconfig.json', './tsconfig.node.json'],
+			},
+		},
+		rules: {
+			'n/no-unpublished-import': 'off',
+			'@typescript-eslint/unbound-method': 'off',
+		},
+	},
 ]
 
 export default customConfig

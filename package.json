@@ -11,7 +11,8 @@
 		"lint:raw": "eslint",
 		"lint": "yarn lint:raw .",
 		"dist": "yarn companion-module-build",
-		"package": "rimraf dist && yarn build:main && yarn dist"
+		"package": "rimraf dist && yarn build:main && yarn dist",
+		 "test": "vitest --run"
 	},
 	"repository": {
 		"type": "git",
@@ -44,7 +45,8 @@
 		"prettier": "^3.8.1",
 		"rimraf": "^6.1.3",
 		"typescript": "~5.9.3",
-		"typescript-eslint": "^8.56.1"
+		"typescript-eslint": "^8.56.1",
+		"vitest": "^4.0.18"
 	},
 	"prettier": "@companion-module/tools/.prettierrc.json",
 	"packageManager": "yarn@4.12.0"
