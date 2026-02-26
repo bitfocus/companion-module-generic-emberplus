@@ -165,8 +165,8 @@ export function calcRelativeNumber(
 	let oldValue = Number(state.parameters.get(path)?.value)
 	if (isNaN(oldValue)) oldValue = 0
 	let newValue = value + oldValue
-	const minLimit = Number(min)
-	const maxLimit = Number(max)
+	const minLimit = min.trim() === '' ? NaN : Number(min)
+	const maxLimit = max.trim() === '' ? NaN : Number(max)
 	if (type === EmberModel.ParameterType.Integer) {
 		newValue = Math.round(newValue)
 	}
