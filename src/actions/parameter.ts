@@ -21,12 +21,12 @@ import {
 export const subscribeParameterAction =
 	(self: EmberPlusInstance) =>
 	async (action: CompanionActionInfo, _context: CompanionActionContext): Promise<void> => {
-		if (action.options.variable || action.options.toggle || action.options.relative || action.options.asEnum) {
-			await self.registerNewParameter(resolveEventPath(action))
-		}
+		const createVar =
+			!!action.options.variable || !!action.options.toggle || !!action.options.relative || !!action.options.asEnum
+		await self.registerNewParameter(resolveEventPath(action), createVar)
 	}
 
-const setNumericOptions = (options: setValueActionOptions, emberPath: any) => {
+const setNumericOptions = (options: setValueActionOptions, emberPath: EmberModel.Parameter) => {
 	if (isDefined(emberPath.value)) {
 		options.value = Number(emberPath.value)
 		options.valueVar = emberPath.value.toString()
@@ -46,7 +46,7 @@ export const learnSetValueActionOptions =
 
 		if (!emberPath || paramType !== emberPath.parameterType) return undefined
 
-		const options = action.options as setValueActionOptions
+		const options = { ...action.options } as setValueActionOptions
 		const { value } = emberPath
 
 		switch (actionType) {
@@ -185,10 +185,10 @@ const parseBooleanValue = (options: CompanionOptionValues, path: string, state: 
 	return Boolean(options.value)
 }
 
-const validateNodeAccess = (
+function validateNodeAccess(
 	node: EmberModel.TreeElement<EmberModel.EmberElement>,
 	path: string,
-): node is EmberModel.NumberedTreeNode<EmberModel.Parameter> => {
+): asserts node is EmberModel.NumberedTreeNode<EmberModel.Parameter> {
 	if (node.contents.type !== EmberModel.ElementType.Parameter) {
 		throw new Error(`${path} is not a parameter`)
 	}
@@ -197,17 +197,13 @@ const validateNodeAccess = (
 	if (access === EmberModel.ParameterAccess.None || access === EmberModel.ParameterAccess.Read) {
 		throw new Error(`Can't write to ${path}: insufficient permissions (${access})`)
 	}
-	return true
 }
 
 const validateParameterType = (
 	node: EmberModel.NumberedTreeNode<EmberModel.Parameter>,
 	expectedType: EmberModel.ParameterType,
 ): boolean => {
-	if (node.contents.parameterType !== expectedType) {
-		return false
-	}
-	return true
+	return node.contents.parameterType === expectedType
 }
 
 export const setValue =
@@ -228,15 +224,14 @@ export const setValue =
 		const node = await self.registerNewParameter(path, requiresVariableHandling)
 
 		if (!node || node.contents.type !== EmberModel.ElementType.Parameter) {
-			throw new Error(`Parameter ${action.options.path} not found or not a parameter`)
+			throw new Error(`Parameter ${path} not found or not a parameter`)
 		}
 
-		if (!validateNodeAccess(node, path)) return
+		validateNodeAccess(node, path)
+		if (!validateParameterType(node, paramType))
+			throw new Error(`Node ${path} is not of type ${paramType} (is ${node.contents.parameterType})`)
 
 		await queue.add(async () => {
-			if (!validateParameterType(node, paramType))
-				throw new Error(`Node ${path} is not of type ${paramType} (is ${node.contents.parameterType})`)
-
 			self.logger.debug('Got node on', path)
 
 			let value: string | number | boolean | undefined
