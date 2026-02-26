@@ -9,12 +9,12 @@ import type {
 } from '@companion-module/base'
 import { EmberClient, Model as EmberModel } from 'emberplus-connection'
 import type PQueue from 'p-queue'
-import type { EmberPlusConfig } from './config'
-import type { EmberPlusInstance } from './index'
-import { doMatrixAction, doTake, doClear, setSelectedSource, setSelectedTarget } from './actions/matrix'
-import { learnSetValueActionOptions, setValue, subscribeParameterAction } from './actions/parameter'
-import { EmberPlusState } from './state'
-import { filterPathChoices } from './util'
+import type { EmberPlusConfig } from './config.js'
+import type { EmberPlusInstance } from './index.js'
+import { doMatrixAction, doTake, doClear, setSelectedSource, setSelectedTarget } from './actions/matrix.js'
+import { learnSetValueActionOptions, setValue, subscribeParameterAction } from './actions/parameter.js'
+import { EmberPlusState } from './state.js'
+import { filterPathChoices } from './util.js'
 
 export interface setValueActionOptions extends CompanionOptionValues {
 	path: string

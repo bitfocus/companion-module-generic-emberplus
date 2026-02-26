@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { Logger, LoggerLevel, loggerLevelChoices } from './logger'
+import { Logger, LoggerLevel, loggerLevelChoices } from './logger.js'
 
 vi.mock('@companion-module/base', () => ({
 	InstanceBase: class {},

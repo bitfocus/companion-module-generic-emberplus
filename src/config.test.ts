@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { GetConfigFields, portDefault } from './config'
+import { GetConfigFields, portDefault } from './config.js'
 import { LoggerLevel } from './logger.js'
 
 vi.mock('@companion-module/base', () => ({

@@ -1,6 +1,6 @@
 import type { CompanionVariableDefinition } from '@companion-module/base'
-import type { EmberPlusState } from './state'
-import { sanitiseVariableId } from './util'
+import type { EmberPlusState } from './state.js'
+import { sanitiseVariableId } from './util.js'
 import { ParameterType } from 'emberplus-connection/dist/model'
 
 export function GetVariablesList(state: EmberPlusState): CompanionVariableDefinition[] {

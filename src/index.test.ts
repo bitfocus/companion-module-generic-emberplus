@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
-import { EmberPlusInstance } from './index'
-import { EmberPlusState } from './state'
+import { EmberPlusInstance } from './index.js'
+import { EmberPlusState } from './state.js'
 import { ElementType, ParameterType } from 'emberplus-connection/dist/model'
 import { LoggerLevel } from './logger.js'
 
@@ -321,7 +321,7 @@ describe('handleChangedValue', () => {
 	})
 
 	it('calls recordParameterAction when recording is active', async () => {
-		const { recordParameterAction } = await import('./util')
+		const { recordParameterAction } = await import('./util.js')
 		const instance = makeInstance()
 		;(instance as any).isRecordingActions = true
 		await instance.handleChangedValue('0.1', makeNode())
@@ -329,7 +329,7 @@ describe('handleChangedValue', () => {
 	})
 
 	it('does not call recordParameterAction when not recording', async () => {
-		const { recordParameterAction } = await import('./util')
+		const { recordParameterAction } = await import('./util.js')
 		vi.mocked(recordParameterAction).mockClear()
 		const instance = makeInstance()
 		;(instance as any).isRecordingActions = false
@@ -338,7 +338,7 @@ describe('handleChangedValue', () => {
 	})
 
 	it('skips processing when parseParameterValue returns no actionType', async () => {
-		const util = await import('./util')
+		const util = await import('./util.js')
 		vi.mocked(util.parseParameterValue).mockReturnValueOnce({ actionType: undefined, value: 0 })
 		const instance = makeInstance()
 		await instance.handleChangedValue('0.1', makeNode())

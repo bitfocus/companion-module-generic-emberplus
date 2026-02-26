@@ -7,7 +7,7 @@ import {
 import { ActionId } from './actions.js'
 import type { EmberPlusConfig } from './config.js'
 import { LoggerLevel } from './logger.js'
-import { comparitorOptions } from './util'
+import { comparitorOptions } from './util.js'
 
 function v250(
 	_context: CompanionUpgradeContext<EmberPlusConfig>,

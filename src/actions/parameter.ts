@@ -6,9 +6,9 @@ import type {
 } from '@companion-module/base'
 import { EmberClient, Model as EmberModel } from 'emberplus-connection'
 import type PQueue from 'p-queue'
-import { ActionId, type setValueActionOptions } from '../actions'
-import type { EmberPlusInstance } from '../index'
-import { EmberPlusState } from '../state'
+import { ActionId, type setValueActionOptions } from '../actions.js'
+import type { EmberPlusInstance } from '../index.js'
+import { EmberPlusState } from '../state.js'
 import {
 	calcRelativeNumber,
 	checkNumberLimits,
@@ -16,7 +16,7 @@ import {
 	parseEscapeCharacters,
 	resolveEventPath,
 	substituteEscapeCharacters,
-} from '../util'
+} from '../util.js'
 
 export const subscribeParameterAction =
 	(self: EmberPlusInstance) =>

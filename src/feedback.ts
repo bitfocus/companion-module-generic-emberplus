@@ -9,18 +9,18 @@ import type {
 	CompanionOptionValues,
 	CompanionInputFieldStaticText,
 } from '@companion-module/base'
-import type { EmberPlusInstance } from './index'
+import type { EmberPlusInstance } from './index.js'
 import { EmberClient, Model as EmberModel } from 'emberplus-connection'
-import type { EmberPlusConfig } from './config'
+import type { EmberPlusConfig } from './config.js'
 import {
 	learnParameterFeedbackOptions,
 	parameterFeedbackCallback,
 	parameterValueFeedbackCallback,
 	subscribeParameterFeedback,
 	unsubscribeParameterFeedback,
-} from './feedbacks/parameter'
-import { EmberPlusState } from './state'
-import { comparitorOptions, filterPathChoices, NumberComparitor } from './util'
+} from './feedbacks/parameter.js'
+import { EmberPlusState } from './state.js'
+import { comparitorOptions, filterPathChoices, NumberComparitor } from './util.js'
 
 export enum FeedbackId {
 	Parameter = 'parameter',

@@ -4,12 +4,11 @@ import type {
 	CompanionFeedbackInfo,
 	DropdownChoice,
 } from '@companion-module/base'
-import { ActionId, type setValueActionOptions } from './actions'
-import type { EmberPlusConfig } from './config'
-import type { EmberPlusInstance } from './index'
-import { EmberPlusState } from './state'
+import { ActionId, type setValueActionOptions } from './actions.js'
+import type { EmberPlusConfig } from './config.js'
+import type { EmberPlusInstance } from './index.js'
+import { EmberPlusState } from './state.js'
 import { Model as EmberModel } from 'emberplus-connection'
-//import type { CompanionCommonCallbackContext } from '@companion-module/base/dist/module-api/common'
 
 export function assertUnreachable(_never: never): void {
 	// throw new Error('Unreachable')

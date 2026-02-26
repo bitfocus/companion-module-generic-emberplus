@@ -18,9 +18,9 @@ import {
 	hasConnectionChanged,
 	recordParameterAction,
 	parseParameterValue,
-} from './util'
-import { ActionId } from './actions'
-import { EmberPlusState } from './state'
+} from './util.js'
+import { ActionId } from './actions.js'
+import { EmberPlusState } from './state.js'
 import { Model as EmberModel } from 'emberplus-connection'
 
 // ---------------------------------------------------------------------------

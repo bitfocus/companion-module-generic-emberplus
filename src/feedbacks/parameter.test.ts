@@ -6,9 +6,9 @@ import {
 	resolveBooleanFeedback,
 	parameterFeedbackCallback,
 	parameterValueFeedbackCallback,
-} from './parameter'
-import { FeedbackId } from '../feedback'
-import { compareNumber, parseEscapeCharacters } from '../util'
+} from './parameter.js'
+import { FeedbackId } from '../feedback.js'
+import { compareNumber, parseEscapeCharacters } from '../util.js'
 
 // ---------------------------------------------------------------------------
 // Mocks

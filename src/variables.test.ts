@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { GetVariablesList } from './variables'
+import { GetVariablesList } from './variables.js'
 
 vi.mock('emberplus-connection/dist/model', () => ({
 	ParameterType: {

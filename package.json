@@ -12,6 +12,7 @@
 		"lint": "yarn lint:raw .",
 		"dist": "yarn companion-module-build",
 		"package": "rimraf dist && yarn build:main && yarn dist",
+		 "format": "prettier -w .",
 		 "test": "vitest --run"
 	},
 	"repository": {

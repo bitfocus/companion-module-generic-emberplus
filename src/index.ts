@@ -5,26 +5,26 @@ import {
 	type CompanionVariableValues,
 	type SomeCompanionConfigField,
 } from '@companion-module/base'
-import { GetActionsList } from './actions'
-import { type EmberPlusConfig, GetConfigFields } from './config'
-import { GetPresetsList } from './presets'
-import { FeedbackId, GetFeedbacksList } from './feedback'
-import { EmberPlusState } from './state'
+import { GetActionsList } from './actions.js'
+import { type EmberPlusConfig, GetConfigFields } from './config.js'
+import { GetPresetsList } from './presets.js'
+import { FeedbackId, GetFeedbacksList } from './feedback.js'
+import { EmberPlusState } from './state.js'
 import { EmberClient, Model as EmberModel } from 'emberplus-connection' // note - emberplus-conn is in parent repo, not sure if it needs to be defined as dependency
 import { ElementType, ParameterType } from 'emberplus-connection/dist/model'
 import type { TreeElement, EmberElement } from 'emberplus-connection/dist/model'
 import type { EmberValue } from 'emberplus-connection/dist/types'
 import { Logger, LoggerLevel } from './logger.js'
 import { StatusManager } from './status.js'
-import { UpgradeScripts } from './upgrades'
+import { UpgradeScripts } from './upgrades.js'
 import {
 	sanitiseVariableId,
 	parseBonjourHost,
 	hasConnectionChanged,
 	recordParameterAction,
 	parseParameterValue,
-} from './util'
-import { GetVariablesList } from './variables'
+} from './util.js'
+import { GetVariablesList } from './variables.js'
 import PQueue from 'p-queue'
 import { throttle, debounce } from 'es-toolkit'
 

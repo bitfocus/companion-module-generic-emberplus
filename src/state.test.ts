@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { EmberPlusState } from './state'
+import { EmberPlusState } from './state.js'
 import { ElementType } from 'emberplus-connection/dist/model'
 
 vi.mock('emberplus-connection/dist/model', () => ({

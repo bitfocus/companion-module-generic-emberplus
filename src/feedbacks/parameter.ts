@@ -1,16 +1,16 @@
 import type { CompanionFeedbackContext, CompanionFeedbackInfo, JsonValue } from '@companion-module/base'
 import { Model as EmberModel } from 'emberplus-connection'
-import type { parameterFeedbackOptions } from '../feedback'
-import type { EmberPlusInstance } from '../index'
-import { EmberPlusState } from '../state'
+import type { parameterFeedbackOptions } from '../feedback.js'
+import type { EmberPlusInstance } from '../index.js'
+import { EmberPlusState } from '../state.js'
 import {
 	compareNumber,
 	NumberComparitor,
 	parseEscapeCharacters,
 	resolveEventPath,
 	substituteEscapeCharacters,
-} from '../util'
-import { FeedbackId } from '../feedback'
+} from '../util.js'
+import { FeedbackId } from '../feedback.js'
 import { ParameterType } from 'emberplus-connection/dist/model'
 
 export const subscribeParameterFeedback =
