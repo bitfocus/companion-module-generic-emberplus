@@ -35,7 +35,7 @@ export const learnParameterFeedbackOptions =
 		const path = resolveEventPath(feedback)
 		const val = state.parameters.get(path)
 		if (val === undefined || val === null || val.value === undefined || val.value === null) return undefined
-		const options = feedback.options as parameterFeedbackOptions
+		const options = { ...feedback.options } as parameterFeedbackOptions
 		const enumVal = state.getCurrentEnumValue(path)
 		switch (feedbackType) {
 			case FeedbackId.String:
@@ -52,7 +52,7 @@ export const learnParameterFeedbackOptions =
 				options.value = val.value
 				options.valueVar = val.value.toString()
 				options.factor = val.factor?.toString() ?? options.factor
-				options.asInt = val.parameterType == ParameterType.Integer || val.parameterType == ParameterType.Enum
+				options.asInt = val.parameterType === ParameterType.Integer || val.parameterType === ParameterType.Enum
 				break
 			default:
 				return undefined
@@ -83,17 +83,18 @@ export async function resolveBooleanFeedback(
 		case EmberModel.ParameterType.Real:
 			return compareNumber(Number(value), options.comparitor, Number(state.parameters.get(path)?.value))
 		case EmberModel.ParameterType.Integer:
+			// Only Factorize integer parameters
 			return compareNumber(
 				Math.floor(Number(value) * fact),
 				options.comparitor,
 				Math.floor(Number(state.parameters.get(path)?.value)),
 			)
 		case EmberModel.ParameterType.Enum:
-			return state.getCurrentEnumValue(path) == value
+			return state.getCurrentEnumValue(path) === value
 		case EmberModel.ParameterType.String:
 		default:
 			if (options.parse) value = parseEscapeCharacters(value?.toString() ?? '')
-			return state.parameters.get(path)?.value?.toString() == value
+			return state.parameters.get(path)?.value?.toString() === value
 	}
 }
 
@@ -133,8 +134,6 @@ export const parameterFeedbackCallback =
 						{ parse: Boolean(feedback.options['parseEscapeChars']) },
 					)
 			}
-		} else {
-			self.registerNewParameter(path, true).catch(() => {})
 		}
 		return false
 	}
@@ -154,8 +153,6 @@ export const parameterValueFeedbackCallback =
 				return Array.from(value)
 			}
 			return value
-		} else {
-			self.registerNewParameter(path, false).catch(() => {})
 		}
 		return null
 	}

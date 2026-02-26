@@ -68,6 +68,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 			await this.finalizeSetup()
 		} catch (e) {
 			if (e instanceof Error) this.statusManager.updateStatus(InstanceStatus.ConnectionFailure, e.message)
+			else this.statusManager.updateStatus(InstanceStatus.UnknownError, `Failed to initalize ember client ${e}`)
 		}
 	}
 
@@ -84,12 +85,12 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 			this.resetConnection()
 			try {
 				await this.setupEmberConnection()
+				await this.finalizeSetup()
 			} catch (e) {
 				if (e instanceof Error) this.statusManager.updateStatus(InstanceStatus.ConnectionFailure, e.message)
+				else this.statusManager.updateStatus(InstanceStatus.UnknownError, `Failed to initalize ember client ${e}`)
 			}
 		}
-
-		await this.finalizeSetup()
 	}
 
 	/**
@@ -114,8 +115,9 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	private applyConfig(config: EmberPlusConfig): void {
 		this.config = config
 		this.logger = new Logger(this, config.logging ?? LoggerLevel.Information)
-		this.config.host = parseBonjourHost(config)[0]
-		this.config.port = parseBonjourHost(config)[1]
+		const [host, port] = parseBonjourHost(config)
+		this.config.host = host
+		this.config.port = port
 		this.logger.debug('New Config:\n', this.config)
 	}
 
@@ -295,19 +297,19 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 
 	private setupMatrices(): void {
 		if (this.config.matricesString) {
-			this.state.matrices = new Set(
-				this.config.matricesString
-					.replaceAll('/', '.')
-					.split(',')
-					.map((matrix) => matrix.trim())
-					.filter((matrix) => matrix.length > 0),
-			)
+			this.state.matrices = [
+				...new Set<string>(
+					this.config.matricesString
+						.replaceAll('/', '.')
+						.split(',')
+						.map((s) => s.trim())
+						.filter((s) => s !== ''),
+				),
+			]
 		}
 
-		if (this.state.matrices) {
-			this.state.selected.source = -1
-			this.state.selected.target = -1
-		}
+		this.state.selected.source = -1
+		this.state.selected.target = -1
 	}
 
 	private setupMonitoredParams(): void {
@@ -327,7 +329,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	private async registerParameters() {
 		this.logger.debug('Start parameter registration')
 		for (const path of this.state.monitoredParameters ?? []) {
-			if (path === '') break
+			if (path === '') continue
 			this.logger.debug('Attempt to subscribe to', path)
 			await this.emberQueue
 				.add(async () => {

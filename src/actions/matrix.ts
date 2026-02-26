@@ -65,11 +65,10 @@ export const doMatrixActionFunction = async function (
 				state.selected.source !== -1 &&
 				state.selected.target !== -1 &&
 				state.selected.matrix !== -1 &&
-				state.matrices &&
-				[...state.matrices][state.selected.matrix]
+				state.matrices.length > state.selected.matrix
 			) {
 				try {
-					const node = await emberClient.getElementByPath([...state.matrices][state.selected.matrix])
+					const node = await emberClient.getElementByPath(state.matrices[state.selected.matrix])
 					if (node && node.contents.type === EmberModel.ElementType.Matrix) {
 						self.logger.debug('Got node on ' + state.selected.matrix)
 						const target = state.selected.target
@@ -81,11 +80,12 @@ export const doMatrixActionFunction = async function (
 						)
 						await request.response
 					} else {
-						self.logger.warn('Matrix ' + state.selected.matrix + ' not found or not a parameter')
+						self.logger.warn('Matrix ' + state.selected.matrix + ' not found or not a matrix')
 					}
 				} catch (e) {
 					self.logger.debug('Failed to doMatrixActionFunction: ' + e)
 				} finally {
+					// Reset selections regardless of success or failure
 					state.selected.matrix = state.selected.source = state.selected.target = -1
 					self.checkFeedbacks(FeedbackId.TargetBackgroundSelected, FeedbackId.SourceBackgroundSelected, FeedbackId.Take)
 				}
@@ -107,12 +107,12 @@ export const doMatrixActionFunction = async function (
  */
 export const doTake =
 	(self: EmberPlusInstance, emberClient: EmberClient, state: EmberPlusState, queue: PQueue) =>
-	async (action: CompanionActionEvent): Promise<void> => {
+	async (_action: CompanionActionEvent): Promise<void> => {
 		if (
 			state.selected.target !== -1 &&
 			state.selected.source !== -1 &&
 			state.selected.matrix !== -1 &&
-			state.matrices
+			state.matrices.length > state.selected.matrix
 		) {
 			self.logger.debug(
 				'TAKE: selectedDest: ' +
@@ -120,7 +120,7 @@ export const doTake =
 					' selected.source: ' +
 					state.selected.source +
 					' on matrix ' +
-					Number(action.options['matrix']),
+					state.selected.matrix,
 			)
 			await doMatrixActionFunction(self, emberClient, state, queue)
 		} else {
@@ -168,14 +168,16 @@ export const setSelectedSource =
 			source > 0xffffffff ||
 			matrix > 0xffffffff
 		) {
-			throw new Error(`Invalid source selection: Matrix: ${matrix}, Target: ${source}`)
+			throw new Error(`Invalid source selection: Matrix: ${matrix}, Source: ${source}`)
 		}
-		if (source != -1 && matrix == state.selected.matrix) {
+		if (matrix === state.selected.matrix) {
 			state.selected.source = source
 			self.logger.debug('Take is: ' + config.take)
 			if (config.take) await doMatrixActionFunction(self, emberClient, state, queue)
 			self.checkFeedbacks(FeedbackId.SourceBackgroundSelected, FeedbackId.Clear, FeedbackId.Take)
 			self.logger.debug('setSelectedSource: ' + source + ' on Matrix: ' + matrix)
+		} else {
+			self.logger.warn('setSelectedSource: matrix mismatch, expected ' + state.selected.matrix + ' got ' + matrix)
 		}
 	}
 
@@ -203,10 +205,8 @@ export const setSelectedTarget =
 		) {
 			throw new Error(`Invalid target selection: Matrix: ${matrix}, Target: ${target}`)
 		}
-		if (target != -1) {
-			state.selected.target = target
-			state.selected.matrix = matrix
-		}
+		state.selected.target = target
+		state.selected.matrix = matrix
 		state.selected.source = -1
 		self.checkFeedbacks(
 			FeedbackId.SourceBackgroundSelected,

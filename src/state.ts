@@ -17,7 +17,7 @@ export class EmberPlusState {
 	public parameters: Map<string, EmberModel.Parameter> = new Map()
 	public emberElement: Map<string, TreeElement<EmberElement>> = new Map()
 	public monitoredParameters: Set<string> = new Set()
-	public matrices: Set<string> = new Set()
+	public matrices: string[] = []
 	private feedbacks: Feedbacks = {
 		byId: new Map(),
 		byPath: new Map(),

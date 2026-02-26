@@ -1,5 +1,6 @@
 import { InstanceBase, InstanceStatus } from '@companion-module/base'
 import type { EmberPlusConfig as ModuleConfig } from './config.js'
+import { throttle } from 'es-toolkit'
 
 export interface Status {
 	status: InstanceStatus
@@ -19,18 +20,41 @@ export class StatusManager {
 	#currentStatus: Status = { status: InstanceStatus.Disconnected, message: '' }
 	#newStatus: Status = { status: InstanceStatus.Disconnected, message: '' }
 	#parentInstance!: InstanceBase<ModuleConfig>
-	private debounceTimer: NodeJS.Timeout | undefined
-	#debounceTimeout: number = 1000
+	#throttleTimeout: number = 1000
 	#isDestroyed: boolean = false
+	private setNewStatus!: ((newStatus?: Status) => void) & { flush: () => void }
 
 	constructor(
 		self: InstanceBase<ModuleConfig>,
 		initStatus: Status = { status: InstanceStatus.Disconnected, message: null },
-		debounceTimeout: number = 1000,
+		throttleTimeout: number = 2000,
 	) {
 		this.#parentInstance = self
+
+		this.#throttleTimeout = throttleTimeout
+
+		/**
+		 * Perform the status update
+		 * @param newStatus
+		 *
+		 */
+
+		this.setNewStatus = throttle(
+			(newStatus: Status = this.#newStatus) => {
+				if (newStatus.message === null || typeof newStatus.message !== 'object') {
+					this.#parentInstance.updateStatus(newStatus.status, newStatus.message)
+				} else {
+					this.#parentInstance.updateStatus(newStatus.status, JSON.stringify(newStatus.message))
+				}
+				this.#currentStatus = newStatus
+			},
+			this.#throttleTimeout,
+			{
+				edges: ['trailing'],
+			},
+		)
+
 		this.setNewStatus(initStatus)
-		this.#debounceTimeout = debounceTimeout
 	}
 
 	/**
@@ -61,29 +85,7 @@ export class StatusManager {
 		}
 		if (this.#currentStatus.status === newStatus && this.#currentStatus.message === newMsg) return
 		this.#newStatus = { status: newStatus, message: newMsg }
-		if (this.debounceTimer) {
-			return
-		}
-		this.debounceTimer = setTimeout(() => this.setNewStatus(this.#newStatus), this.#debounceTimeout)
-	}
-
-	/**
-	 * Perform the status update
-	 * @param newStatus
-	 *
-	 */
-
-	private setNewStatus(newStatus: Status = this.#newStatus): void {
-		if (this.debounceTimer) {
-			clearTimeout(this.debounceTimer)
-			delete this.debounceTimer
-		}
-		if (typeof newStatus.message === 'object') {
-			this.#parentInstance.updateStatus(newStatus.status, JSON.stringify(newStatus.message))
-		} else {
-			this.#parentInstance.updateStatus(newStatus.status, newStatus.message)
-		}
-		this.#currentStatus = newStatus
+		this.setNewStatus(this.#newStatus)
 	}
 
 	/**
@@ -92,10 +94,7 @@ export class StatusManager {
 	 */
 
 	public destroy(): void {
-		if (this.debounceTimer) {
-			clearTimeout(this.debounceTimer)
-			delete this.debounceTimer
-		}
+		this.setNewStatus.flush()
 		this.setNewStatus({ status: InstanceStatus.Disconnected, message: 'Destroyed' })
 		this.#isDestroyed = true
 	}

@@ -28,7 +28,7 @@ type loggableTypes = string | object | boolean | number
 
 export class Logger {
 	private _self!: InstanceBase<ModuleConfig>
-	#minLogLevel: LoggerLevel = LoggerLevel.Console
+	#minLogLevel: LoggerLevel = LoggerLevel.Information
 
 	constructor(self: InstanceBase<ModuleConfig>, logLevel: LoggerLevel = LoggerLevel.Information) {
 		this._self = self
@@ -42,10 +42,9 @@ export class Logger {
 	 */
 
 	public log(level: LoggerLevel, data: string): boolean {
-		const logData = data
 		if (level > this.#minLogLevel) return false
 		if (level === LoggerLevel.Console) {
-			console.log(logData)
+			console.log(data)
 		} else {
 			const logLevel =
 				level === LoggerLevel.Error
@@ -55,7 +54,7 @@ export class Logger {
 						: level === LoggerLevel.Information
 							? 'info'
 							: 'debug'
-			this._self.log(logLevel, logData)
+			this._self.log(logLevel, data)
 		}
 		return true
 	}
@@ -68,7 +67,15 @@ export class Logger {
 		let msg: string = ''
 		for (const element of data) {
 			if (msg !== '') msg += ' '
-			msg += typeof element === 'object' ? JSON.stringify(element) : element.toString()
+			if (typeof element === 'object') {
+				try {
+					msg += JSON.stringify(element)
+				} catch {
+					msg += '[Unserializable Object]'
+				}
+			} else {
+				msg += element.toString()
+			}
 		}
 		return msg
 	}
