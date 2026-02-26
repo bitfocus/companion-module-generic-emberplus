@@ -1,5 +1,5 @@
 import type { Model as EmberModel } from 'emberplus-connection'
-import { type TreeElement, type EmberElement, ElementType } from 'emberplus-connection/dist/model'
+import { type TreeElement, type EmberElement, ElementType } from 'emberplus-connection/dist/model/index.js'
 
 export interface CurrentSelected {
 	target: number

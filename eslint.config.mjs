@@ -9,10 +9,10 @@ const customConfig = [
 
 	{
 		rules: {
-			//'@typescript-eslint/no-unsafe-enum-comparison': 'off',
+			'@typescript-eslint/no-unsafe-enum-comparison': 'off',
 			// misconfiguration of ts or something?
-			//'n/no-missing-import': 'off',
-			//'n/no-unpublished-import': 'off',
+			'n/no-missing-import': 'off',
+			'n/no-unpublished-import': 'off',
 		},
 	},
 	{

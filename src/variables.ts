@@ -1,7 +1,7 @@
 import type { CompanionVariableDefinition } from '@companion-module/base'
 import type { EmberPlusState } from './state.js'
 import { sanitiseVariableId } from './util.js'
-import { ParameterType } from 'emberplus-connection/dist/model'
+import { ParameterType } from 'emberplus-connection/dist/model/index.js'
 
 export function GetVariablesList(state: EmberPlusState): CompanionVariableDefinition[] {
 	if (state.monitoredParameters.size == 0) return []

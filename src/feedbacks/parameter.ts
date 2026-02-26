@@ -11,7 +11,7 @@ import {
 	substituteEscapeCharacters,
 } from '../util.js'
 import { FeedbackId } from '../feedback.js'
-import { ParameterType } from 'emberplus-connection/dist/model'
+import { ParameterType } from 'emberplus-connection/dist/model/index.js'
 
 export const subscribeParameterFeedback =
 	(state: EmberPlusState, self: EmberPlusInstance) =>

@@ -1,19 +1,20 @@
 {
 	"name": "generic-emberplus",
-	"version": "2.8.0-build7",
+	"version": "2.8.0-build8",
 	"main": "dist/index.js",
+	"type": "module",
 	"scripts": {
 		"prepare": "husky",
 		"dev": "yarn build:watch",
 		"build": "rimraf dist && yarn build:main",
-		"build:main": "tsc -p tsconfig.json",
-		"build:watch": "tsc -p tsconfig.json --watch",
+		"build:main": "tsc -p tsconfig.build.json",
+		"build:watch": "tsc -p tsconfig.build.json --watch",
 		"lint:raw": "eslint",
 		"lint": "yarn lint:raw .",
 		"dist": "yarn companion-module-build",
-		"package": "rimraf dist && yarn build:main && yarn dist",
-		 "format": "prettier -w .",
-		 "test": "vitest --run"
+		"package": "run build && companion-module-build",
+		"format": "prettier -w .",
+		"test": "vitest --run"
 	},
 	"repository": {
 		"type": "git",
