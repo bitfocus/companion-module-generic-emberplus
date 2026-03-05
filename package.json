@@ -35,12 +35,12 @@
 	"dependencies": {
 		"@companion-module/base": "~1.14.1",
 		"emberplus-connection": "patch:emberplus-connection@npm%3A0.3.1#~/.yarn/patches/emberplus-connection-npm-0.3.1-a2439212e6.patch",
-		"es-toolkit": "^1.44.0",
+		"es-toolkit": "^1.45.1",
 		"p-queue": "^9.1.0"
 	},
 	"devDependencies": {
 		"@companion-module/tools": "^2.7.1",
-		"@types/node": "^22.19.11",
+		"@types/node": "^22.19.13",
 		"eslint": "^9.39.3",
 		"husky": "^9.1.7",
 		"lint-staged": "^16.2.7",
