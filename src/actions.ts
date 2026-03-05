@@ -422,6 +422,8 @@ export function GetActionsList(
 					label: 'Value',
 					id: 'value',
 					useVariables: { local: true },
+					multiline: true,
+					default: '',
 				},
 				{
 					type: 'checkbox',

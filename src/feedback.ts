@@ -93,6 +93,7 @@ const valueText = {
 	required: true,
 	useVariables: { local: true },
 	default: '',
+	multiline: true,
 } as const satisfies CompanionInputFieldTextInput
 
 const valueNumber = {
