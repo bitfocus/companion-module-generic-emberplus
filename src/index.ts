@@ -85,7 +85,6 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 			this.resetConnection()
 			try {
 				await this.setupEmberConnection()
-				await this.finalizeSetup()
 			} catch (e) {
 				if (e instanceof Error) this.statusManager.updateStatus(InstanceStatus.ConnectionFailure, e.message)
 				else this.statusManager.updateStatus(InstanceStatus.UnknownError, `Failed to initalize ember client ${e}`)
@@ -253,7 +252,9 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 				const request = await this.emberClient.getDirectory(this.emberClient.tree)
 				await request.response
 				this.statusManager.updateStatus(InstanceStatus.Ok)
-
+				this.finalizeSetup().catch((e) => {
+					this.logger.error('Error during finalize setup', e)
+				})
 				if (!settledState.settled) {
 					settledState.settled = true
 					resolve()
