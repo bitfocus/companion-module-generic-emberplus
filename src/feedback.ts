@@ -7,24 +7,27 @@ import type {
 	CompanionInputFieldCheckbox,
 	CompanionInputFieldNumber,
 	CompanionOptionValues,
+	CompanionInputFieldStaticText,
 } from '@companion-module/base'
-import type { EmberPlusInstance } from './index'
+import type { EmberPlusInstance } from './index.js'
 import { EmberClient, Model as EmberModel } from 'emberplus-connection'
-import type { EmberPlusConfig } from './config'
+import type { EmberPlusConfig } from './config.js'
 import {
 	learnParameterFeedbackOptions,
 	parameterFeedbackCallback,
+	parameterValueFeedbackCallback,
 	subscribeParameterFeedback,
 	unsubscribeParameterFeedback,
-} from './feedbacks/parameter'
-import { EmberPlusState } from './state'
-import { comparitorOptions, filterPathChoices, NumberComparitor } from './util'
+} from './feedbacks/parameter.js'
+import { EmberPlusState } from './state.js'
+import { comparitorOptions, filterPathChoices, NumberComparitor } from './util.js'
 
 export enum FeedbackId {
 	Parameter = 'parameter',
 	String = 'string',
 	Boolean = 'boolean',
 	ENUM = 'enum',
+	Value = 'value',
 	Take = 'take',
 	Clear = 'clear',
 	SourceBackgroundSelected = 'sourceBackgroundSelected',
@@ -54,42 +57,46 @@ const styles = {
 		bgcolor: combineRgb(255, 0, 0),
 		color: combineRgb(0, 0, 0),
 	},
-}
+} as const
 
-const pathDropDown: CompanionInputFieldDropdown = {
+const pathDropDown = {
 	type: 'dropdown',
 	label: 'Select registered path',
 	id: 'path',
 	choices: [],
 	default: 'No paths configured!',
 	allowCustom: true,
-}
+	isVisibleExpression: '!$(options:usePathVar)',
+} as const satisfies CompanionInputFieldDropdown
 
-const pathString: CompanionInputFieldTextInput = {
+const pathString = {
 	type: 'textinput',
 	label: 'Path',
 	id: 'pathVar',
 	required: true,
 	useVariables: { local: true },
 	default: '',
-}
-const usePathVar: CompanionInputFieldCheckbox = {
+	isVisibleExpression: '!!$(options:usePathVar)',
+} as const satisfies CompanionInputFieldTextInput
+
+const usePathVar = {
 	type: 'checkbox',
 	label: 'Path from String',
 	id: 'usePathVar',
 	default: false,
-}
+} as const satisfies CompanionInputFieldCheckbox
 
-const valueText: CompanionInputFieldTextInput = {
+const valueText = {
 	type: 'textinput',
 	label: 'Value',
 	id: 'value',
 	required: true,
 	useVariables: { local: true },
 	default: '',
-}
+	multiline: true,
+} as const satisfies CompanionInputFieldTextInput
 
-const valueNumber: CompanionInputFieldNumber = {
+const valueNumber = {
 	type: 'number',
 	label: 'Value',
 	id: 'value',
@@ -97,30 +104,32 @@ const valueNumber: CompanionInputFieldNumber = {
 	min: -0xffffffff,
 	max: 0xffffffff,
 	default: 0,
-}
+	isVisibleExpression: '!$(options:useVar)',
+} as const satisfies CompanionInputFieldNumber
 
-const comparitorDropdown: CompanionInputFieldDropdown = {
+const comparitorDropdown = {
 	type: 'dropdown',
 	label: 'Comparitor',
 	id: 'comparitor',
 	choices: comparitorOptions,
 	default: comparitorOptions[0].id,
 	allowCustom: false,
-}
+} as const satisfies CompanionInputFieldDropdown
 
-const useVarCheckbox: CompanionInputFieldCheckbox = {
+const useVarCheckbox = {
 	type: 'checkbox',
 	label: 'Use Variable?',
 	id: 'useVar',
 	default: false,
-}
-const asIntCheckbox: CompanionInputFieldCheckbox = {
+} as const satisfies CompanionInputFieldCheckbox
+
+const asIntCheckbox = {
 	type: 'checkbox',
 	label: 'As Integers?',
 	id: 'asInt',
 	default: false,
 	tooltip: '',
-}
+} as const satisfies CompanionInputFieldCheckbox
 
 const factorOpt: CompanionInputFieldTextInput = {
 	type: 'textinput',
@@ -129,17 +138,18 @@ const factorOpt: CompanionInputFieldTextInput = {
 	useVariables: { local: true },
 	default: '1',
 	tooltip: `Value will be multiplied by this field`,
-}
+	isVisibleExpression: '!!$(options:asInt)',
+} as const satisfies CompanionInputFieldTextInput
 
-const parseEscapeCharactersCheckBox: CompanionInputFieldCheckbox = {
+const parseEscapeCharactersCheckBox = {
 	type: 'checkbox',
 	label: 'Parse escape characters',
 	id: 'parseEscapeChars',
 	default: true,
 	tooltip: 'Parse escape characters such as \\r \\n \\t',
-}
+} as const satisfies CompanionInputFieldCheckbox
 
-const matrixNumber: CompanionInputFieldNumber = {
+const matrixNumber = {
 	type: 'number',
 	label: 'Select Matrix Number',
 	id: 'matrix',
@@ -147,9 +157,20 @@ const matrixNumber: CompanionInputFieldNumber = {
 	min: -0,
 	max: 0xffffffff,
 	default: 0,
-}
+	isVisibleExpression: '!$(options:useVar)',
+} as const satisfies CompanionInputFieldNumber
 
-const sourceNumber: CompanionInputFieldNumber = {
+const matrixVar = {
+	type: 'textinput',
+	label: 'Select Matrix Number',
+	id: 'matrixVar',
+	regex: '',
+	useVariables: { local: true },
+	default: '0',
+	isVisibleExpression: '!!$(options:useVar)',
+} as const satisfies CompanionInputFieldTextInput
+
+const sourceNumber = {
 	type: 'number',
 	label: 'Value',
 	id: 'source',
@@ -157,9 +178,20 @@ const sourceNumber: CompanionInputFieldNumber = {
 	min: -0,
 	max: 0xffffffff,
 	default: 0,
-}
+	isVisibleExpression: '!$(options:useVar)',
+} as const satisfies CompanionInputFieldNumber
 
-const targetNumber: CompanionInputFieldNumber = {
+const sourceVar = {
+	type: 'textinput',
+	label: 'Value',
+	id: 'sourceVar',
+	regex: '',
+	useVariables: { local: true },
+	default: '0',
+	isVisibleExpression: '!!$(options:useVar)',
+} as const satisfies CompanionInputFieldTextInput
+
+const targetNumber = {
 	type: 'number',
 	label: 'Value',
 	id: 'target',
@@ -167,7 +199,32 @@ const targetNumber: CompanionInputFieldNumber = {
 	min: -0,
 	max: 0xffffffff,
 	default: 0,
-}
+	isVisibleExpression: '!$(options:useVar)',
+} as const satisfies CompanionInputFieldNumber
+
+const targetVar = {
+	type: 'textinput',
+	label: 'Value',
+	id: 'targetVar',
+	regex: '',
+	useVariables: { local: true },
+	default: '0',
+	isVisibleExpression: '!!$(options:useVar)',
+} as const satisfies CompanionInputFieldTextInput
+
+const useVar: CompanionInputFieldCheckbox = {
+	type: 'checkbox',
+	label: 'Use Variable?',
+	id: 'useVar',
+	default: false,
+} as const satisfies CompanionInputFieldCheckbox
+
+const valueFeedbackInfo = {
+	type: 'static-text',
+	id: 'info',
+	label: '',
+	value: 'Connection variables are not created from value feedbacks. Integer parameters are always factorialized.',
+} as const satisfies CompanionInputFieldStaticText
 
 export function GetFeedbacksList(
 	self: EmberPlusInstance, //InstanceBase<EmberPlusConfig>,
@@ -199,40 +256,20 @@ export function GetFeedbacksList(
 							EmberModel.ParameterType.Real,
 							EmberModel.ParameterType.Integer,
 						).find(() => true)?.id ?? 'No paths configured!',
-					isVisible: (options) => {
-						return !options.usePathVar
-					},
 				},
-				{
-					...pathString,
-					isVisible: (options) => {
-						return !!options.usePathVar
-					},
-				},
+				pathString,
 				usePathVar,
 				comparitorDropdown,
-				{
-					...valueNumber,
-					isVisible: (options) => {
-						return !options.useVar
-					},
-				},
+				valueNumber,
 				{
 					...valueText,
 					id: 'valueVar',
 					default: '0',
-					isVisible: (options) => {
-						return !!options.useVar
-					},
+					isVisibleExpression: '!!$(options:useVar)',
 				},
 				useVarCheckbox,
 				asIntCheckbox,
-				{
-					...factorOpt,
-					isVisible: (options) => {
-						return !!options.asInt
-					},
-				},
+				factorOpt,
 			],
 			callback: parameterFeedbackCallback(self, state, FeedbackId.Parameter),
 			subscribe: subscribeParameterFeedback(state, self),
@@ -251,16 +288,8 @@ export function GetFeedbacksList(
 					default:
 						filterPathChoices(state, false, EmberModel.ParameterType.String).find(() => true)?.id ??
 						'No paths configured!',
-					isVisible: (options) => {
-						return !options.usePathVar
-					},
 				},
-				{
-					...pathString,
-					isVisible: (options) => {
-						return !!options.usePathVar
-					},
-				},
+				pathString,
 				usePathVar,
 				valueText,
 				parseEscapeCharactersCheckBox,
@@ -282,16 +311,8 @@ export function GetFeedbacksList(
 					default:
 						filterPathChoices(state, false, EmberModel.ParameterType.Enum).find(() => true)?.id ??
 						'No paths configured!',
-					isVisible: (options) => {
-						return !options.usePathVar
-					},
 				},
-				{
-					...pathString,
-					isVisible: (options) => {
-						return !!options.usePathVar
-					},
-				},
+				pathString,
 				usePathVar,
 				valueText,
 			],
@@ -312,19 +333,29 @@ export function GetFeedbacksList(
 					default:
 						filterPathChoices(state, false, EmberModel.ParameterType.Boolean).find(() => true)?.id ??
 						'No paths configured!',
-					isVisible: (options) => {
-						return !options.usePathVar
-					},
 				},
-				{
-					...pathString,
-					isVisible: (options) => {
-						return !!options.usePathVar
-					},
-				},
+				pathString,
 				usePathVar,
 			],
 			callback: parameterFeedbackCallback(self, state, FeedbackId.Boolean),
+			subscribe: subscribeParameterFeedback(state, self),
+			unsubscribe: unsubscribeParameterFeedback(state),
+		},
+		[FeedbackId.Value]: {
+			name: 'Parameter Value',
+			description: 'Return the value of a parameter to a local variable',
+			type: 'value',
+			options: [
+				{
+					...pathDropDown,
+					choices: filterPathChoices(state, false),
+					default: filterPathChoices(state, false).find(() => true)?.id ?? 'No paths configured!',
+				},
+				pathString,
+				usePathVar,
+				valueFeedbackInfo,
+			],
+			callback: parameterValueFeedbackCallback(self, state),
 			subscribe: subscribeParameterFeedback(state, self),
 			unsubscribe: unsubscribeParameterFeedback(state),
 		},
@@ -353,11 +384,15 @@ export function GetFeedbacksList(
 			description: 'Change Background of Source, when it is currently selected.',
 			type: 'boolean',
 			defaultStyle: styles.blackOnRed,
-			options: [matrixNumber, sourceNumber],
-			callback: (feedback) => {
-				return (
-					state.selected.source == feedback.options['source'] && state.selected.matrix == feedback.options['matrix']
-				)
+			options: [matrixNumber, matrixVar, sourceNumber, sourceVar, useVar],
+			callback: async (feedback, context) => {
+				const matrix = feedback.options['useVar']
+					? Number.parseInt(await context.parseVariablesInString(feedback.options['matrixVar']?.toString() ?? ''))
+					: (feedback.options['matrix'] as number)
+				const source = feedback.options['useVar']
+					? Number.parseInt(await context.parseVariablesInString(feedback.options['sourceVar']?.toString() ?? ''))
+					: (feedback.options['source'] as number)
+				return state.selected.source == source && state.selected.matrix == matrix
 			},
 		},
 		[FeedbackId.TargetBackgroundSelected]: {
@@ -365,11 +400,15 @@ export function GetFeedbacksList(
 			description: 'Change Background of Target, when it is currently selected.',
 			type: 'boolean',
 			defaultStyle: styles.blackOnRed,
-			options: [matrixNumber, targetNumber],
-			callback: (feedback) => {
-				return (
-					state.selected.target == feedback.options['target'] && state.selected.matrix == feedback.options['matrix']
-				)
+			options: [matrixNumber, matrixVar, targetNumber, targetVar, useVar],
+			callback: async (feedback, context) => {
+				const matrix = feedback.options['useVar']
+					? Number.parseInt(await context.parseVariablesInString(feedback.options['matrixVar']?.toString() ?? ''))
+					: (feedback.options['matrix'] as number)
+				const target = feedback.options['useVar']
+					? Number.parseInt(await context.parseVariablesInString(feedback.options['targetVar']?.toString() ?? ''))
+					: (feedback.options['target'] as number)
+				return state.selected.target == target && state.selected.matrix == matrix
 			},
 		},
 	}

@@ -9,10 +9,8 @@ export interface EmberPlusConfig {
 	host?: string
 	port?: number
 	take?: boolean
-	matrices?: string[]
 	matricesString?: string
 	monitoredParametersString?: string
-	monitoredParameters?: string[]
 	factor: boolean
 	logging: LoggerLevel
 }
@@ -32,34 +30,33 @@ export function GetConfigFields(): SomeCompanionConfigField[] {
 			tooltip: 'The Hostname/IP of the Ember+ provider',
 			width: 6,
 			regex: Regex.HOSTNAME,
-			isVisible: (options) => !options['bonjourHost'],
+			isVisibleExpression: `!$(options:bonjourHost)`,
 		},
 		{
 			type: 'static-text',
 			id: 'host-filler',
 			width: 6,
 			label: '',
-			isVisible: (options) => !!options['bonjourHost'],
+			isVisibleExpression: `!!$(options:bonjourHost)`,
 			value: '',
 		},
 		{
 			type: 'number',
 			id: 'port',
 			label: 'Target Port',
-			tooltip: 'Usually 9000 by default',
 			width: 6,
 			min: 1,
 			max: 0xffff,
 			step: 1,
 			default: portDefault,
-			isVisible: (options) => !options['bonjourHost'],
+			isVisibleExpression: `!$(options:bonjourHost)`,
 		},
 		{
 			type: 'static-text',
 			id: 'port-filler',
 			width: 6,
 			label: '',
-			isVisible: (options) => !!options['bonjourHost'],
+			isVisibleExpression: `!!$(options:bonjourHost)`,
 			value: '',
 		},
 		{
@@ -75,6 +72,7 @@ export function GetConfigFields(): SomeCompanionConfigField[] {
 			label: 'Paths to matrices',
 			tooltip: 'Please separate by comma',
 			width: 12,
+			multiline: true,
 		},
 		{
 			type: 'textinput',
@@ -82,6 +80,7 @@ export function GetConfigFields(): SomeCompanionConfigField[] {
 			label: 'Paths to parameters to monitor',
 			tooltip: 'Please separate by comma',
 			width: 12,
+			multiline: true,
 		},
 		{
 			type: 'checkbox',

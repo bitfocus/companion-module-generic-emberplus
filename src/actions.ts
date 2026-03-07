@@ -9,12 +9,12 @@ import type {
 } from '@companion-module/base'
 import { EmberClient, Model as EmberModel } from 'emberplus-connection'
 import type PQueue from 'p-queue'
-import type { EmberPlusConfig } from './config'
-import type { EmberPlusInstance } from './index'
-import { doMatrixAction, doTake, doClear, setSelectedSource, setSelectedTarget } from './actions/matrix'
-import { learnSetValueActionOptions, setValue, subscribeParameterAction } from './actions/parameter'
-import { EmberPlusState } from './state'
-import { filterPathChoices } from './util'
+import type { EmberPlusConfig } from './config.js'
+import type { EmberPlusInstance } from './index.js'
+import { doMatrixAction, doTake, doClear, setSelectedSource, setSelectedTarget } from './actions/matrix.js'
+import { learnSetValueActionOptions, setValue, subscribeParameterAction } from './actions/parameter.js'
+import { EmberPlusState } from './state.js'
+import { filterPathChoices } from './util.js'
 
 export interface setValueActionOptions extends CompanionOptionValues {
 	path: string
@@ -49,16 +49,17 @@ export enum ActionId {
 	SetSelectedTarget = 'setSelectedTarget',
 }
 
-const pathDropDown: CompanionInputFieldDropdown = {
+const pathDropDown = {
 	type: 'dropdown',
 	label: 'Select registered path',
 	id: 'path',
 	choices: [],
 	default: 'No paths configured!',
 	allowCustom: true,
-}
+	isVisibleExpression: '!$(options:usePathVar)',
+} as const satisfies CompanionInputFieldDropdown
 
-const pathString: CompanionInputFieldTextInput = {
+const pathString = {
 	type: 'textinput',
 	label: 'Path',
 	id: 'pathVar',
@@ -66,89 +67,94 @@ const pathString: CompanionInputFieldTextInput = {
 	useVariables: { local: true },
 	default: '',
 	tooltip: `Path may be supplied in decimals: 1.2.3, text: path.to.ember.element, or with a descriptor and the decimals wrapped in brackets: path to ember element[1.2.3.4]`,
-}
-const usePathVar: CompanionInputFieldCheckbox = {
+	isVisibleExpression: '!!$(options:usePathVar)',
+} as const satisfies CompanionInputFieldTextInput
+
+const usePathVar = {
 	type: 'checkbox',
 	label: 'Path from String',
 	id: 'usePathVar',
 	default: false,
-}
+} as const satisfies CompanionInputFieldCheckbox
 
-const pathInput: CompanionInputFieldTextInput = {
+const pathInput = {
 	type: 'textinput',
 	label: 'Path',
 	id: 'path',
 	useVariables: { local: true },
 	tooltip: `Path may be supplied in decimals: 1.2.3, text: path.to.ember.element, or with a descriptor and the decimals wrapped in brackets: path to ember element[1.2.3.4]`,
-}
+} as const satisfies CompanionInputFieldTextInput
 
-const minLimit: CompanionInputFieldTextInput = {
+const minLimit = {
 	type: 'textinput',
 	label: 'Minimum',
 	id: 'min',
 	default: '-4294967295',
 	useVariables: { local: true },
 	tooltip: 'Relative action minimum value will be limited to this value',
-}
+	isVisibleExpression: '!!$(options:relative)',
+} as const satisfies CompanionInputFieldTextInput
 
-const maxLimit: CompanionInputFieldTextInput = {
+const maxLimit = {
 	type: 'textinput',
 	label: 'Maximum',
 	id: 'max',
 	default: '4294967295',
 	useVariables: { local: true },
 	tooltip: 'Relative action maximum value will be limited to this value',
-}
+	isVisibleExpression: '!!$(options:relative)',
+} as const satisfies CompanionInputFieldTextInput
 
-const relative: CompanionInputFieldCheckbox = {
+const relative = {
 	type: 'checkbox',
 	label: 'Relative',
 	id: 'relative',
 	default: false,
 	tooltip: 'Adjust value by this amount. Variable will be auto-created.',
-}
+} as const satisfies CompanionInputFieldCheckbox
 
-const createVariable: CompanionInputFieldCheckbox = {
+const createVariable = {
 	type: 'checkbox',
 	label: 'Auto Create Variable',
 	id: 'variable',
 	default: false,
-}
+} as const satisfies CompanionInputFieldCheckbox
 
-const useVariable: CompanionInputFieldCheckbox = {
+const useVariable = {
 	type: 'checkbox',
 	label: 'Use Variable?',
 	id: 'useVar',
 	default: false,
-}
+} as const satisfies CompanionInputFieldCheckbox
 
-const factorOpt: CompanionInputFieldTextInput = {
+const factorOpt = {
 	type: 'textinput',
 	label: 'Factor',
 	id: 'factor',
 	useVariables: { local: true },
 	default: '1',
 	tooltip: `Value will be multiplied by this field`,
-}
+} as const satisfies CompanionInputFieldTextInput
 
-const asEnum: CompanionInputFieldCheckbox = {
+const asEnum = {
 	type: 'checkbox',
 	label: 'Set from Enumeration Value?',
 	id: 'asEnum',
 	default: false,
-}
+} as const satisfies CompanionInputFieldCheckbox
 
-const enumVal: CompanionInputFieldTextInput = {
+const enumVal = {
 	type: 'textinput',
 	label: 'Enumeration',
 	id: 'enumValue',
 	required: true,
 	useVariables: { local: true },
 	default: '',
-	tooltip: 'Must exactly match a valid enumaeration value',
-}
+	tooltip: 'Must exactly match a valid enumeration value',
+	isVisibleExpression: '!!$(options:asEnum)',
+} as const satisfies CompanionInputFieldTextInput
 
-const matrixInputs: Array<CompanionInputFieldTextInput | CompanionInputFieldNumber> = [
+const matrixInputs: Array<CompanionInputFieldTextInput | CompanionInputFieldNumber | CompanionInputFieldCheckbox> = [
 	pathInput,
 	{
 		type: 'number',
@@ -159,12 +165,29 @@ const matrixInputs: Array<CompanionInputFieldTextInput | CompanionInputFieldNumb
 		max: 0xffffffff,
 		default: 0,
 		step: 1,
+		isVisibleExpression: '!$(options:useVar)',
+	},
+	{
+		type: 'textinput',
+		label: 'Target',
+		id: 'targetVar',
+		regex: '',
+		useVariables: { local: true },
+		default: '0',
+		isVisibleExpression: '!!$(options:useVar)',
 	},
 	{
 		type: 'textinput',
 		label: 'Sources',
 		id: 'sources',
 		regex: '/^((\\s*\\d+,)*(\\s*\\d+)$)|$/', // comma separated list
+		useVariables: { local: true },
+	},
+	{
+		type: 'checkbox',
+		label: 'Use Variable?',
+		id: 'useVar',
+		default: false,
 	},
 ]
 
@@ -185,16 +208,8 @@ export function GetActionsList(
 					default:
 						filterPathChoices(state, true, EmberModel.ParameterType.Integer).find(() => true)?.id ??
 						'No paths configured!',
-					isVisible: (options) => {
-						return !options.usePathVar
-					},
 				},
-				{
-					...pathString,
-					isVisible: (options) => {
-						return !!options.usePathVar
-					},
-				},
+				pathString,
 				usePathVar,
 				{
 					type: 'number',
@@ -205,9 +220,7 @@ export function GetActionsList(
 					max: 0xffffffff,
 					default: 0,
 					step: 1,
-					isVisible: (options) => {
-						return !options.useVar
-					},
+					isVisibleExpression: '!$(options:useVar)',
 				},
 				{
 					type: 'textinput',
@@ -216,32 +229,22 @@ export function GetActionsList(
 					required: true,
 					useVariables: { local: true },
 					default: '0',
-					isVisible: (options) => {
-						return !!options.useVar
-					},
+					isVisibleExpression: '!!$(options:useVar)',
 				},
 				useVariable,
 				relative,
 				{
 					...minLimit,
-					isVisible: (options) => {
-						return !!options.relative
-					},
 					tooltip: 'Relative action maximum value will be limited to this value. Value is not factored',
 				},
 				{
 					...maxLimit,
-					isVisible: (options) => {
-						return !!options.relative
-					},
 					tooltip: 'Relative action maximum value will be limited to this value. Value is not factored',
 				},
 				factorOpt,
 				{
 					...createVariable,
-					isVisible: (options) => {
-						return !options.relative
-					},
+					isVisibleExpression: '!$(options:relative)',
 				},
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.Integer, ActionId.SetValueInt, state, queue),
@@ -257,16 +260,8 @@ export function GetActionsList(
 					default:
 						filterPathChoices(state, true, EmberModel.ParameterType.Real).find(() => true)?.id ??
 						'No paths configured!',
-					isVisible: (options) => {
-						return !options.usePathVar
-					},
 				},
-				{
-					...pathString,
-					isVisible: (options) => {
-						return !!options.usePathVar
-					},
-				},
+				pathString,
 				usePathVar,
 				{
 					type: 'number',
@@ -277,9 +272,7 @@ export function GetActionsList(
 					max: 0xffffffff,
 					default: 0,
 					step: 0.001, // TODO - don't want this at all preferably
-					isVisible: (options) => {
-						return !options.useVar
-					},
+					isVisibleExpression: '!$(options:useVar)',
 				},
 				{
 					type: 'textinput',
@@ -287,29 +280,15 @@ export function GetActionsList(
 					id: 'valueVar',
 					default: '0.0',
 					useVariables: { local: true },
-					isVisible: (options) => {
-						return !!options.useVar
-					},
+					isVisibleExpression: '!!$(options:useVar)',
 				},
 				useVariable,
 				relative,
-				{
-					...minLimit,
-					isVisible: (options) => {
-						return !!options.relative
-					},
-				},
-				{
-					...maxLimit,
-					isVisible: (options) => {
-						return !!options.relative
-					},
-				},
+				minLimit,
+				maxLimit,
 				{
 					...createVariable,
-					isVisible: (options) => {
-						return !options.relative
-					},
+					isVisibleExpression: '!$(options:relative)',
 				},
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.Real, ActionId.SetValueReal, state, queue),
@@ -325,16 +304,8 @@ export function GetActionsList(
 					default:
 						filterPathChoices(state, true, EmberModel.ParameterType.Boolean).find(() => true)?.id ??
 						'No paths configured!',
-					isVisible: (options) => {
-						return !options.usePathVar
-					},
 				},
-				{
-					...pathString,
-					isVisible: (options) => {
-						return !!options.usePathVar
-					},
-				},
+				pathString,
 				usePathVar,
 				{
 					type: 'checkbox',
@@ -348,9 +319,7 @@ export function GetActionsList(
 					label: 'Value',
 					id: 'value',
 					default: false,
-					isVisible: (options) => {
-						return !options.useVar && !options.toggle
-					},
+					isVisibleExpression: '!$(options:useVar) && !$(options:toggle)',
 				},
 				{
 					type: 'textinput',
@@ -358,21 +327,15 @@ export function GetActionsList(
 					id: 'valueVar',
 					default: 'false',
 					useVariables: { local: true },
-					isVisible: (options) => {
-						return !!options.useVar && !options.toggle
-					},
+					isVisibleExpression: '!!$(options:useVar) && !$(options:toggle)',
 				},
 				{
 					...useVariable,
-					isVisible: (options) => {
-						return !options.toggle
-					},
+					isVisibleExpression: '!$(options:toggle)',
 				},
 				{
 					...createVariable,
-					isVisible: (options) => {
-						return !options.toggle
-					},
+					isVisibleExpression: '!$(options:toggle)',
 				},
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.Boolean, ActionId.SetValueBoolean, state, queue),
@@ -388,16 +351,8 @@ export function GetActionsList(
 					default:
 						filterPathChoices(state, true, EmberModel.ParameterType.Enum).find(() => true)?.id ??
 						'No paths configured!',
-					isVisible: (options) => {
-						return !options.usePathVar
-					},
 				},
-				{
-					...pathString,
-					isVisible: (options) => {
-						return !!options.usePathVar
-					},
-				},
+				pathString,
 				usePathVar,
 				{
 					type: 'number',
@@ -420,47 +375,30 @@ export function GetActionsList(
 					useVariables: { local: true },
 					default: '0',
 					tooltip: 'Return an integer between 0 and 4294967295',
-					isVisible: (options) => {
-						return !!options.useVar && !options.asEnum
-					},
+					isVisibleExpression: '!!$(options:useVar) && !$(options:asEnum)',
 				},
-				{
-					...enumVal,
-					isVisible: (options) => {
-						return !!options.asEnum
-					},
-				},
+				enumVal,
 				asEnum,
 				{
 					...useVariable,
-					isVisible: (options) => {
-						return !options.asEnum
-					},
+					isVisibleExpression: '!$(options:asEnum)',
 				},
 				{
 					...relative,
-					isVisible: (options) => {
-						return !options.asEnum
-					},
+					isVisibleExpression: '!$(options:asEnum)',
 				},
 				{
 					...minLimit,
 					default: '0',
-					isVisible: (options) => {
-						return !!options.relative && !options.asEnum
-					},
+					isVisibleExpression: '!$(options:asEnum) && !!$(options:relative)',
 				},
 				{
 					...maxLimit,
-					isVisible: (options) => {
-						return !!options.relative && !options.asEnum
-					},
+					isVisibleExpression: '!$(options:asEnum) && !!$(options:relative)',
 				},
 				{
 					...createVariable,
-					isVisible: (options) => {
-						return !options.relative && !options.asEnum
-					},
+					isVisibleExpression: '!$(options:asEnum) && !$(options:relative)',
 				},
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.Enum, ActionId.SetValueEnum, state, queue),
@@ -476,22 +414,16 @@ export function GetActionsList(
 					default:
 						filterPathChoices(state, true, EmberModel.ParameterType.String).find(() => true)?.id ??
 						'No paths configured!',
-					isVisible: (options) => {
-						return !options.usePathVar
-					},
 				},
-				{
-					...pathString,
-					isVisible: (options) => {
-						return !!options.usePathVar
-					},
-				},
+				pathString,
 				usePathVar,
 				{
 					type: 'textinput',
 					label: 'Value',
 					id: 'value',
 					useVariables: { local: true },
+					multiline: true,
+					default: '',
 				},
 				{
 					type: 'checkbox',
@@ -524,7 +456,7 @@ export function GetActionsList(
 		[ActionId.Take]: {
 			name: 'Take',
 			options: [],
-			callback: doTake(self, emberClient, config, state, queue),
+			callback: doTake(self, emberClient, state, queue),
 		},
 		[ActionId.Clear]: {
 			name: 'Clear',
@@ -542,6 +474,16 @@ export function GetActionsList(
 					min: -0,
 					max: 0xffffffff,
 					default: 0,
+					isVisibleExpression: '!$(options:useVar)',
+				},
+				{
+					type: 'textinput',
+					label: 'Select Matrix Number',
+					id: 'matrixVar',
+					regex: '',
+					useVariables: { local: true },
+					default: '0',
+					isVisibleExpression: '!!$(options:useVar)',
 				},
 				{
 					type: 'number',
@@ -551,6 +493,22 @@ export function GetActionsList(
 					min: -0,
 					max: 0xffffffff,
 					default: 0,
+					isVisibleExpression: '!$(options:useVar)',
+				},
+				{
+					type: 'textinput',
+					label: 'Value',
+					id: 'sourceVar',
+					regex: '',
+					useVariables: { local: true },
+					default: '0',
+					isVisibleExpression: '!!$(options:useVar)',
+				},
+				{
+					type: 'checkbox',
+					label: 'Use Variable?',
+					id: 'useVar',
+					default: false,
 				},
 			],
 			callback: setSelectedSource(self, emberClient, config, state, queue),
@@ -566,6 +524,16 @@ export function GetActionsList(
 					min: -0,
 					max: 0xffffffff,
 					default: 0,
+					isVisibleExpression: '!$(options:useVar)',
+				},
+				{
+					type: 'textinput',
+					label: 'Select Matrix Number',
+					id: 'matrixVar',
+					regex: '',
+					useVariables: { local: true },
+					default: '0',
+					isVisibleExpression: '!!$(options:useVar)',
 				},
 				{
 					type: 'number',
@@ -575,6 +543,22 @@ export function GetActionsList(
 					min: -0,
 					max: 0xffffffff,
 					default: 0,
+					isVisibleExpression: '!$(options:useVar)',
+				},
+				{
+					type: 'textinput',
+					label: 'Value',
+					id: 'targetVar',
+					regex: '',
+					useVariables: { local: true },
+					default: '0',
+					isVisibleExpression: '!!$(options:useVar)',
+				},
+				{
+					type: 'checkbox',
+					label: 'Use Variable?',
+					id: 'useVar',
+					default: false,
 				},
 			],
 			callback: setSelectedTarget(self, state),

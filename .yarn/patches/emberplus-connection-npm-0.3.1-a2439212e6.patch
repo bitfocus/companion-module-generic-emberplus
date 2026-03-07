@@ -1,0 +1,47 @@
+diff --git a/dist/Ember/Client/index.js b/dist/Ember/Client/index.js
+index afa0c08d794c1f9f86ae6a79ccae24f8731318dc..141ba917a8b45ab2fecf79f09e11ec9abeb529de 100644
+--- a/dist/Ember/Client/index.js
++++ b/dist/Ember/Client/index.js
+@@ -290,11 +290,11 @@ class EmberClient extends eventemitter3_1.EventEmitter {
+             if (tree?.number !== undefined)
+                 numberedPath.push(tree.number);
+         }
+-        if (tree?.contents.type === EmberElement_1.ElementType.Parameter) {
++        //if (tree?.contents.type === EmberElement_1.ElementType.Parameter) {
+             // do an additional getDirectory because Providers do not _have_ to send updates without that (should vs shall)
+-            const req = await this.getDirectory(tree);
+-            await req.response;
+-        }
++            //const req = await this.getDirectory(tree);
++            //await req.response;
++        //}
+         if (cb && numberedPath) {
+             this._subscriptions.push({
+                 path: numberedPath.join('.'),
+diff --git a/dist/Ember/Socket/S101Client.js b/dist/Ember/Socket/S101Client.js
+index f2e02cb7fe1b2c53c9369e120e11f9ec9b162c97..409a06556ac04dac4f8a6d2788dff0c229b316b5 100644
+--- a/dist/Ember/Socket/S101Client.js
++++ b/dist/Ember/Socket/S101Client.js
+@@ -108,21 +108,10 @@ class S101Client extends S101Socket_1.default {
+     }
+     _autoReconnectionAttempt() {
+         if (this._autoReconnect) {
+-            if (this._reconnectAttempts > 0) {
+-                // no reconnection if no valid reconnectionAttemps is set
+-                if (this._reconnectAttempt >= this._reconnectAttempts) {
+-                    // if current attempt is not less than max attempts
+-                    // reset reconnection behaviour
+-                    this._clearConnectionAttemptTimer();
+-                    this.status = Client_1.ConnectionStatus.Disconnected;
+-                    return;
+-                }
+-                // new attempt if not already connected
++           // new attempt if not already connected
+                 if (this.status !== Client_1.ConnectionStatus.Connected) {
+-                    this._reconnectAttempt++;
+                     this.connect().catch(() => null);
+                 }
+-            }
+         }
+     }
+     _clearConnectionAttemptTimer() {
