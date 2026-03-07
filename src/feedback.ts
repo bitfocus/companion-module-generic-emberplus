@@ -149,6 +149,14 @@ const parseEscapeCharactersCheckBox = {
 	tooltip: 'Parse escape characters such as \\r \\n \\t',
 } as const satisfies CompanionInputFieldCheckbox
 
+const asEnumCheckbox = {
+	type: 'checkbox',
+	label: 'Return ENUM',
+	id: 'asEnum',
+	default: false,
+	description: 'For ENUM paramters, return the ENUM value instead of the index.',
+} as const satisfies CompanionInputFieldCheckbox
+
 const matrixNumber = {
 	type: 'number',
 	label: 'Select Matrix Number',
@@ -353,6 +361,7 @@ export function GetFeedbacksList(
 				},
 				pathString,
 				usePathVar,
+				asEnumCheckbox,
 				valueFeedbackInfo,
 			],
 			callback: parameterValueFeedbackCallback(self, state),
