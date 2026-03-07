@@ -149,6 +149,9 @@ export const parameterValueFeedbackCallback =
 				const factor = state.parameters.get(path)?.factor ?? 1
 				return value / factor
 			}
+			if (feedback.options['asEnum'] && state.parameters.get(path)?.parameterType == EmberModel.ParameterType.Enum) {
+				return state.getCurrentEnumValue(path)
+			}
 			if (Buffer.isBuffer(value)) {
 				return Array.from(value)
 			}
