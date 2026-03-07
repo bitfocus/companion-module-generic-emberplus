@@ -63,13 +63,12 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	 */
 	public async init(config: EmberPlusConfig): Promise<void> {
 		this.applyConfig(config)
-		try {
-			await this.setupEmberConnection()
-			await this.finalizeSetup()
-		} catch (e) {
+		this.setupEmberConnection().catch((e) => {
 			if (e instanceof Error) this.statusManager.updateStatus(InstanceStatus.ConnectionFailure, e.message)
 			else this.statusManager.updateStatus(InstanceStatus.UnknownError, `Failed to initalize ember client ${e}`)
-		}
+			// Finalise setup so actions and feedbacks are defined if connection fails.
+			this.finalizeSetup().catch((e) => this.logger.error('Error during finalize setup', e))
+		})
 	}
 
 	/**
@@ -83,12 +82,12 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 
 		if (hasConnectionChanged(oldConfig, config)) {
 			this.resetConnection()
-			try {
-				await this.setupEmberConnection()
-			} catch (e) {
+			this.setupEmberConnection().catch((e) => {
 				if (e instanceof Error) this.statusManager.updateStatus(InstanceStatus.ConnectionFailure, e.message)
 				else this.statusManager.updateStatus(InstanceStatus.UnknownError, `Failed to initalize ember client ${e}`)
-			}
+			})
+		} else {
+			this.finalizeSetup().catch((e) => this.logger.error('Error during finalize setup', e))
 		}
 	}
 
@@ -322,8 +321,12 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 				.map((param) => param.trim())
 				.filter((param) => param.length > 0)
 				.sort()
-
-			this.state.monitoredParameters = new Set(params)
+			if (this.state.monitoredParameters.size == 0) this.state.monitoredParameters = new Set(params)
+			else {
+				params.forEach((param) => this.state.monitoredParameters.add(param))
+				const sortedArray = Array.from(this.state.monitoredParameters).sort()
+				this.state.monitoredParameters = new Set(sortedArray)
+			}
 		}
 	}
 
