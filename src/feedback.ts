@@ -154,7 +154,7 @@ const asEnumCheckbox = {
 	label: 'Return ENUM',
 	id: 'asEnum',
 	default: false,
-	description: 'For ENUM paramters, return the ENUM value instead of the index.',
+	description: 'For ENUM parameters, return the ENUM value instead of the index.',
 } as const satisfies CompanionInputFieldCheckbox
 
 const matrixNumber = {
@@ -331,7 +331,7 @@ export function GetFeedbacksList(
 		},
 		[FeedbackId.Boolean]: {
 			name: 'Parameter True',
-			description: 'Checks the current value of a paramter is true',
+			description: 'Checks the current value of a parameter is true',
 			type: 'boolean',
 			defaultStyle: styles.blackOnWhite,
 			options: [
