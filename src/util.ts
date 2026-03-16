@@ -184,9 +184,12 @@ export function resolvePath(path: string): string {
 	const lastCloseBracket = pathString.lastIndexOf(']')
 
 	// Check if both brackets exist and close bracket comes after open bracket
-	if (lastOpenBracket !== -1 && lastCloseBracket !== -1 && lastCloseBracket > lastOpenBracket) {
-		return pathString.substring(lastOpenBracket + 1, lastCloseBracket)
-	}
+		if (lastOpenBracket !== -1 && lastCloseBracket !== -1 && lastCloseBracket > lastOpenBracket) {
+			const candidate = pathString.substring(lastOpenBracket + 1, lastCloseBracket)
+			if (/^\d+(\.\d+)*$/.test(candidate)) {
+				return candidate
+			}
+		}
 
 	return pathString
 }
