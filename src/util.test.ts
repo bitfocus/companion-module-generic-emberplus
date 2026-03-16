@@ -320,8 +320,49 @@ describe('resolvePath', () => {
 		expect(resolvePath('[0.1][0.2.3]')).toBe('0.2.3')
 	})
 	it('ignores brackets when close comes before open', () => {
-		// close before open → no valid bracket pair → returns dotted path
 		expect(resolvePath(']0.1[')).toBe(']0.1[')
+	})
+
+	describe('valid numeric ember+ paths in brackets', () => {
+		it('extracts a single segment path', () => {
+			expect(resolvePath('node[0]')).toBe('0')
+		})
+		it('extracts a two segment path', () => {
+			expect(resolvePath('node[0.1]')).toBe('0.1')
+		})
+		it('extracts a deeply nested path', () => {
+			expect(resolvePath('node[0.1.2.3.4]')).toBe('0.1.2.3.4')
+		})
+		it('extracts path with multi-digit segments', () => {
+			expect(resolvePath('node[12.345.6]')).toBe('12.345.6')
+		})
+		it('replaces slashes before extracting bracket content', () => {
+			expect(resolvePath('node/path[0.1.2]')).toBe('0.1.2')
+		})
+	})
+
+	describe('invalid numeric ember+ paths in brackets', () => {
+		it('returns full path when bracket content is empty', () => {
+			expect(resolvePath('node[]')).toBe('node[]')
+		})
+		it('returns full path when bracket content is a label string', () => {
+			expect(resolvePath('node[gain.value]')).toBe('node[gain.value]')
+		})
+		it('returns full path when bracket content has a trailing dot', () => {
+			expect(resolvePath('node[0.1.]')).toBe('node[0.1.]')
+		})
+		it('returns full path when bracket content has a leading dot', () => {
+			expect(resolvePath('node[.0.1]')).toBe('node[.0.1]')
+		})
+		it('returns full path when bracket content has consecutive dots', () => {
+			expect(resolvePath('node[0..1]')).toBe('node[0..1]')
+		})
+		it('returns full path when bracket content contains letters mixed with numbers', () => {
+			expect(resolvePath('node[0.1a.2]')).toBe('node[0.1a.2]')
+		})
+		it('returns full path when bracket content contains slashes', () => {
+			expect(resolvePath('node[0/1/2]')).toBe('0.1.2') // slashes are replaced first → becomes 'node[0.1.2]' → valid
+		})
 	})
 })
 
