@@ -7,41 +7,77 @@ import type { EmberPlusInstance } from '../index.js'
 import { EmberPlusState } from '../state.js'
 import { resolvePath } from '../util.js'
 
+type MatrixNode = EmberModel.NumberedTreeNode<EmberModel.Matrix>
+type MatrixMethod = EmberClient['matrixConnect'] | EmberClient['matrixDisconnect'] | EmberClient['matrixSetConnection']
+
+async function resolveMatrixNode(
+	emberClient: EmberClient,
+	state: EmberPlusState,
+	path: string,
+): Promise<MatrixNode | undefined> {
+	const cached = state.emberElement.get(path)
+	if (cached?.contents.type === EmberModel.ElementType.Matrix) {
+		return cached as MatrixNode
+	}
+
+	const node = await emberClient.getElementByPath(path)
+	if (node?.contents.type === EmberModel.ElementType.Matrix) {
+		state.emberElement.set(path, node)
+		return node as MatrixNode
+	}
+
+	return undefined
+}
+
+function dispatchMatrixRequest(
+	self: EmberPlusInstance,
+	request: Awaited<ReturnType<MatrixMethod>>,
+	label: string,
+): void {
+	if (!request.sentOk) {
+		self.logger.debug(`${label} request was not sent`)
+		return
+	}
+
+	void request.response?.catch((e: unknown) => {
+		self.logger.debug(`Failed ${label}: ${e}`)
+	})
+}
+
+function enqueueMatrixWork(queue: PQueue, self: EmberPlusInstance, work: () => Promise<void>): void {
+	void queue.add(work).catch((e: unknown) => {
+		self.logger.debug(`Failed matrix action: ${e}`)
+	})
+}
+
 export const doMatrixAction =
-	(
-		self: EmberPlusInstance,
-		emberClient: EmberClient,
-		method: EmberClient['matrixConnect'] | EmberClient['matrixDisconnect'] | EmberClient['matrixSetConnection'],
-		queue: PQueue,
-	) =>
-	async (action: CompanionActionEvent, _context: CompanionActionContext): Promise<void> => {
+	(self: EmberPlusInstance, emberClient: EmberClient, method: MatrixMethod, queue: PQueue, state: EmberPlusState) =>
+	(action: CompanionActionEvent, _context: CompanionActionContext): void => {
 		const path = resolvePath(action.options['path']?.toString() ?? '')
+		const target = action.options['useVar']
+			? Number.parseInt(action.options['targetVar']?.toString() ?? '')
+			: Number(action.options['target'])
+		const sources = (action.options['sources']?.toString() ?? '')
+			.split(',')
+			.filter((v) => v !== '')
+			.map((s) => Number(s))
+
+		if (Number.isNaN(target) || target < 0) {
+			throw new Error(`Invalid target passed to matrix action: ${target}`)
+		}
+
 		self.logger.debug('Get node ' + path)
-		await queue
-			.add(async () => {
-				const node = await emberClient.getElementByPath(path)
-				// TODO - do we handle not found?
-				if (node && node.contents.type === EmberModel.ElementType.Matrix) {
-					self.logger.debug('Got node on ' + path)
-					const target = action.options['useVar']
-						? Number.parseInt(action.options['targetVar']?.toString() ?? '')
-						: Number(action.options['target'])
-					const sources = (action.options['sources']?.toString() ?? '')
-						.split(',')
-						.filter((v) => v !== '')
-						.map((s) => Number(s))
-					if (Number.isNaN(target) || target < 0) {
-						throw new Error(`Invalid target passed to ${method} : ${target}`)
-					}
-					const request = await method(node as EmberModel.NumberedTreeNode<EmberModel.Matrix>, target, sources)
-					await request.response
-				} else {
-					self.logger.warn('Matrix ' + action.options['path'] + ' not found or not a matrix')
-				}
-			})
-			.catch((e: any) => {
-				self.logger.debug(`Failed to doMatrixAction: ${e.toString()}`)
-			})
+		enqueueMatrixWork(queue, self, async () => {
+			const node = await resolveMatrixNode(emberClient, state, path)
+			if (!node) {
+				self.logger.warn('Matrix ' + path + ' not found or not a matrix')
+				return
+			}
+
+			self.logger.debug('Got node on ' + path)
+			const request = await method(node, target, sources)
+			dispatchMatrixRequest(self, request, 'matrix action')
+		})
 	}
 
 /**
@@ -52,48 +88,45 @@ export const doMatrixAction =
  * @param state reference to the state of the module
  * @param queue reference to the PQueue of the module
  */
-export const doMatrixActionFunction = async function (
+export const doMatrixActionFunction = function (
 	self: EmberPlusInstance,
 	emberClient: EmberClient,
 	state: EmberPlusState,
 	queue: PQueue,
-): Promise<void> {
+): void {
+	if (
+		state.selected.source === -1 ||
+		state.selected.target === -1 ||
+		state.selected.matrix === -1 ||
+		state.matrices.length <= state.selected.matrix
+	) {
+		return
+	}
+
+	const matrixPath = state.matrices[state.selected.matrix]
+	const target = state.selected.target
+	const sources = [state.selected.source]
+
 	self.logger.debug('Get node ' + state.selected.matrix)
-	await queue
-		.add(async () => {
-			if (
-				state.selected.source !== -1 &&
-				state.selected.target !== -1 &&
-				state.selected.matrix !== -1 &&
-				state.matrices.length > state.selected.matrix
-			) {
-				try {
-					const node = await emberClient.getElementByPath(state.matrices[state.selected.matrix])
-					if (node && node.contents.type === EmberModel.ElementType.Matrix) {
-						self.logger.debug('Got node on ' + state.selected.matrix)
-						const target = state.selected.target
-						const sources = [state.selected.source]
-						const request = await emberClient.matrixConnect(
-							node as EmberModel.NumberedTreeNode<EmberModel.Matrix>,
-							target,
-							sources,
-						)
-						await request.response
-					} else {
-						self.logger.warn('Matrix ' + state.selected.matrix + ' not found or not a matrix')
-					}
-				} catch (e) {
-					self.logger.debug('Failed to doMatrixActionFunction: ' + e)
-				} finally {
-					// Reset selections regardless of success or failure
-					state.selected.matrix = state.selected.source = state.selected.target = -1
-					self.checkFeedbacks(FeedbackId.TargetBackgroundSelected, FeedbackId.SourceBackgroundSelected, FeedbackId.Take)
-				}
+	enqueueMatrixWork(queue, self, async () => {
+		try {
+			const node = await resolveMatrixNode(emberClient, state, matrixPath)
+			if (!node) {
+				self.logger.warn('Matrix ' + state.selected.matrix + ' not found or not a matrix')
+				return
 			}
-		})
-		.catch((e: any) => {
-			self.logger.debug(`Failed to doMatrixActionFunction: ${e.toString()}`)
-		})
+
+			self.logger.debug('Got node on ' + state.selected.matrix)
+			const request = await emberClient.matrixConnect(node, target, sources)
+			dispatchMatrixRequest(self, request, 'matrix connect')
+		} catch (e) {
+			self.logger.debug('Failed to doMatrixActionFunction: ' + e)
+		} finally {
+			// Reset selections regardless of success or failure
+			state.selected.matrix = state.selected.source = state.selected.target = -1
+			self.checkFeedbacks(FeedbackId.TargetBackgroundSelected, FeedbackId.SourceBackgroundSelected, FeedbackId.Take)
+		}
+	})
 }
 
 /**
@@ -107,7 +140,7 @@ export const doMatrixActionFunction = async function (
  */
 export const doTake =
 	(self: EmberPlusInstance, emberClient: EmberClient, state: EmberPlusState, queue: PQueue) =>
-	async (_action: CompanionActionEvent): Promise<void> => {
+	(_action: CompanionActionEvent): void => {
 		if (
 			state.selected.target !== -1 &&
 			state.selected.source !== -1 &&
@@ -122,7 +155,7 @@ export const doTake =
 					' on matrix ' +
 					state.selected.matrix,
 			)
-			await doMatrixActionFunction(self, emberClient, state, queue)
+			doMatrixActionFunction(self, emberClient, state, queue)
 		} else {
 			self.logger.debug('TAKE went wrong.')
 		}
@@ -173,7 +206,7 @@ export const setSelectedSource =
 		if (matrix === state.selected.matrix) {
 			state.selected.source = source
 			self.logger.debug('Take is: ' + config.take)
-			if (config.take) await doMatrixActionFunction(self, emberClient, state, queue)
+			if (config.take) doMatrixActionFunction(self, emberClient, state, queue)
 			self.checkFeedbacks(FeedbackId.SourceBackgroundSelected, FeedbackId.Clear, FeedbackId.Take)
 			self.logger.debug('setSelectedSource: ' + source + ' on Matrix: ' + matrix)
 		} else {
