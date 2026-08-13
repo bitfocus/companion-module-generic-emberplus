@@ -15,6 +15,7 @@ interface Feedbacks {
 export class EmberPlusState {
 	public selected: CurrentSelected
 	public parameters: Map<string, EmberModel.Parameter> = new Map()
+	public functions: Map<string, EmberModel.EmberFunction> = new Map()
 	public emberElement: Map<string, TreeElement<EmberElement>> = new Map()
 	public monitoredParameters: Set<string> = new Set()
 	public matrices: string[] = []
@@ -115,6 +116,19 @@ export class EmberPlusState {
 	}
 
 	/**
+	 * Add or merge function node data to functions Map
+	 * @param path Ember Path
+	 * @param node Ember element
+	 */
+	public updateFunctionMap(path: string, node: TreeElement<EmberElement>): void {
+		if (node.contents.type !== ElementType.Function) return
+
+		const existing = this.functions.get(path)
+		this.functions.set(path, existing ? { ...existing, ...node.contents } : (node.contents as EmberModel.EmberFunction))
+		this.emberElement.set(path, node)
+	}
+
+	/**
 	 * Returns the current enumeration string of the parameter
 	 * @param path Ember Path
 	 * @returns Current enum value string, or empty string if not found
@@ -158,14 +172,28 @@ export class EmberPlusState {
 	 */
 	public hasParameter(path: string): boolean {
 		return this.parameters.has(path)
-	}
-
 	/**
 	 * Clear cached ember elements
 	 */
-
 	public clearCache(): void {
 		this.emberElement.clear()
+	}
+
+	/**
+	 * Get function by path
+	 * @param path Ember Path
+	 * @returns EmberFunction or undefined
+	 */
+	public getFunction(path: string): EmberModel.EmberFunction | undefined {
+		return this.functions.get(path)
+	}
+
+	/**
+	 * Check if function exists
+	 * @param path Ember Path
+	 */
+	public hasFunction(path: string): boolean {
+		return this.functions.has(path)
 	}
 
 	/**
@@ -173,6 +201,7 @@ export class EmberPlusState {
 	 */
 	public clear(): void {
 		this.parameters.clear()
+		this.functions.clear()
 		this.emberElement.clear()
 		this.feedbacks.byId.clear()
 		this.feedbacks.byPath.clear()

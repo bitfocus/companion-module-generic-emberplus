@@ -23,6 +23,7 @@ import {
 	hasConnectionChanged,
 	recordParameterAction,
 	parseParameterValue,
+	discoverFunctionsFromTree,
 } from './util.js'
 import { GetVariablesList } from './variables.js'
 import PQueue from 'p-queue'
@@ -252,6 +253,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 			try {
 				const request = await this.emberClient.getDirectory(this.emberClient.tree)
 				await request.response
+				discoverFunctionsFromTree(this.emberClient.tree, this.state)
 				this.statusManager.updateStatus(InstanceStatus.Ok)
 				this.finalizeSetup().catch((e) => {
 					this.logger.error('Error during finalize setup', e)
@@ -345,8 +347,12 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 						})
 						if (initial_node) {
 							this.logger.debug('Registered for path', path)
-							this.state.updateParameterMap(path, initial_node)
-							await this.handleChangedValue(path, initial_node)
+							if (initial_node.contents.type === ElementType.Function) {
+								this.state.updateFunctionMap(path, initial_node)
+							} else if (initial_node.contents.type === ElementType.Parameter) {
+								this.state.updateParameterMap(path, initial_node)
+								await this.handleChangedValue(path, initial_node)
+							}
 						}
 					} catch {
 						this.logger.error('Failed to subscribe to path', path)
@@ -377,7 +383,18 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 						this.handleChangedValue(path, updatedNode).catch((e) => this.logger.error('Error handling parameter', e))
 					})
 
-					if (!node || node.contents.type !== ElementType.Parameter) {
+					if (!node) {
+						return node
+					}
+
+					if (node.contents.type === ElementType.Function) {
+						this.logger.debug('Registered function for path', path)
+						this.state.updateFunctionMap(path, node)
+						this.debouncedUpdateActionFeedbackDefs()
+						return node
+					}
+
+					if (node.contents.type !== ElementType.Parameter) {
 						return node
 					}
 

@@ -109,7 +109,7 @@ const comparitorDropdown = {
 	label: 'Comparitor',
 	id: 'comparitor',
 	choices: comparitorOptions,
-	default: comparitorOptions[0].id,
+	default: comparitorOptions?.[0]?.id ?? 'eq',
 	allowCustom: false,
 } as const satisfies CompanionInputFieldDropdown
 

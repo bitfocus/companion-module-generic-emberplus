@@ -4,21 +4,6 @@ import type {
 	CompanionFeedbackInfo,
 	DropdownChoice,
 } from '@companion-module/base'
-import { ActionId, type setValueActionOptions } from './actions.js'
-import type { EmberPlusConfig } from './config.js'
-import type { EmberPlusInstance } from './index.js'
-import { EmberPlusState } from './state.js'
-import { Model as EmberModel } from 'emberplus-connection'
-
-export function assertUnreachable(_never: never): void {
-	// throw new Error('Unreachable')
-}
-
-export function literal<T>(val: T): T {
-	return val
-}
-
-export type Required<T> = T extends object ? { [P in keyof T]-?: NonNullable<T[P]> } : T
 
 export enum NumberComparitor {
 	Equal = 'eq',
@@ -37,6 +22,25 @@ export const comparitorOptions: DropdownChoice[] = [
 	{ id: NumberComparitor.GreaterThan, label: '>' },
 	{ id: NumberComparitor.GreaterThanEqual, label: '>=' },
 ]
+
+import { ActionId, type setValueActionOptions } from './actions.js'
+import type { EmberPlusConfig } from './config.js'
+import type { EmberPlusInstance } from './index.js'
+import { EmberPlusState } from './state.js'
+import { Model as EmberModel } from 'emberplus-connection'
+import { ElementType } from 'emberplus-connection/dist/model/index.js'
+import type { EmberTypedValue } from 'emberplus-connection/dist/types/index.js'
+import type { FunctionArgument } from 'emberplus-connection/dist/model/FunctionArgument.js'
+
+export function assertUnreachable(_never: never): void {
+	// throw new Error('Unreachable')
+}
+
+export function literal<T>(val: T): T {
+	return val
+}
+
+export type Required<T> = T extends object ? { [P in keyof T]-?: NonNullable<T[P]> } : T
 
 export function compareNumber(target: number, comparitor: NumberComparitor, currentValue: number): boolean {
 	const targetValue = Number(target)
@@ -330,4 +334,144 @@ export function parseParameterValue(
 	}
 
 	return { actionType, value }
+}
+
+/**
+ * Return array of dropdown choices of registered Ember+ functions
+ */
+export function filterFunctionPathChoices(state: EmberPlusState): DropdownChoice[] {
+	const choices: DropdownChoice[] = []
+	for (const [path, func] of state.functions) {
+		let label = `${path}`
+		if (func.identifier) {
+			label += `: ${func.identifier}`
+		}
+		if (func.description) {
+			label += ` (${func.description})`
+		}
+		choices.push({ id: path, label })
+	}
+	return choices
+}
+
+/**
+ * Parse raw input arguments string into EmberTypedValue array for Ember+ function invocation.
+ * Handles JSON array input, comma/line separated lists, and schema-based type casting.
+ */
+export function parseFunctionArguments(
+	rawArgsString: string,
+	expectedArgs?: FunctionArgument[],
+): EmberTypedValue[] {
+	const trimmed = rawArgsString.trim()
+	if (!trimmed) return []
+
+	// Try JSON parsing if argument input looks like a JSON array
+	if (trimmed.startsWith('[')) {
+		try {
+			const jsonParsed = JSON.parse(trimmed)
+			if (Array.isArray(jsonParsed)) {
+				return jsonParsed.map((item, idx) => {
+					// Check if item is already an EmberTypedValue object ({ type, value })
+					if (typeof item === 'object' && item !== null && 'type' in item && 'value' in item) {
+						return item as EmberTypedValue
+					}
+
+					const expected = expectedArgs?.[idx]
+					if (expected) {
+						return castToEmberTypedValue(item, expected.type)
+					}
+
+					if (typeof item === 'boolean') {
+						return { type: EmberModel.ParameterType.Boolean, value: item }
+					}
+					if (typeof item === 'number') {
+						return {
+							type: Number.isInteger(item) ? EmberModel.ParameterType.Integer : EmberModel.ParameterType.Real,
+							value: item,
+						}
+					}
+					return { type: EmberModel.ParameterType.String, value: String(item) }
+				})
+			}
+		} catch {
+			// Fallback to comma/line separation if JSON parsing fails
+		}
+	}
+
+	// Split by newline or comma
+	const tokens = trimmed.split(/[\n,]+/).map((t) => t.trim()).filter((t) => t.length > 0)
+
+	return tokens.map((token, idx) => {
+		const expected = expectedArgs?.[idx]
+		if (expected) {
+			return castStringToType(token, expected.type)
+		}
+
+		// Infer type if schema argument is not available
+		if (token.toLowerCase() === 'true') return { type: EmberModel.ParameterType.Boolean, value: true }
+		if (token.toLowerCase() === 'false') return { type: EmberModel.ParameterType.Boolean, value: false }
+		if (/^-?\d+$/.test(token)) return { type: EmberModel.ParameterType.Integer, value: Number.parseInt(token, 10) }
+		if (/^-?\d+\.\d+$/.test(token)) return { type: EmberModel.ParameterType.Real, value: Number.parseFloat(token) }
+
+		return { type: EmberModel.ParameterType.String, value: token }
+	})
+}
+
+function castToEmberTypedValue(value: any, targetType: EmberModel.ParameterType): EmberTypedValue {
+	switch (targetType) {
+		case EmberModel.ParameterType.Boolean:
+			return { type: targetType, value: Boolean(value) }
+		case EmberModel.ParameterType.Integer:
+		case EmberModel.ParameterType.Enum:
+			return { type: targetType, value: Math.round(Number(value)) }
+		case EmberModel.ParameterType.Real:
+			return { type: targetType, value: Number(value) }
+		case EmberModel.ParameterType.String:
+		default:
+			return { type: targetType, value: String(value) }
+	}
+}
+
+function castStringToType(token: string, targetType: EmberModel.ParameterType): EmberTypedValue {
+	switch (targetType) {
+		case EmberModel.ParameterType.Boolean:
+			return {
+				type: targetType,
+				value: token.toLowerCase() === 'true' || token === '1',
+			}
+		case EmberModel.ParameterType.Integer:
+		case EmberModel.ParameterType.Enum: {
+			const parsed = Number.parseInt(token, 10)
+			return { type: targetType, value: Number.isNaN(parsed) ? 0 : parsed }
+		}
+		case EmberModel.ParameterType.Real: {
+			const parsed = Number.parseFloat(token)
+			return { type: targetType, value: Number.isNaN(parsed) ? 0 : parsed }
+		}
+		case EmberModel.ParameterType.String:
+		default:
+			return { type: targetType, value: token }
+	}
+}
+
+/**
+ * Recursively discover Function nodes from an Ember+ tree collection.
+ */
+export function discoverFunctionsFromTree(nodes: any, state: EmberPlusState, parentPath = ''): void {
+	if (!nodes) return
+	const elements = Array.isArray(nodes) ? nodes : Object.values(nodes)
+
+	for (const node of elements) {
+		if (!node || typeof node !== 'object') continue
+		const num = node.number ?? node.path
+		const currentPath = parentPath && num !== undefined ? `${parentPath}.${num}` : `${num ?? ''}`
+
+		if (node.contents?.type === ElementType.Function && currentPath) {
+			state.updateFunctionMap(currentPath, node)
+		}
+
+		if (node.children) {
+			discoverFunctionsFromTree(node.children, state, currentPath)
+		}
+	}
 }
