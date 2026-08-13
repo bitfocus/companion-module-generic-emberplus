@@ -438,17 +438,29 @@ export function GetActionsList(
 		[ActionId.MatrixConnect]: {
 			name: 'Matrix Connect',
 			options: [...matrixInputs],
-			callback: doMatrixAction(self, emberClient, async (...args) => emberClient.matrixConnect(...args), queue),
+			callback: doMatrixAction(self, emberClient, async (...args) => emberClient.matrixConnect(...args), queue, state),
 		},
 		[ActionId.MatrixDisconnect]: {
 			name: 'Matrix Disconnect',
 			options: [...matrixInputs],
-			callback: doMatrixAction(self, emberClient, async (...args) => emberClient.matrixDisconnect(...args), queue),
+			callback: doMatrixAction(
+				self,
+				emberClient,
+				async (...args) => emberClient.matrixDisconnect(...args),
+				queue,
+				state,
+			),
 		},
 		[ActionId.MatrixSetConnection]: {
 			name: 'Matrix Set Connection',
 			options: [...matrixInputs],
-			callback: doMatrixAction(self, emberClient, async (...args) => emberClient.matrixSetConnection(...args), queue),
+			callback: doMatrixAction(
+				self,
+				emberClient,
+				async (...args) => emberClient.matrixSetConnection(...args),
+				queue,
+				state,
+			),
 		},
 		[ActionId.Take]: {
 			name: 'Take',
