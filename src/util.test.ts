@@ -316,6 +316,10 @@ describe('resolvePath', () => {
 	it('returns dotted path when no brackets', () => {
 		expect(resolvePath('0.1.2')).toBe('0.1.2')
 	})
+	it('extracts OID before colon when colon label format is used', () => {
+		expect(resolvePath('1.2.3.2 : Call')).toBe('1.2.3.2')
+		expect(resolvePath('1.2.3.2:Call')).toBe('1.2.3.2')
+	})
 	it('uses last bracket pair when multiple exist', () => {
 		expect(resolvePath('[0.1][0.2.3]')).toBe('0.2.3')
 	})
