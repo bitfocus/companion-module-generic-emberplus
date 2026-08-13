@@ -127,7 +127,7 @@ vi.mock('es-toolkit', () => ({
 // ---------------------------------------------------------------------------
 
 function makeInstance(): EmberPlusInstance {
-	const instance = new EmberPlusInstance('test-id' as any)
+	const instance = new EmberPlusInstance('test-id')
 	// Wire a fresh state
 	;(instance as any).state = new EmberPlusState()
 	// Provide a default config
@@ -308,7 +308,7 @@ describe('handleChangedValue', () => {
 
 	it('ignores non-Parameter nodes', async () => {
 		const instance = makeInstance()
-		await instance.handleChangedValue('0.1', { contents: { type: ElementType.Node } } as any)
+		await instance.handleChangedValue('0.1', { contents: { type: ElementType.Node } })
 		expect((instance as any).setVariableValues.mock.calls.length).toBe(0)
 	})
 

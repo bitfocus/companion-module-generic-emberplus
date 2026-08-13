@@ -203,7 +203,7 @@ describe('filterPathChoices', () => {
 			['0.1', makeParam(EmberModel.ParameterType.Integer, EmberModel.ParameterAccess.Read, 'gain')],
 		])
 		const state = makeState(params)
-		const choices = filterPathChoices(state, false, EmberModel.ParameterType.Integer as any)
+		const choices = filterPathChoices(state, false, EmberModel.ParameterType.Integer)
 		expect(choices).toHaveLength(1)
 		expect(choices[0].id).toBe('0.1')
 		expect(choices[0].label).toContain('gain')
@@ -213,7 +213,7 @@ describe('filterPathChoices', () => {
 		const params = new Map<string, any>([
 			['0.1', makeParam(EmberModel.ParameterType.Integer, EmberModel.ParameterAccess.None)],
 		])
-		const choices = filterPathChoices(makeState(params), false, EmberModel.ParameterType.Integer as any)
+		const choices = filterPathChoices(makeState(params), false, EmberModel.ParameterType.Integer)
 		expect(choices).toHaveLength(0)
 	})
 
@@ -223,7 +223,7 @@ describe('filterPathChoices', () => {
 			['0.2', makeParam(EmberModel.ParameterType.Integer, EmberModel.ParameterAccess.ReadWrite)],
 			['0.3', makeParam(EmberModel.ParameterType.Integer, EmberModel.ParameterAccess.Write)],
 		])
-		const choices = filterPathChoices(makeState(params), true, EmberModel.ParameterType.Integer as any)
+		const choices = filterPathChoices(makeState(params), true, EmberModel.ParameterType.Integer)
 		expect(choices).toHaveLength(2)
 		expect(choices.map((c) => c.id)).toEqual(expect.arrayContaining(['0.2', '0.3']))
 	})
@@ -241,7 +241,7 @@ describe('filterPathChoices', () => {
 		const params = new Map<string, any>([
 			['0.1', makeParam(EmberModel.ParameterType.Integer, EmberModel.ParameterAccess.Read, 'id', 'my desc')],
 		])
-		const choices = filterPathChoices(makeState(params), false, EmberModel.ParameterType.Integer as any)
+		const choices = filterPathChoices(makeState(params), false, EmberModel.ParameterType.Integer)
 		expect(choices[0].label).toContain('(my desc)')
 	})
 })
@@ -273,31 +273,31 @@ describe('checkNumberLimits', () => {
 describe('calcRelativeNumber', () => {
 	it('adds relative value to current state value', () => {
 		const state = makeState(new Map([['0.1', { value: 5 }]]))
-		const result = calcRelativeNumber(3, '0.1', '', '', EmberModel.ParameterType.Integer as any, state)
+		const result = calcRelativeNumber(3, '0.1', '', '', EmberModel.ParameterType.Integer, state)
 		expect(result).toBe(8)
 	})
 
 	it('rounds result for Integer type', () => {
 		const state = makeState(new Map([['0.1', { value: 5.4 }]]))
-		const result = calcRelativeNumber(1.3, '0.1', '', '', EmberModel.ParameterType.Integer as any, state)
+		const result = calcRelativeNumber(1.3, '0.1', '', '', EmberModel.ParameterType.Integer, state)
 		expect(result).toBe(Math.round(6.7))
 	})
 
 	it('enforces min/max limits', () => {
 		const state = makeState(new Map([['0.1', { value: 8 }]]))
-		const result = calcRelativeNumber(5, '0.1', '0', '10', EmberModel.ParameterType.Integer as any, state)
+		const result = calcRelativeNumber(5, '0.1', '0', '10', EmberModel.ParameterType.Integer, state)
 		expect(result).toBe(10)
 	})
 
 	it('defaults old value to 0 when path missing', () => {
 		const state = makeState(new Map())
-		const result = calcRelativeNumber(3, 'missing', '', '', EmberModel.ParameterType.Real as any, state)
+		const result = calcRelativeNumber(3, 'missing', '', '', EmberModel.ParameterType.Real, state)
 		expect(result).toBe(3)
 	})
 
 	it('clamps Enum type to minimum of 0', () => {
 		const state = makeState(new Map([['0.1', { value: 0 }]]))
-		const result = calcRelativeNumber(-5, '0.1', '', '', EmberModel.ParameterType.Enum as any, state)
+		const result = calcRelativeNumber(-5, '0.1', '', '', EmberModel.ParameterType.Enum, state)
 		expect(result).toBe(0)
 	})
 })

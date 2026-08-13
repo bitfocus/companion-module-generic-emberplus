@@ -171,7 +171,7 @@ describe('updateParameterMap', () => {
 
 	it('merges new fields into existing parameter', () => {
 		state.updateParameterMap('0.1', makeNode({ identifier: 'level', value: 5 }))
-		state.updateParameterMap('0.1', { contents: { type: ElementType.Parameter, value: 10 } } as any)
+		state.updateParameterMap('0.1', { contents: { type: ElementType.Parameter, value: 10 } })
 		expect(state.parameters.get('0.1')?.identifier).toBe('level')
 		expect(state.parameters.get('0.1')?.value).toBe(10)
 	})

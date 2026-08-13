@@ -161,6 +161,14 @@ export class EmberPlusState {
 	}
 
 	/**
+	 * Clear cached ember elements
+	 */
+
+	public clearCache(): void {
+		this.emberElement.clear()
+	}
+
+	/**
 	 * Clear all state
 	 */
 	public clear(): void {
