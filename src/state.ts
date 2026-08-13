@@ -172,6 +172,8 @@ export class EmberPlusState {
 	 */
 	public hasParameter(path: string): boolean {
 		return this.parameters.has(path)
+	}
+
 	/**
 	 * Clear cached ember elements
 	 */
