@@ -187,18 +187,9 @@ export function resolvePath(path: string): string {
 	const lastOpenBracket = pathString.lastIndexOf('[')
 	const lastCloseBracket = pathString.lastIndexOf(']')
 
-	// Check if both brackets exist and close bracket comes after open bracket (e.g. "Descriptor[1.2.3.4]")
+	// Check if both brackets exist and close bracket comes after open bracket
 	if (lastOpenBracket !== -1 && lastCloseBracket !== -1 && lastCloseBracket > lastOpenBracket) {
 		const candidate = pathString.substring(lastOpenBracket + 1, lastCloseBracket)
-		if (/^\d+(\.\d+)*$/.test(candidate)) {
-			return candidate
-		}
-	}
-
-	// Check if colon format (e.g. "1.2.3.4 : Identifier")
-	const colonIndex = pathString.indexOf(':')
-	if (colonIndex !== -1) {
-		const candidate = pathString.substring(0, colonIndex).trim()
 		if (/^\d+(\.\d+)*$/.test(candidate)) {
 			return candidate
 		}
