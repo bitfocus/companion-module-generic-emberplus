@@ -1,11 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { EmberPlusState } from './state.js'
-import { ElementType } from 'emberplus-connection/dist/model'
+import { ElementType, ParameterType } from 'emberplus-connection/dist/model/index.js'
 
 vi.mock('emberplus-connection/dist/model', () => ({
 	ElementType: {
 		Parameter: 'parameter',
 		Node: 'node',
+	},
+	ParameterType: {
+		Real: 'real',
 	},
 }))
 
@@ -171,7 +174,9 @@ describe('updateParameterMap', () => {
 
 	it('merges new fields into existing parameter', () => {
 		state.updateParameterMap('0.1', makeNode({ identifier: 'level', value: 5 }))
-		state.updateParameterMap('0.1', { contents: { type: ElementType.Parameter, value: 10 } })
+		state.updateParameterMap('0.1', {
+			contents: { type: ElementType.Parameter, parameterType: ParameterType.Real, value: 10 },
+		})
 		expect(state.parameters.get('0.1')?.identifier).toBe('level')
 		expect(state.parameters.get('0.1')?.value).toBe(10)
 	})

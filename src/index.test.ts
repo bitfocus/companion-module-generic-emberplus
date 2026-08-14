@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { EmberPlusInstance } from './index.js'
 import { EmberPlusState } from './state.js'
-import { ElementType, ParameterType } from 'emberplus-connection/dist/model'
+import { ElementType, ParameterType } from 'emberplus-connection/dist/model/index.js'
 import { LoggerLevel } from './logger.js'
 
 // ---------------------------------------------------------------------------

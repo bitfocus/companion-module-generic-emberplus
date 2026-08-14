@@ -29,14 +29,14 @@ export enum NumberComparitor {
 	GreaterThanEqual = 'gte',
 }
 
-export const comparitorOptions: DropdownChoice[] = [
+export const comparitorOptions = [
 	{ id: NumberComparitor.Equal, label: '==' },
 	{ id: NumberComparitor.NotEqual, label: '!=' },
 	{ id: NumberComparitor.LessThan, label: '<' },
 	{ id: NumberComparitor.LessThanEqual, label: '<=' },
 	{ id: NumberComparitor.GreaterThan, label: '>' },
 	{ id: NumberComparitor.GreaterThanEqual, label: '>=' },
-]
+] as const satisfies DropdownChoice[]
 
 export function compareNumber(target: number, comparitor: NumberComparitor, currentValue: number): boolean {
 	const targetValue = Number(target)

@@ -8,6 +8,7 @@
 **/node_modules
 dist/
 *.log
+*.tsbuildinfo
 /pkg
 /pkg.tgz
 /.vscode
