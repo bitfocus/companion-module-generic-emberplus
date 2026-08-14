@@ -8,6 +8,7 @@ import {
 	parseEscapeCharacters,
 	substituteEscapeCharacters,
 	filterPathChoices,
+	filterFunctionPathChoices,
 	checkNumberLimits,
 	calcRelativeNumber,
 	resolvePath,
@@ -18,6 +19,8 @@ import {
 	hasConnectionChanged,
 	recordParameterAction,
 	parseParameterValue,
+	parseFunctionArguments,
+	discoverFunctionsFromTree,
 } from './util.js'
 import { ActionId } from './actions.js'
 import { EmberPlusState } from './state.js'
@@ -36,12 +39,25 @@ vi.mock('emberplus-connection', () => ({
 			Enum: 'enum',
 			String: 'string',
 		},
+		ElementType: {
+			Function: 'function',
+			Parameter: 'parameter',
+			Node: 'node',
+		},
 		ParameterAccess: {
 			None: 'none',
 			Read: 'read',
 			Write: 'write',
 			ReadWrite: 'readWrite',
 		},
+	},
+}))
+
+vi.mock('emberplus-connection/dist/model/index.js', () => ({
+	ElementType: {
+		Function: 'function',
+		Parameter: 'parameter',
+		Node: 'node',
 	},
 }))
 
@@ -585,5 +601,122 @@ describe('parseParameterValue', () => {
 		const result = parseParameterValue('0.1', { parameterType: 'unknown', value: 'raw' } as any, state)
 		expect(result.actionType).toBeUndefined()
 		expect(result.value).toBe('raw')
+	})
+})
+
+// ---------------------------------------------------------------------------
+// filterFunctionPathChoices
+// ---------------------------------------------------------------------------
+
+describe('filterFunctionPathChoices', () => {
+	it('returns formatted choices for registered functions', () => {
+		const mockState: any = {
+			functions: new Map([
+				['1.2.3', { identifier: 'Mute', description: 'Mute Channel' }],
+				['1.2.4', { identifier: 'Unmute' }],
+				['1.2.5', {}],
+			]),
+		}
+
+		const choices = filterFunctionPathChoices(mockState)
+		expect(choices).toEqual([
+			{ id: '1.2.3', label: '1.2.3: Mute (Mute Channel)' },
+			{ id: '1.2.4', label: '1.2.4: Unmute' },
+			{ id: '1.2.5', label: '1.2.5' },
+		])
+	})
+
+	it('returns empty array when no functions are registered', () => {
+		const mockState: any = { functions: new Map() }
+		expect(filterFunctionPathChoices(mockState)).toEqual([])
+	})
+})
+
+// ---------------------------------------------------------------------------
+// parseFunctionArguments
+// ---------------------------------------------------------------------------
+
+describe('parseFunctionArguments', () => {
+	it('returns empty array for empty input', () => {
+		expect(parseFunctionArguments('')).toEqual([])
+		expect(parseFunctionArguments('   ')).toEqual([])
+	})
+
+	it('parses and casts comma-separated arguments matching expected schema', () => {
+		const expectedArgs: any[] = [
+			{ type: EmberModel.ParameterType.Integer, name: 'id' },
+			{ type: EmberModel.ParameterType.Real, name: 'gain' },
+			{ type: EmberModel.ParameterType.Boolean, name: 'state' },
+			{ type: EmberModel.ParameterType.String, name: 'name' },
+		]
+
+		const result = parseFunctionArguments('42, 3.14, true, Hello World', expectedArgs)
+		expect(result).toEqual([
+			{ type: EmberModel.ParameterType.Integer, value: 42 },
+			{ type: EmberModel.ParameterType.Real, value: 3.14 },
+			{ type: EmberModel.ParameterType.Boolean, value: true },
+			{ type: EmberModel.ParameterType.String, value: 'Hello World' },
+		])
+	})
+
+	it('infers parameter types when no schema is provided', () => {
+		const result = parseFunctionArguments('true, 100, 2.5, sample')
+		expect(result).toEqual([
+			{ type: EmberModel.ParameterType.Boolean, value: true },
+			{ type: EmberModel.ParameterType.Integer, value: 100 },
+			{ type: EmberModel.ParameterType.Real, value: 2.5 },
+			{ type: EmberModel.ParameterType.String, value: 'sample' },
+		])
+	})
+
+	it('parses JSON array format correctly', () => {
+		const result = parseFunctionArguments('[1, "abc", false]')
+		expect(result).toEqual([
+			{ type: EmberModel.ParameterType.Integer, value: 1 },
+			{ type: EmberModel.ParameterType.String, value: 'abc' },
+			{ type: EmberModel.ParameterType.Boolean, value: false },
+		])
+	})
+
+	it('passes through explicit typed objects in JSON array', () => {
+		const result = parseFunctionArguments('[{"type": "integer", "value": 55}]')
+		expect(result).toEqual([{ type: 'integer', value: 55 }])
+	})
+})
+
+// ---------------------------------------------------------------------------
+// discoverFunctionsFromTree
+// ---------------------------------------------------------------------------
+
+describe('discoverFunctionsFromTree', () => {
+	it('recursively discovers function nodes in tree', () => {
+		const state = new EmberPlusState()
+		const tree = {
+			0: {
+				number: 1,
+				contents: { type: 'node' },
+				children: {
+					0: {
+						number: 2,
+						contents: { type: 'function', identifier: 'TestFunc' },
+					},
+					1: {
+						number: 3,
+						contents: { type: 'parameter' },
+					},
+				},
+			},
+		}
+
+		discoverFunctionsFromTree(tree, state)
+		expect(state.hasFunction('1.2')).toBe(true)
+		expect(state.getFunction('1.2')?.identifier).toBe('TestFunc')
+		expect(state.hasFunction('1.3')).toBe(false)
+	})
+
+	it('handles empty or null tree gracefully', () => {
+		const state = new EmberPlusState()
+		discoverFunctionsFromTree(null, state)
+		expect(state.functions.size).toBe(0)
 	})
 })
