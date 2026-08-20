@@ -48,6 +48,12 @@ Central to the concept of ember+ is the address or path of the data element you 
 
 For Set Value Actions one must ensure the correct data type is selected. In particular confusion can occur between Integer and ENUM types.
 
+## Functions
+
+Ember+ devices may expose executable functions (such as triggering snapshots, firing macros, or executing remote methods).
+
+- **Invoke Function**: Invokes an Ember+ `Function` node on the target device. Arguments can be passed comma-separated (e.g. `123, "text", true`), line-separated, or as a JSON array (e.g. `[123, "text", true]`). Dynamic Companion variables are supported.
+
 ## Actions
 
 - Set Value Integer
@@ -55,6 +61,7 @@ For Set Value Actions one must ensure the correct data type is selected. In part
 - Set Value Boolean
 - Set Value ENUM
 - Set Value String
+- Invoke Function
 - Matrix Connect
 - Matrix Disconnect
 - Matrix Set Connection
