@@ -39,12 +39,14 @@ export const invokeFunctionAction =
 					? parseEscapeCharacters(parsedArgsString)
 					: parsedArgsString
 
-				const emberFunc = node.contents as EmberModel.EmberFunction
+				const emberFunc = node.contents
 				const typedArgs = parseFunctionArguments(finalArgsString, emberFunc.args)
 
 				self.logger.debug(`Invoking Ember+ Function at "${path}" with arguments:`, typedArgs)
 
-				const request = await emberClient.invoke(node as any, ...typedArgs)
+				const functionNode = node as
+					EmberModel.NumberedTreeNode<EmberModel.EmberFunction> | EmberModel.QualifiedElement<EmberModel.EmberFunction>
+				const request = await emberClient.invoke(functionNode, ...typedArgs)
 				const result = await request.response
 
 				if (result?.success) {

@@ -29,7 +29,9 @@ import type { EmberPlusInstance } from './index.js'
 import { EmberPlusState } from './state.js'
 import { Model as EmberModel } from 'emberplus-connection'
 import { ElementType } from 'emberplus-connection/dist/model/index.js'
+import type { NumberedTreeNode, EmberElement } from 'emberplus-connection/dist/model/index.js'
 import type { EmberTypedValue } from 'emberplus-connection/dist/types/index.js'
+import type { Collection } from 'emberplus-connection/dist/types/types.js'
 import type { FunctionArgument } from 'emberplus-connection/dist/model/FunctionArgument.js'
 
 export function assertUnreachable(_never: never): void {
@@ -358,10 +360,7 @@ export function filterFunctionPathChoices(state: EmberPlusState): DropdownChoice
  * Parse raw input arguments string into EmberTypedValue array for Ember+ function invocation.
  * Handles JSON array input, comma/line separated lists, and schema-based type casting.
  */
-export function parseFunctionArguments(
-	rawArgsString: string,
-	expectedArgs?: FunctionArgument[],
-): EmberTypedValue[] {
+export function parseFunctionArguments(rawArgsString: string, expectedArgs?: FunctionArgument[]): EmberTypedValue[] {
 	const trimmed = rawArgsString.trim()
 	if (!trimmed) return []
 
@@ -399,7 +398,10 @@ export function parseFunctionArguments(
 	}
 
 	// Split by newline or comma
-	const tokens = trimmed.split(/[\n,]+/).map((t) => t.trim()).filter((t) => t.length > 0)
+	const tokens = trimmed
+		.split(/[\n,]+/)
+		.map((t) => t.trim())
+		.filter((t) => t.length > 0)
 
 	return tokens.map((token, idx) => {
 		const expected = expectedArgs?.[idx]
@@ -457,16 +459,18 @@ function castStringToType(token: string, targetType: EmberModel.ParameterType): 
 /**
  * Recursively discover Function nodes from an Ember+ tree collection.
  */
-export function discoverFunctionsFromTree(nodes: any, state: EmberPlusState, parentPath = ''): void {
+export function discoverFunctionsFromTree(
+	nodes: Collection<NumberedTreeNode<EmberElement>> | undefined,
+	state: EmberPlusState,
+	parentPath = '',
+): void {
 	if (!nodes) return
-	const elements = Array.isArray(nodes) ? nodes : Object.values(nodes)
 
-	for (const node of elements) {
-		if (!node || typeof node !== 'object') continue
-		const num = node.number ?? node.path
-		const currentPath = parentPath && num !== undefined ? `${parentPath}.${num}` : `${num ?? ''}`
+	for (const node of Object.values(nodes)) {
+		if (!node) continue
+		const currentPath = parentPath ? `${parentPath}.${node.number}` : `${node.number}`
 
-		if (node.contents?.type === ElementType.Function && currentPath) {
+		if (node.contents?.type === ElementType.Function) {
 			state.updateFunctionMap(currentPath, node)
 		}
 

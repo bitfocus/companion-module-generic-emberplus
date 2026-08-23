@@ -124,7 +124,7 @@ export class EmberPlusState {
 		if (node.contents.type !== ElementType.Function) return
 
 		const existing = this.functions.get(path)
-		this.functions.set(path, existing ? { ...existing, ...node.contents } : (node.contents as EmberModel.EmberFunction))
+		this.functions.set(path, existing ? { ...existing, ...node.contents } : node.contents)
 		this.emberElement.set(path, node)
 	}
 

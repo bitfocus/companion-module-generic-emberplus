@@ -3,6 +3,20 @@ import { invokeFunctionAction } from './function.js'
 import { Model as EmberModel } from 'emberplus-connection'
 import { ElementType } from 'emberplus-connection/dist/model/index.js'
 
+// `../util.js` (imported by `./function.js`) circularly imports `../actions.js` for `ActionId`.
+// Mock it here, the same way `util.test.ts` does, so loading it doesn't pull in the real
+// actions.js -> matrix.js -> feedback.js chain, which reads `comparitorOptions` from util.js
+// before that module has finished initializing.
+vi.mock('../actions.js', () => ({
+	ActionId: {
+		SetValueBoolean: 'setValueBoolean',
+		SetValueInt: 'setValueInt',
+		SetValueReal: 'setValueReal',
+		SetValueEnum: 'setValueEnum',
+		SetValueString: 'setValueString',
+	},
+}))
+
 describe('invokeFunctionAction callback', () => {
 	it('invokes emberClient.invoke with correctly parsed arguments', async () => {
 		const mockSelf: any = { logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } }
@@ -43,14 +57,8 @@ describe('invokeFunctionAction callback', () => {
 
 		await callback(action, context)
 
-		expect(mockEmberClient.invoke).toHaveBeenCalledWith(
-			funcNode,
-			{ type: EmberModel.ParameterType.Integer, value: 42 },
-		)
-		expect(mockSelf.logger.info).toHaveBeenCalledWith(
-			'Function "1.2.3" invoked successfully',
-			[],
-		)
+		expect(mockEmberClient.invoke).toHaveBeenCalledWith(funcNode, { type: EmberModel.ParameterType.Integer, value: 42 })
+		expect(mockSelf.logger.info).toHaveBeenCalledWith('Function "1.2.3" invoked successfully', [])
 	})
 
 	it('logs warning when path is empty', async () => {
@@ -90,7 +98,9 @@ describe('invokeFunctionAction callback', () => {
 
 		await callback(action, context)
 
-		expect(mockSelf.logger.error).toHaveBeenCalledWith('Invoke Function: Node at path "1.2.3" is not a valid Ember+ Function')
+		expect(mockSelf.logger.error).toHaveBeenCalledWith(
+			'Invoke Function: Node at path "1.2.3" is not a valid Ember+ Function',
+		)
 		expect(mockEmberClient.invoke).not.toHaveBeenCalled()
 	})
 })
