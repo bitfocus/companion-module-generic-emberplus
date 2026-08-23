@@ -1,0 +1,21 @@
+{
+	"permissions": {
+		"allow": [
+			"Bash(curl -s \"https://api.github.com/repos/bitfocus/companion-module-generic-emberplus/pulls/105\")",
+			"Bash(curl -s \"https://github.com/bitfocus/companion-module-generic-emberplus/pull/105.diff\" -o /private/tmp/claude-502/-Users-Phillip-Pietruschka-Documents-development-Companion-companion-module-dev-companion-module-generic-emberplus/8ddd7879-03bf-4287-be13-3ec826074b65/scratchpad/pr105.diff)",
+			"Bash(curl -sL \"https://github.com/bitfocus/companion-module-generic-emberplus/pull/105.diff\")",
+			"Bash(echo \"---exit $?---\")",
+			"Bash(curl -sL \"https://github.com/bitfocus/companion-module-generic-emberplus/pull/105.diff\" -o /private/tmp/claude-502/-Users-Phillip-Pietruschka-Documents-development-Companion-companion-module-dev-companion-module-generic-emberplus/8ddd7879-03bf-4287-be13-3ec826074b65/scratchpad/pr105.diff)",
+			"Bash(curl -s \"https://api.github.com/repos/bitfocus/companion-module-generic-emberplus/issues/105/comments\")",
+			"Bash(curl -s \"https://api.github.com/repos/bitfocus/companion-module-generic-emberplus/pulls/105/comments\")",
+			"Bash(rm -rf /private/tmp/claude-502/-Users-Phillip-Pietruschka-Documents-development-Companion-companion-module-dev-companion-module-generic-emberplus/8ddd7879-03bf-4287-be13-3ec826074b65/scratchpad/pr105-worktree)",
+			"Bash(git worktree *)",
+			"Bash(yarn install *)",
+			"Bash(yarn build *)",
+			"Bash(yarn test *)",
+			"Bash(echo \"TEST EXIT: $?\")",
+			"Bash(yarn tsc *)",
+			"Bash(echo \"TSC EXIT: $?\")"
+		]
+	}
+}

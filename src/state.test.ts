@@ -6,6 +6,7 @@ vi.mock('emberplus-connection/dist/model', () => ({
 	ElementType: {
 		Parameter: 'parameter',
 		Node: 'node',
+		Function: 'function',
 	},
 	ParameterType: {
 		Real: 'real',
@@ -22,6 +23,17 @@ function makeNode(overrides: Record<string, any> = {}) {
 			type: ElementType.Parameter,
 			identifier: 'gain',
 			value: 0,
+			...overrides,
+		},
+	} as any
+}
+
+function makeFunctionNode(overrides: Record<string, any> = {}) {
+	return {
+		contents: {
+			type: ElementType.Function,
+			identifier: 'muteFunction',
+			description: 'Mute Channel',
 			...overrides,
 		},
 	} as any
@@ -314,5 +326,62 @@ describe('clear', () => {
 
 	it('can be called on an already-empty state without throwing', () => {
 		new EmberPlusState().clear()
+	})
+
+	it('clears functions map as well', () => {
+		const state = new EmberPlusState()
+		state.updateFunctionMap('0.1.2', makeFunctionNode())
+		expect(state.functions.size).toBe(1)
+		state.clear()
+		expect(state.functions.size).toBe(0)
+	})
+})
+
+// ---------------------------------------------------------------------------
+// clearCache
+// ---------------------------------------------------------------------------
+
+describe('clearCache', () => {
+	it('clears emberElement map', () => {
+		const state = new EmberPlusState()
+		state.updateFunctionMap('0.1.2', makeFunctionNode())
+		expect(state.emberElement.size).toBe(1)
+		state.clearCache()
+		expect(state.emberElement.size).toBe(0)
+	})
+})
+
+// ---------------------------------------------------------------------------
+// updateFunctionMap / getFunction / hasFunction
+// ---------------------------------------------------------------------------
+
+describe('updateFunctionMap / getFunction / hasFunction', () => {
+	it('stores function node in functions and emberElement maps', () => {
+		const state = new EmberPlusState()
+		const funcNode = makeFunctionNode({ identifier: 'fn1' })
+		state.updateFunctionMap('1.2.3', funcNode)
+
+		expect(state.hasFunction('1.2.3')).toBe(true)
+		expect(state.getFunction('1.2.3')?.identifier).toBe('fn1')
+		expect(state.emberElement.get('1.2.3')).toBe(funcNode)
+	})
+
+	it('ignores non-function elements', () => {
+		const state = new EmberPlusState()
+		const paramNode = makeNode()
+		state.updateFunctionMap('1.2.3', paramNode)
+
+		expect(state.hasFunction('1.2.3')).toBe(false)
+		expect(state.getFunction('1.2.3')).toBeUndefined()
+	})
+
+	it('merges data for existing function path', () => {
+		const state = new EmberPlusState()
+		state.updateFunctionMap('1.2.3', makeFunctionNode({ identifier: 'fn1', description: 'Old' }))
+		state.updateFunctionMap('1.2.3', makeFunctionNode({ identifier: 'fn1', description: 'New description' }))
+
+		const stored = state.getFunction('1.2.3')
+		expect(stored?.identifier).toBe('fn1')
+		expect(stored?.description).toBe('New description')
 	})
 })

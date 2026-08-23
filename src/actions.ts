@@ -13,8 +13,9 @@ import type { EmberPlusConfig } from './config.js'
 import type { EmberPlusInstance } from './index.js'
 import { doMatrixAction, doTake, doClear, setSelectedSource, setSelectedTarget } from './actions/matrix.js'
 import { learnSetValueActionOptions, setValue, subscribeParameterAction } from './actions/parameter.js'
+import { invokeFunctionAction } from './actions/function.js'
 import { EmberPlusState } from './state.js'
-import { filterPathChoices } from './util.js'
+import { filterPathChoices, filterFunctionPathChoices } from './util.js'
 
 export interface setValueActionOptions extends CompanionOptionValues {
 	path: string
@@ -47,6 +48,7 @@ export enum ActionId {
 	Clear = 'clear',
 	SetSelectedSource = 'setSelectedSource',
 	SetSelectedTarget = 'setSelectedTarget',
+	InvokeFunction = 'invokeFunction',
 }
 
 const pathDropDown = {
@@ -571,6 +573,37 @@ export function GetActionsList(
 				},
 			],
 			callback: setSelectedTarget(self, state),
+		},
+		[ActionId.InvokeFunction]: {
+			name: 'Invoke Function',
+			options: [
+				{
+					...pathDropDown,
+					choices: filterFunctionPathChoices(state),
+					default: filterFunctionPathChoices(state).find(() => true)?.id ?? 'No functions configured!',
+				},
+				pathString,
+				usePathVar,
+				{
+					type: 'textinput',
+					label: 'Arguments',
+					id: 'args',
+					useVariables: { local: true },
+					multiline: true,
+					default: '',
+					tooltip:
+						'Enter arguments comma-separated, line-separated, or as a JSON array (e.g. [123, "text", true]). Dynamic variables are supported.',
+				},
+				{
+					type: 'checkbox',
+					label: 'Parse escape characters',
+					id: 'parseEscapeChars',
+					default: true,
+					tooltip: 'Parse escape characters such as \\r \\n \\t in text arguments',
+				},
+			],
+			callback: invokeFunctionAction(self, emberClient, state, queue),
+			subscribe: subscribeParameterAction(self),
 		},
 	}
 
