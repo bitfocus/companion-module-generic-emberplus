@@ -14,3 +14,4 @@ dist/
 /.vscode
 DEBUG-*
 generic-emberplus-*.tgz
+.DS_Store
