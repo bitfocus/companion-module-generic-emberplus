@@ -4,7 +4,10 @@ import { sanitiseVariableId } from './util.js'
 import { ParameterType } from 'emberplus-connection/dist/model/index.js'
 
 export function GetVariablesList(state: EmberPlusState): CompanionVariableDefinition[] {
-	if (state.monitoredParameters.size == 0) return []
+	const staticVariables: CompanionVariableDefinition[] = [{ name: 'Connection Host', variableId: 'host' }]
+
+	if (state.monitoredParameters.size == 0) return staticVariables
+
 	const variables = Array.from(state.monitoredParameters).flatMap((fb) => {
 		const fbId = sanitiseVariableId(fb)
 		let fbName = fb
@@ -30,5 +33,5 @@ export function GetVariablesList(state: EmberPlusState): CompanionVariableDefini
 		}
 	})
 
-	return variables.sort((a, b) => a.variableId.localeCompare(b.variableId))
+	return [...staticVariables, ...variables.sort((a, b) => a.variableId.localeCompare(b.variableId))]
 }
