@@ -93,6 +93,16 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	}
 
 	/**
+	 * Change the host of the connection, persisting it to the module config.
+	 */
+	public async setHost(host: string): Promise<void> {
+		// bonjourHost takes precedence over host in applyConfig, so it must be cleared
+		const config: EmberPlusConfig = { ...this.config, bonjourHost: undefined, host }
+		this.saveConfig(config)
+		await this.configUpdated(config)
+	}
+
+	/**
 	 * Creates the configuration fields for web config.
 	 */
 	public getConfigFields(): SomeCompanionConfigField[] {
@@ -140,6 +150,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 			updatePresets: true,
 			updateVariables: true,
 		})
+		this.setVariableValues({ host: this.config.host ?? '' })
 		await this.registerParameters()
 		this.checkFeedbacks()
 	}
@@ -184,6 +195,8 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 		if (this.emberClient !== undefined) {
 			this.emberClient.removeAllListeners()
 			this.emberClient.discard()
+			// A host change destroys the client twice, via resetConnection and setupEmberConnection
+			this.emberClient = undefined as unknown as EmberClient
 		}
 	}
 

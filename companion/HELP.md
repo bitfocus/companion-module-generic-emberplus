@@ -69,6 +69,11 @@ Ember+ devices may expose executable functions (such as triggering snapshots, fi
 - Clear
 - Set Selected Source
 - Set Selected Target
+- Set Host
+
+## Host
+
+The host the module is configured to connect to is exposed as the `host` variable. It can be changed at runtime with the **Set Host** action, which saves the new host to the module config and reconnects. As the action sets the host directly, it also clears any device selected via Bonjour.
 
 ## Feedbacks
 

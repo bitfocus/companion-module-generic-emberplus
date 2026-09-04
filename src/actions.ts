@@ -14,6 +14,7 @@ import type { EmberPlusInstance } from './index.js'
 import { doMatrixAction, doTake, doClear, setSelectedSource, setSelectedTarget } from './actions/matrix.js'
 import { learnSetValueActionOptions, setValue, subscribeParameterAction } from './actions/parameter.js'
 import { invokeFunctionAction } from './actions/function.js'
+import { setHostAction } from './actions/host.js'
 import { EmberPlusState } from './state.js'
 import { filterPathChoices, filterFunctionPathChoices } from './util.js'
 
@@ -49,6 +50,7 @@ export enum ActionId {
 	SetSelectedSource = 'setSelectedSource',
 	SetSelectedTarget = 'setSelectedTarget',
 	InvokeFunction = 'invokeFunction',
+	SetHost = 'setHost',
 }
 
 const pathDropDown = {
@@ -604,6 +606,20 @@ export function GetActionsList(
 			],
 			callback: invokeFunctionAction(self, emberClient, state, queue),
 			subscribe: subscribeParameterAction(self),
+		},
+		[ActionId.SetHost]: {
+			name: 'Set Host',
+			options: [
+				{
+					type: 'textinput',
+					label: 'Connection Host',
+					id: 'host',
+					useVariables: { local: true },
+					default: '',
+					tooltip: 'The Hostname/IP of the Ember+ provider. Overrides any device selected by Bonjour.',
+				},
+			],
+			callback: setHostAction(self),
 		},
 	}
 
