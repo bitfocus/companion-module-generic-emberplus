@@ -223,6 +223,29 @@ describe('setupMonitoredParams', () => {
 		;(instance as any).setupMonitoredParams()
 		expect((instance as any).state.monitoredParameters.size).toBe(0)
 	})
+
+	it('preserves parameters registered by actions and feedbacks across reconnect setup', () => {
+		const instance = makeInstance()
+		;(instance as any).config.monitoredParametersString = '0.1.2'
+		;(instance as any).setupMonitoredParams()
+		;(instance as any).runtimeMonitoredParameters.add('0.9.9')
+
+		;(instance as any).setupMonitoredParams()
+
+		expect((instance as any).state.monitoredParameters).toEqual(new Set(['0.1.2', '0.9.9']))
+	})
+
+	it('removes a connection-config parameter without dropping runtime subscriptions', () => {
+		const instance = makeInstance()
+		;(instance as any).config.monitoredParametersString = '0.1.2, 0.3.4'
+		;(instance as any).setupMonitoredParams()
+		;(instance as any).runtimeMonitoredParameters.add('0.9.9')
+		;(instance as any).config.monitoredParametersString = '0.3.4'
+
+		;(instance as any).setupMonitoredParams()
+
+		expect((instance as any).state.monitoredParameters).toEqual(new Set(['0.3.4', '0.9.9']))
+	})
 })
 
 // ---------------------------------------------------------------------------

@@ -50,6 +50,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	private feedbacksToCheck: Set<string> = new Set<string>()
 	private variableValueUpdates: CompanionVariableValues = {}
 	private isRecordingActions: boolean = false
+	private runtimeMonitoredParameters: Set<string> = new Set()
 	private statusManager = new StatusManager(this, { status: InstanceStatus.Connecting, message: 'Initialising' }, 2000)
 	public logger: Logger = new Logger(this)
 
@@ -317,21 +318,17 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	}
 
 	private setupMonitoredParams(): void {
-		this.state.monitoredParameters = new Set<string>()
+		const configuredParameters = new Set<string>()
 		if (this.config.monitoredParametersString) {
 			const params = this.config.monitoredParametersString
 				.replaceAll('/', '.')
 				.split(',')
 				.map((param) => param.trim())
 				.filter((param) => param.length > 0)
-				.sort()
-			if (this.state.monitoredParameters.size == 0) this.state.monitoredParameters = new Set(params)
-			else {
-				params.forEach((param) => this.state.monitoredParameters.add(param))
-				const sortedArray = Array.from(this.state.monitoredParameters).sort()
-				this.state.monitoredParameters = new Set(sortedArray)
-			}
+			params.forEach((param) => configuredParameters.add(param))
 		}
+
+		this.state.monitoredParameters = new Set([...this.runtimeMonitoredParameters, ...configuredParameters].sort())
 	}
 
 	private async registerParameters() {
@@ -373,6 +370,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 
 		// Return cached element if already registered
 		if (this.state.emberElement.has(path) && (this.state.monitoredParameters?.has(path) || !createVar)) {
+			if (createVar) this.runtimeMonitoredParameters.add(path)
 			return this.state.emberElement.get(path)
 		}
 
@@ -402,6 +400,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 					this.logger.console(path, ':', node.contents)
 
 					if (createVar) {
+						this.runtimeMonitoredParameters.add(path)
 						this.state.monitoredParameters.add(path)
 					}
 
