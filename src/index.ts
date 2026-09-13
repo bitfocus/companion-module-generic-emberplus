@@ -49,6 +49,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	private emberQueue: PQueue = new PQueue({ concurrency: 1, autoStart: true })
 	private feedbacksToCheck: Set<string> = new Set<string>()
 	private variableValueUpdates: CompanionVariableValues = {}
+	private lastVariableDefinitions: string | undefined
 	private isRecordingActions: boolean = false
 	private statusManager = new StatusManager(this, { status: InstanceStatus.Connecting, message: 'Initialising' }, 2000)
 	public logger: Logger = new Logger(this)
@@ -160,8 +161,20 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 			this.setActionDefinitions(GetActionsList(this, this.client, this.config, this.state, this.emberQueue))
 		if (options.updateFeedbacks)
 			this.setFeedbackDefinitions(GetFeedbacksList(this, this.client, this.config, this.state))
-		if (options.updateVariables) this.setVariableDefinitions(GetVariablesList(this.state))
+		if (options.updateVariables) this.updateVariableDefinitions()
 		if (options.updatePresets) this.setPresetDefinitions(GetPresetsList())
+	}
+
+	/**
+	 * Send variable definitions only when they differ from the last set sent.
+	 * Every feedback re-registering its path after a reconnect lands here, almost always with an unchanged set.
+	 */
+	private updateVariableDefinitions(): void {
+		const variables = GetVariablesList(this.state)
+		const serialised = JSON.stringify(variables)
+		if (serialised === this.lastVariableDefinitions) return
+		this.lastVariableDefinitions = serialised
+		this.setVariableDefinitions(variables)
 	}
 
 	public debouncedUpdateActionFeedbackDefs = debounce(() => {

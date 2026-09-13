@@ -3,6 +3,7 @@ import { EmberPlusInstance } from './index.js'
 import { EmberPlusState } from './state.js'
 import { ElementType, ParameterType } from 'emberplus-connection/dist/model/index.js'
 import { LoggerLevel } from './logger.js'
+import { GetVariablesList } from './variables.js'
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -268,6 +269,50 @@ describe('updateCompanionBits', () => {
 		})
 		expect((instance as any).setVariableDefinitions).toHaveBeenCalled()
 		expect((instance as any).setActionDefinitions.mock.calls.length).toBe(0)
+	})
+
+	it('does not resend unchanged variable definitions', () => {
+		const instance = makeInstance()
+		const defs = [{ variableId: '0.1', name: '0.1' }]
+		vi.mocked(GetVariablesList).mockReturnValue(defs)
+		instance.updateCompanionBits()
+		instance.updateCompanionBits()
+		instance.updateCompanionBits()
+		expect((instance as any).setVariableDefinitions).toHaveBeenCalledTimes(1)
+		vi.mocked(GetVariablesList).mockReturnValue([])
+	})
+
+	it('resends variable definitions when they change', () => {
+		const instance = makeInstance()
+		vi.mocked(GetVariablesList).mockReturnValueOnce([{ variableId: '0.1', name: '0.1' }])
+		instance.updateCompanionBits()
+		vi.mocked(GetVariablesList).mockReturnValueOnce([{ variableId: '0.1', name: '0.1: Gain' }])
+		instance.updateCompanionBits()
+		expect((instance as any).setVariableDefinitions).toHaveBeenCalledTimes(2)
+	})
+})
+
+// ---------------------------------------------------------------------------
+// registerNewParameter
+// ---------------------------------------------------------------------------
+
+describe('registerNewParameter', () => {
+	it('sends variable definitions once when an already-monitored path re-registers after a cache clear', async () => {
+		// Log from issue #79: after a reconnect every feedback on an already-monitored path
+		// re-registered and each one pushed an identical "Updating variable definitions (11 variables)".
+		const instance = makeInstance()
+		const state: EmberPlusState = (instance as any).state
+		const node = { contents: { type: ElementType.Parameter, parameterType: ParameterType.Integer, value: 1 } }
+		;(instance as any).emberClient = { getElementByPath: vi.fn().mockResolvedValue(node) }
+		vi.mocked(GetVariablesList).mockReturnValue([{ variableId: '0.1', name: '0.1' }])
+
+		for (let i = 0; i < 20; i++) {
+			state.clearCache()
+			await instance.registerNewParameter('0.1', true)
+		}
+
+		expect((instance as any).setVariableDefinitions).toHaveBeenCalledTimes(1)
+		vi.mocked(GetVariablesList).mockReturnValue([])
 	})
 })
 
