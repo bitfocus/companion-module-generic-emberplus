@@ -142,6 +142,9 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 			updateVariables: true,
 		})
 		await this.registerParameters()
+		// Re-run subscribe/callbacks so paths registered at runtime are subscribed on the new client.
+		// Feedbacks re-register from their callback; actions only register from subscribe, which Companion won't call again on its own.
+		this.subscribeActions()
 		this.checkFeedbacks()
 	}
 
@@ -330,21 +333,16 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	}
 
 	private setupMonitoredParams(): void {
-		this.state.monitoredParameters = new Set<string>()
-		if (this.config.monitoredParametersString) {
-			const params = this.config.monitoredParametersString
-				.replaceAll('/', '.')
-				.split(',')
-				.map((param) => param.trim())
-				.filter((param) => param.length > 0)
-				.sort()
-			if (this.state.monitoredParameters.size == 0) this.state.monitoredParameters = new Set(params)
-			else {
-				params.forEach((param) => this.state.monitoredParameters.add(param))
-				const sortedArray = Array.from(this.state.monitoredParameters).sort()
-				this.state.monitoredParameters = new Set(sortedArray)
-			}
-		}
+		// Rebuild from config only. Paths registered at runtime by actions and feedbacks are dropped here and
+		// re-added by subscribeActions() / checkFeedbacks() in finalizeSetup, which prunes paths no longer in use
+		// (eg. a path option driven by a variable that has since changed).
+		const params = (this.config.monitoredParametersString ?? '')
+			.replaceAll('/', '.')
+			.split(',')
+			.map((param) => param.trim())
+			.filter((param) => param.length > 0)
+			.sort()
+		this.state.monitoredParameters = new Set(params)
 	}
 
 	private async registerParameters() {

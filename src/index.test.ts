@@ -13,6 +13,7 @@ vi.mock('@companion-module/base', () => ({
 	InstanceBase: class {
 		checkFeedbacks = vi.fn()
 		checkFeedbacksById = vi.fn()
+		subscribeActions = vi.fn()
 		setActionDefinitions = vi.fn()
 		setFeedbackDefinitions = vi.fn()
 		setVariableDefinitions = vi.fn()
@@ -224,6 +225,15 @@ describe('setupMonitoredParams', () => {
 		;(instance as any).setupMonitoredParams()
 		expect((instance as any).state.monitoredParameters.size).toBe(0)
 	})
+
+	it('drops runtime-registered paths when rebuilt, leaving re-registration to actions and feedbacks', () => {
+		const instance = makeInstance()
+		;(instance as any).config.monitoredParametersString = '0.1.2'
+		;(instance as any).setupMonitoredParams()
+		;(instance as any).state.monitoredParameters.add('0.9.9')
+		;(instance as any).setupMonitoredParams()
+		expect((instance as any).state.monitoredParameters).toEqual(new Set(['0.1.2']))
+	})
 })
 
 // ---------------------------------------------------------------------------
@@ -289,6 +299,26 @@ describe('updateCompanionBits', () => {
 		vi.mocked(GetVariablesList).mockReturnValueOnce([{ variableId: '0.1', name: '0.1: Gain' }])
 		instance.updateCompanionBits()
 		expect((instance as any).setVariableDefinitions).toHaveBeenCalledTimes(2)
+	})
+})
+
+// ---------------------------------------------------------------------------
+// finalizeSetup
+// ---------------------------------------------------------------------------
+
+describe('finalizeSetup', () => {
+	it('re-subscribes actions after definitions are set, so action paths are re-registered on reconnect', async () => {
+		const instance = makeInstance()
+		await (instance as any).finalizeSetup()
+
+		const subscribeActions = (instance as any).subscribeActions
+		const setActionDefinitions = (instance as any).setActionDefinitions
+		expect(subscribeActions).toHaveBeenCalledTimes(1)
+		expect(subscribeActions).toHaveBeenCalledWith()
+		expect(subscribeActions.mock.invocationCallOrder[0]).toBeGreaterThan(
+			setActionDefinitions.mock.invocationCallOrder[0],
+		)
+		expect((instance as any).checkFeedbacks).toHaveBeenCalledTimes(1)
 	})
 })
 
