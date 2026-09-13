@@ -15,6 +15,7 @@
 		"package": "run build && companion-module-build",
 		"format": "prettier -w .",
 		"test": "vitest --run",
+		"test:watch": "vitest",
 		"test:coverage": "vitest run --coverage"
 	},
 	"repository": {
