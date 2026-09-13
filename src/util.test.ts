@@ -25,6 +25,8 @@ import {
 import { ActionId } from './actions.js'
 import { EmberPlusState } from './state.js'
 import { Model as EmberModel } from 'emberplus-connection'
+import type { NumberedTreeNode } from 'emberplus-connection/dist/model/index.js'
+import type { Collection } from 'emberplus-connection/dist/types/types.js'
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -691,18 +693,20 @@ describe('parseFunctionArguments', () => {
 describe('discoverFunctionsFromTree', () => {
 	it('recursively discovers function nodes in tree', () => {
 		const state = new EmberPlusState()
-		const tree = {
+		// Literals rather than the model's *Impl classes: emberplus-connection is mocked
+		// above with only its enums, so the classes do not exist at runtime here.
+		const tree: Collection<NumberedTreeNode<EmberModel.EmberElement>> = {
 			0: {
 				number: 1,
-				contents: { type: 'node' },
+				contents: { type: EmberModel.ElementType.Node },
 				children: {
 					0: {
 						number: 2,
-						contents: { type: 'function', identifier: 'TestFunc' },
+						contents: { type: EmberModel.ElementType.Function, identifier: 'TestFunc' },
 					},
 					1: {
 						number: 3,
-						contents: { type: 'parameter' },
+						contents: { type: EmberModel.ElementType.Parameter, parameterType: EmberModel.ParameterType.Integer },
 					},
 				},
 			},
@@ -714,9 +718,12 @@ describe('discoverFunctionsFromTree', () => {
 		expect(state.hasFunction('1.3')).toBe(false)
 	})
 
-	it('handles empty or null tree gracefully', () => {
+	it.each([
+		['undefined', undefined],
+		['empty', {}],
+	])('handles %s tree gracefully', (_label, tree) => {
 		const state = new EmberPlusState()
-		discoverFunctionsFromTree(null, state)
+		discoverFunctionsFromTree(tree, state)
 		expect(state.functions.size).toBe(0)
 	})
 })
