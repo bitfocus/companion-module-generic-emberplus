@@ -6,7 +6,7 @@ import {
 	type SomeCompanionConfigField,
 } from '@companion-module/base'
 import { GetActionsList } from './actions.js'
-import { type EmberPlusConfig, GetConfigFields } from './config.js'
+import { type EmberPlusConfig, GetConfigFields, portDefault } from './config.js'
 import { GetPresetsList } from './presets.js'
 import { FeedbackId, GetFeedbacksList } from './feedback.js'
 import { EmberPlusState } from './state.js'
@@ -24,12 +24,14 @@ import {
 	recordParameterAction,
 	parseParameterValue,
 	discoverFunctionsFromTree,
+	isValidHostname,
+	isValidPort,
+	nextReconnectDelay,
 } from './util.js'
 import { GetVariablesList } from './variables.js'
 import PQueue from 'p-queue'
 import { throttle, debounce } from 'es-toolkit'
 
-const ReconnectInterval = 30000 //emberplus-connection destroys socket after 5 minutes
 const FeedbackThrottleRate = 30
 
 interface updateCompanionBitsOptions {
@@ -51,6 +53,8 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	private variableValueUpdates: CompanionVariableValues = {}
 	private lastVariableDefinitions: string | undefined
 	private isRecordingActions: boolean = false
+	private reconnectTimer: NodeJS.Timeout | undefined
+	private reconnectAttempts: number = 0
 	private statusManager = new StatusManager(this, { status: InstanceStatus.Connecting, message: 'Initialising' }, 2000)
 	public logger: Logger = new Logger(this)
 
@@ -94,6 +98,25 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	}
 
 	/**
+	 * Change the host and/or port of the connection, persisting it to the module config.
+	 * Values left undefined are kept as configured.
+	 */
+	public async setHost(host?: string, port?: number): Promise<void> {
+		if (host !== undefined && !isValidHostname(host)) throw new Error(`Set Host: Invalid hostname: ${host}`)
+		if (port !== undefined && !isValidPort(port)) throw new Error(`Set Host: Invalid port: ${port}`)
+
+		// bonjourHost takes precedence over host in applyConfig, so it must be cleared
+		const config: EmberPlusConfig = {
+			...this.config,
+			bonjourHost: undefined,
+			host: host ?? this.config.host,
+			port: port ?? this.config.port,
+		}
+		this.saveConfig(config)
+		await this.configUpdated(config)
+	}
+
+	/**
 	 * Creates the configuration fields for web config.
 	 */
 	public getConfigFields(): SomeCompanionConfigField[] {
@@ -104,7 +127,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	 * Clean up the instance before it is destroyed.
 	 */
 	public async destroy(): Promise<void> {
-		this.throttledReconnect.cancel()
+		this.cancelReconnect()
 		this.throttledFeedbackChecksVariableUpdates.cancel()
 		this.debouncedUpdateActionFeedbackDefs.cancel()
 		this.emberQueue.clear()
@@ -122,6 +145,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	}
 
 	private resetConnection(): void {
+		this.reconnectAttempts = 0
 		this.throttledFeedbackChecksVariableUpdates.cancel()
 		this.emberQueue.clear()
 		this.feedbacksToCheck.clear()
@@ -141,6 +165,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 			updatePresets: true,
 			updateVariables: true,
 		})
+		this.setVariableValues({ host: this.config.host ?? '', port: this.config.port ?? portDefault })
 		await this.registerParameters()
 		// Re-run subscribe/callbacks so paths registered at runtime are subscribed on the new client.
 		// Feedbacks re-register from their callback; actions only register from subscribe, which Companion won't call again on its own.
@@ -188,23 +213,57 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 		return this.emberClient
 	}
 
-	private throttledReconnect = throttle(
-		() => {
+	/**
+	 * Tear down the current client and retry after an exponentially increasing delay.
+	 * Only one retry is ever pending; the backoff resets once a connection succeeds.
+	 */
+	private scheduleReconnect(): void {
+		this.destroyEmberClient()
+		if (this.reconnectTimer !== undefined) return
+
+		this.reconnectAttempts++
+		const delay = nextReconnectDelay(this.reconnectAttempts)
+		this.logger.info(`Reconnecting in ${delay / 1000}s (attempt ${this.reconnectAttempts})`)
+		this.reconnectTimer = setTimeout(() => {
+			this.reconnectTimer = undefined
 			this.setupEmberConnection().catch(() => {})
-		},
-		ReconnectInterval,
-		{ edges: ['trailing'] },
-	)
+		}, delay)
+	}
+
+	private cancelReconnect(): void {
+		if (this.reconnectTimer !== undefined) {
+			clearTimeout(this.reconnectTimer)
+			this.reconnectTimer = undefined
+		}
+	}
+
+	/**
+	 * emberplus-connection's S101Client retries every 5s on its own, and discard() does not stop it
+	 * if the socket never connected, leaving orphaned clients retrying forever. Reconnection is
+	 * handled by scheduleReconnect instead, so a discarded client must never connect again.
+	 */
+	private static stopLibraryReconnect(client: EmberClient): void {
+		const s101 = (client as any)._client
+		if (!s101) return
+		s101._autoReconnect = false
+		s101._shouldBeConnected = false
+		s101.connect = async () => Promise.resolve()
+		s101._clearConnectionAttemptTimer?.()
+		s101.socket?.destroy()
+	}
 
 	private destroyEmberClient(): void {
 		if (this.emberClient !== undefined) {
 			this.emberClient.removeAllListeners()
+			EmberPlusInstance.stopLibraryReconnect(this.emberClient)
 			this.emberClient.discard()
+			// A host change destroys the client twice, via resetConnection and setupEmberConnection
+			this.emberClient = undefined as unknown as EmberClient
 		}
 	}
 
 	private async setupEmberConnection(): Promise<void> {
-		this.throttledReconnect.cancel()
+		this.cancelReconnect()
 
 		this.destroyEmberClient()
 
@@ -219,13 +278,23 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 		return new Promise<void>((resolve, reject) => {
 			const settledState = { settled: false }
 
-			this.emberClient = new EmberClient(this.config.host!, this.config.port)
+			const client = new EmberClient(this.config.host!, this.config.port)
+			this.emberClient = client
+			// Reconnection is handled by scheduleReconnect
+			if ((client as any)._client) (client as any)._client._autoReconnect = false
 
 			this.setupEmberClientHandlers(resolve, reject, settledState)
 
-			this.emberClient.connect().catch((e) => {
-				this.handleConnectionFailure(e, reject, settledState)
-			})
+			// A connection timeout resolves with an Error rather than rejecting
+			client
+				.connect()
+				.then((result: unknown) => {
+					if (result instanceof Error && client === this.emberClient)
+						this.handleConnectionFailure(result, reject, settledState)
+				})
+				.catch((e) => {
+					if (client === this.emberClient) this.handleConnectionFailure(e, reject, settledState)
+				})
 		})
 	}
 
@@ -250,7 +319,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	private handleConnectionError(error: any, reject: (reason?: any) => void, settledState: { settled: boolean }): void {
 		this.logger.error('Connection Error', error)
 		this.statusManager.updateStatus(InstanceStatus.ConnectionFailure)
-		this.throttledReconnect()
+		if (!this.emberClient?.connected) this.scheduleReconnect()
 
 		if (settledState.settled) return
 		settledState.settled = true
@@ -262,13 +331,16 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 		reject: (reason?: any) => void,
 		settledState: { settled: boolean },
 	): void {
-		this.throttledReconnect.cancel()
+		this.cancelReconnect()
 		this.logger.info(`Connected to ${this.config.host}:${this.config.port}`)
+		const client = this.emberClient
 
 		void (async () => {
 			try {
-				const request = await this.emberClient.getDirectory(this.emberClient.tree)
+				const request = await client.getDirectory(client.tree)
 				await request.response
+				if (client !== this.emberClient) return
+				this.reconnectAttempts = 0
 				discoverFunctionsFromTree(this.emberClient.tree, this.state)
 				this.statusManager.updateStatus(InstanceStatus.Ok)
 				this.finalizeSetup().catch((e) => {
@@ -284,8 +356,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 					this.statusManager.updateStatus(InstanceStatus.UnknownWarning, e.toString())
 				}
 
-				await this.emberClient.disconnect()
-				this.throttledReconnect()
+				if (client === this.emberClient) this.scheduleReconnect()
 
 				if (!settledState.settled) {
 					settledState.settled = true
@@ -298,7 +369,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	private handleDisconnected(): void {
 		this.statusManager.updateStatus(InstanceStatus.Connecting, 'Disconnected')
 		this.logger.warn(`Disconnected from ${this.config.host}:${this.config.port}`)
-		this.throttledReconnect()
+		this.scheduleReconnect()
 	}
 
 	private handleConnectionFailure(
@@ -308,7 +379,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	): void {
 		this.statusManager.updateStatus(InstanceStatus.ConnectionFailure)
 		this.logger.error('Connection Failure:', error)
-		this.throttledReconnect()
+		this.scheduleReconnect()
 
 		if (settledState.settled) return
 		settledState.settled = true

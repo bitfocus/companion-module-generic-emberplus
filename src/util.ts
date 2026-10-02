@@ -1,3 +1,4 @@
+import { Regex } from '@companion-module/base'
 import type {
 	//CompanionActionContext,
 	CompanionActionInfo,
@@ -232,6 +233,31 @@ export function parseBonjourHost(config: EmberPlusConfig): [string, number] {
 
 export function hasConnectionChanged(oldConfig: EmberPlusConfig, newConfig: EmberPlusConfig): boolean {
 	return newConfig.host !== oldConfig.host || newConfig.port !== oldConfig.port
+}
+
+/**
+ * Check a hostname or IP is plausible. Regex.HOSTNAME is a delimited string, so the delimiters are stripped
+ */
+
+export function isValidHostname(host: string): boolean {
+	return new RegExp(Regex.HOSTNAME.slice(1, -1)).test(host)
+}
+
+export function isValidPort(port: number): boolean {
+	return Number.isInteger(port) && port >= 1 && port <= 0xffff
+}
+
+export const MinReconnectDelay = 5000
+export const MaxReconnectDelay = 60000
+
+/**
+ * Exponential backoff for reconnection attempts: 5s, 10s, 20s, 40s, then capped at 60s
+ */
+
+export function nextReconnectDelay(consecutiveFailures: number): number {
+	if (consecutiveFailures <= 1) return MinReconnectDelay
+	const exponent = Math.min(consecutiveFailures - 1, 10)
+	return Math.min(MinReconnectDelay * 2 ** exponent, MaxReconnectDelay)
 }
 
 export function recordParameterAction(
