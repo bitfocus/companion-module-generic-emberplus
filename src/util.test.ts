@@ -21,6 +21,9 @@ import {
 	parseParameterValue,
 	parseFunctionArguments,
 	discoverFunctionsFromTree,
+	nextReconnectDelay,
+	MinReconnectDelay,
+	MaxReconnectDelay,
 } from './util.js'
 import { ActionId } from './actions.js'
 import { EmberPlusState } from './state.js'
@@ -725,5 +728,27 @@ describe('discoverFunctionsFromTree', () => {
 		const state = new EmberPlusState()
 		discoverFunctionsFromTree(tree, state)
 		expect(state.functions.size).toBe(0)
+	})
+})
+
+// ---------------------------------------------------------------------------
+// nextReconnectDelay
+// ---------------------------------------------------------------------------
+
+describe('nextReconnectDelay', () => {
+	it('starts at the minimum delay', () => {
+		expect(nextReconnectDelay(0)).toBe(MinReconnectDelay)
+		expect(nextReconnectDelay(1)).toBe(MinReconnectDelay)
+	})
+
+	it('doubles with each consecutive failure', () => {
+		expect(nextReconnectDelay(2)).toBe(MinReconnectDelay * 2)
+		expect(nextReconnectDelay(3)).toBe(MinReconnectDelay * 4)
+		expect(nextReconnectDelay(4)).toBe(MinReconnectDelay * 8)
+	})
+
+	it('is capped at the maximum delay', () => {
+		expect(nextReconnectDelay(5)).toBe(MaxReconnectDelay)
+		expect(nextReconnectDelay(1000)).toBe(MaxReconnectDelay)
 	})
 })
