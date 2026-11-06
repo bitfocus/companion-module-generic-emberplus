@@ -1,6 +1,7 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { EmberPlusInstance } from './index.js'
 import { EmberPlusState } from './state.js'
+import * as util from './util.js'
 import { ElementType, ParameterType } from 'emberplus-connection/dist/model/index.js'
 import { LoggerLevel } from './logger.js'
 import { GetVariablesList } from './variables.js'
@@ -102,6 +103,7 @@ vi.mock('./util', () => ({
 	hasConnectionChanged: vi.fn().mockReturnValue(false),
 	recordParameterAction: vi.fn(),
 	parseParameterValue: vi.fn().mockReturnValue({ actionType: 'setValueInt', value: 42 }),
+	nextReconnectDelay: vi.fn().mockReturnValue(5000),
 }))
 
 vi.mock('p-queue', () => ({
@@ -457,6 +459,58 @@ describe('updateFeedbacksAndVariables', () => {
 		;(instance as any).throttledFeedbackChecksVariableUpdates = vi.fn()
 		;(instance as any).updateFeedbacksAndVariables('0/1/2', ParameterType.Integer, 5, 5)
 		expect((instance as any).variableValueUpdates['0_1_2']).toBeDefined()
+	})
+})
+
+// ---------------------------------------------------------------------------
+// scheduleReconnect
+// ---------------------------------------------------------------------------
+
+describe('scheduleReconnect', () => {
+	beforeEach(() => {
+		vi.useFakeTimers()
+	})
+	afterEach(() => {
+		vi.useRealTimers()
+	})
+
+	it('discards the client and keeps only one retry pending', () => {
+		const instance = makeInstance()
+		const discard = vi.fn()
+		;(instance as any).emberClient = { removeAllListeners: vi.fn(), discard }
+		;(instance as any).scheduleReconnect()
+		;(instance as any).scheduleReconnect()
+		expect(discard).toHaveBeenCalledTimes(1)
+		expect((instance as any).emberClient).toBeUndefined()
+		expect((instance as any).reconnectAttempts).toBe(1)
+		expect(vi.getTimerCount()).toBe(1)
+	})
+
+	it('backs off using the number of consecutive attempts', () => {
+		const instance = makeInstance()
+		const setup = vi.spyOn(instance as any, 'setupEmberConnection').mockResolvedValue(undefined)
+		;(instance as any).scheduleReconnect()
+		vi.advanceTimersByTime(5000)
+		expect(setup).toHaveBeenCalledTimes(1)
+		;(instance as any).scheduleReconnect()
+		expect(vi.mocked(util.nextReconnectDelay)).toHaveBeenLastCalledWith(2)
+	})
+
+	it('stops the library from retrying on a discarded client', () => {
+		const instance = makeInstance()
+		const s101: any = { _autoReconnect: true, _shouldBeConnected: true, _clearConnectionAttemptTimer: vi.fn() }
+		;(instance as any).emberClient = { removeAllListeners: vi.fn(), discard: vi.fn(), _client: s101 }
+		;(instance as any).scheduleReconnect()
+		expect(s101._autoReconnect).toBe(false)
+		expect(s101._shouldBeConnected).toBe(false)
+		expect(s101._clearConnectionAttemptTimer).toHaveBeenCalled()
+	})
+
+	it('is cancelled by destroy', async () => {
+		const instance = makeInstance()
+		;(instance as any).scheduleReconnect()
+		await instance.destroy()
+		expect(vi.getTimerCount()).toBe(0)
 	})
 })
 
