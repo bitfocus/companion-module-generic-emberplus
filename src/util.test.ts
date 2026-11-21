@@ -17,10 +17,15 @@ import {
 	isDefined,
 	parseBonjourHost,
 	hasConnectionChanged,
+	isValidHostname,
+	isValidPort,
 	recordParameterAction,
 	parseParameterValue,
 	parseFunctionArguments,
 	discoverFunctionsFromTree,
+	nextReconnectDelay,
+	MinReconnectDelay,
+	MaxReconnectDelay,
 } from './util.js'
 import { ActionId } from './actions.js'
 import { EmberPlusState } from './state.js'
@@ -481,6 +486,49 @@ describe('hasConnectionChanged', () => {
 })
 
 // ---------------------------------------------------------------------------
+// isValidHostname / isValidPort
+// ---------------------------------------------------------------------------
+
+describe('isValidHostname', () => {
+	it('accepts a hostname', () => {
+		expect(isValidHostname('ember-provider')).toBe(true)
+	})
+	it('accepts a fully qualified domain name', () => {
+		expect(isValidHostname('ember.provider.example.com')).toBe(true)
+	})
+	it('accepts an IPv4 address', () => {
+		expect(isValidHostname('192.168.0.1')).toBe(true)
+	})
+	it('rejects a hostname containing illegal characters', () => {
+		expect(isValidHostname('bad host!')).toBe(false)
+	})
+	it('rejects a hostname with a port appended', () => {
+		expect(isValidHostname('10.0.0.1:9000')).toBe(false)
+	})
+	it('rejects an empty string', () => {
+		expect(isValidHostname('')).toBe(false)
+	})
+})
+
+describe('isValidPort', () => {
+	it('accepts the lowest port', () => {
+		expect(isValidPort(1)).toBe(true)
+	})
+	it('accepts the highest port', () => {
+		expect(isValidPort(65535)).toBe(true)
+	})
+	it('rejects zero', () => {
+		expect(isValidPort(0)).toBe(false)
+	})
+	it('rejects ports above the valid range', () => {
+		expect(isValidPort(70000)).toBe(false)
+	})
+	it('rejects non integers', () => {
+		expect(isValidPort(9000.5)).toBe(false)
+	})
+})
+
+// ---------------------------------------------------------------------------
 // recordParameterAction
 // ---------------------------------------------------------------------------
 
@@ -725,5 +773,27 @@ describe('discoverFunctionsFromTree', () => {
 		const state = new EmberPlusState()
 		discoverFunctionsFromTree(tree, state)
 		expect(state.functions.size).toBe(0)
+	})
+})
+
+// ---------------------------------------------------------------------------
+// nextReconnectDelay
+// ---------------------------------------------------------------------------
+
+describe('nextReconnectDelay', () => {
+	it('starts at the minimum delay', () => {
+		expect(nextReconnectDelay(0)).toBe(MinReconnectDelay)
+		expect(nextReconnectDelay(1)).toBe(MinReconnectDelay)
+	})
+
+	it('doubles with each consecutive failure', () => {
+		expect(nextReconnectDelay(2)).toBe(MinReconnectDelay * 2)
+		expect(nextReconnectDelay(3)).toBe(MinReconnectDelay * 4)
+		expect(nextReconnectDelay(4)).toBe(MinReconnectDelay * 8)
+	})
+
+	it('is capped at the maximum delay', () => {
+		expect(nextReconnectDelay(5)).toBe(MaxReconnectDelay)
+		expect(nextReconnectDelay(1000)).toBe(MaxReconnectDelay)
 	})
 })

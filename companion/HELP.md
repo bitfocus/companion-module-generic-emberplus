@@ -69,6 +69,13 @@ Ember+ devices may expose executable functions (such as triggering snapshots, fi
 - Clear
 - Set Selected Source
 - Set Selected Target
+- Set Host
+
+## Host
+
+The host and port the module is configured to connect to are exposed as the `host` and `port` variables. They can be changed at runtime with the **Set Host** action, which saves the new values to the module config and reconnects. As the action sets the host directly, it also clears any device selected via Bonjour.
+
+Both fields of the action accept variables, and either may be left empty to keep the currently configured value, so the action can change the host, the port, or both. The action will fail if the host is not a plausible hostname or IP, or if the port is not a number from 1 to 65535. Use the action's **Learn** button to reset both fields to the values the module is currently configured with.
 
 ## Feedbacks
 
