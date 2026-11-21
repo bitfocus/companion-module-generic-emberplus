@@ -1,20 +1,22 @@
 import {
+	createModuleLogger,
 	InstanceBase,
 	InstanceStatus,
-	runEntrypoint,
 	type CompanionVariableValues,
 	type SomeCompanionConfigField,
 } from '@companion-module/base'
-import { GetActionsList } from './actions.js'
-import { type EmberPlusConfig, GetConfigFields, portDefault } from './config.js'
+import { type ActionSchema, GetActionsList } from './actions.js'
+import { connectionVariablesDefault, type EmberPlusConfig, GetConfigFields, portDefault } from './config.js'
 import { GetPresetsList } from './presets.js'
-import { FeedbackId, GetFeedbacksList } from './feedback.js'
+import { type FeedbackSchema, GetFeedbacksList } from './feedback.js'
 import { EmberPlusState } from './state.js'
-import { EmberClient, Model as EmberModel } from 'emberplus-connection' // note - emberplus-conn is in parent repo, not sure if it needs to be defined as dependency
-import { ElementType, ParameterType } from 'emberplus-connection/dist/model/index.js'
-import type { TreeElement, EmberElement } from 'emberplus-connection/dist/model/index.js'
-import type { EmberValue } from 'emberplus-connection/dist/types/index.js'
-import { Logger, LoggerLevel } from './logger.js'
+import {
+	EmberClient,
+	Model as EmberModel,
+	setDebugLogging,
+	type Types as EmberTypes,
+} from '@phillipivan/emberplus-connection'
+import { describe } from './logging.js'
 import { StatusManager } from './status.js'
 import { UpgradeScripts } from './upgrades.js'
 import {
@@ -24,15 +26,24 @@ import {
 	recordParameterAction,
 	parseParameterValue,
 	discoverFunctionsFromTree,
+	isStreamParameter,
 	isValidHostname,
 	isValidPort,
-	nextReconnectDelay,
 } from './util.js'
-import { GetVariablesList } from './variables.js'
+import {
+	GetVariablesList,
+	hasParameterVariables,
+	parameterVariableValue,
+	type ParameterVariables,
+} from './variables.js'
 import PQueue from 'p-queue'
 import { throttle, debounce } from 'es-toolkit'
 
-const FeedbackThrottleRate = 30
+/** How often feedbacks are rechecked and variables set, at most: streams, such as meters, should follow quickly */
+const FeedbackThrottleRate = 10
+
+/** Where the library's debug output goes, with Verbose Logs on */
+const libraryLogger = createModuleLogger('ember plus')
 
 interface updateCompanionBitsOptions {
 	updateActions?: boolean
@@ -41,10 +52,33 @@ interface updateCompanionBitsOptions {
 	updateVariables?: boolean
 }
 
+export type ModuleTypes = {
+	config: EmberPlusConfig
+	secrets: undefined
+	actions: ActionSchema
+	feedbacks: FeedbackSchema
+	// One variable per monitored parameter, so the ids are only known at runtime
+	variables: CompanionVariableValues
+}
+
+export { UpgradeScripts }
+
+/** Whether a tree element is a stream parameter, numbered or qualified, which the library can subscribe to */
+function isStreamNode(
+	node: EmberModel.TreeElement<EmberModel.EmberElement> | undefined,
+): node is EmberTypes.ElementOf<EmberModel.Parameter> {
+	return (
+		node !== undefined &&
+		node.contents.type === EmberModel.ElementType.Parameter &&
+		isStreamParameter(node.contents) &&
+		(EmberModel.isNumbered(node) || EmberModel.isQualified(node))
+	)
+}
+
 /**
  * Companion instance class for generic EmBER+ Devices
  */
-export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
+export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 	private emberClient!: EmberClient
 	private config!: EmberPlusConfig
 	private state: EmberPlusState = new EmberPlusState()
@@ -53,15 +87,21 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	private variableValueUpdates: CompanionVariableValues = {}
 	private lastVariableDefinitions: string | undefined
 	private isRecordingActions: boolean = false
-	private reconnectTimer: NodeJS.Timeout | undefined
-	private reconnectAttempts: number = 0
+	/** Whether the current client has connected and been set up, so a later 'connected' is the library reconnecting */
+	private clientSetUp: boolean = false
+	/** Whether the current client has loaded the top level of the tree, for the functions it lists */
+	private treeLoaded: boolean = false
+	/** Paths with a callback registered on the current client. The library keeps them across reconnects */
+	private pathCallbacks: Set<string> = new Set()
+	/**
+	 * The stream parameters subscribed to on the current client, with the node each was subscribed with. The library
+	 * subscribes again after a reconnect
+	 */
+	private streamSubscriptions: Map<string, EmberTypes.ElementOf<EmberModel.Parameter>> = new Map()
+	/** Each parameter feedback's latest check, so that a check overtaken by a release or a later check is dropped */
+	private feedbackGenerations: Map<string, number> = new Map()
+	private feedbackGenerationCounter = 0
 	private statusManager = new StatusManager(this, { status: InstanceStatus.Connecting, message: 'Initialising' }, 2000)
-	public logger: Logger = new Logger(this)
-
-	// Override base types to make types stricter
-	public checkFeedbacks(...feedbackTypes: FeedbackId[]): void {
-		super.checkFeedbacks(...feedbackTypes)
-	}
 
 	/**
 	 * Main initialization function called once the module
@@ -69,12 +109,10 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	 */
 	public async init(config: EmberPlusConfig): Promise<void> {
 		this.applyConfig(config)
-		this.setupEmberConnection().catch((e) => {
-			if (e instanceof Error) this.statusManager.updateStatus(InstanceStatus.ConnectionFailure, e.message)
-			else this.statusManager.updateStatus(InstanceStatus.UnknownError, `Failed to initalize ember client ${e}`)
-			// Finalise setup so actions and feedbacks are defined if connection fails.
-			this.finalizeSetup().catch((e) => this.logger.error('Error during finalize setup', e))
-		})
+		// The variables of the configured paths exist from the start, connected or not
+		this.setupMatrices()
+		this.setupMonitoredParams()
+		this.connect()
 	}
 
 	/**
@@ -82,18 +120,15 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	 */
 	public async configUpdated(config: EmberPlusConfig): Promise<void> {
 		const oldConfig = structuredClone(this.config)
-		this.logger.debug('Old Config:\n', oldConfig)
+		this.log('debug', `Old Config: ${describe(oldConfig)}`)
 
 		this.applyConfig(config)
 
 		if (hasConnectionChanged(oldConfig, config)) {
 			this.resetConnection()
-			this.setupEmberConnection().catch((e) => {
-				if (e instanceof Error) this.statusManager.updateStatus(InstanceStatus.ConnectionFailure, e.message)
-				else this.statusManager.updateStatus(InstanceStatus.UnknownError, `Failed to initalize ember client ${e}`)
-			})
+			this.connect()
 		} else {
-			this.finalizeSetup().catch((e) => this.logger.error('Error during finalize setup', e))
+			this.finalizeSetup().catch((e) => this.log('error', `Error during finalize setup: ${describe(e)}`))
 		}
 	}
 
@@ -127,9 +162,9 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	 * Clean up the instance before it is destroyed.
 	 */
 	public async destroy(): Promise<void> {
-		this.cancelReconnect()
 		this.throttledFeedbackChecksVariableUpdates.cancel()
 		this.debouncedUpdateActionFeedbackDefs.cancel()
+		this.debouncedStreamSync.cancel()
 		this.emberQueue.clear()
 		this.destroyEmberClient()
 		this.statusManager.destroy()
@@ -137,24 +172,33 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 
 	private applyConfig(config: EmberPlusConfig): void {
 		this.config = config
-		this.logger = new Logger(this, config.logging ?? LoggerLevel.Information)
+		setDebugLogging(Boolean(config.verbose), (message) => libraryLogger.debug(message))
 		const [host, port] = parseBonjourHost(config)
 		this.config.host = host
 		this.config.port = port
-		this.logger.debug('New Config:\n', this.config)
+		this.log('debug', `New Config: ${describe(this.config)}`)
 	}
 
+	/**
+	 * Drop the client and what was learnt from its provider: on a host or port change, where the next provider's tree
+	 * may be another. The monitored paths stay, so their variables do (see EmberPlusState.clear).
+	 */
 	private resetConnection(): void {
-		this.reconnectAttempts = 0
 		this.throttledFeedbackChecksVariableUpdates.cancel()
 		this.emberQueue.clear()
 		this.feedbacksToCheck.clear()
 		this.debouncedUpdateActionFeedbackDefs.cancel()
+		this.debouncedStreamSync.cancel()
 		this.destroyEmberClient()
 		this.variableValueUpdates = {}
 		this.state.clear()
 	}
 
+	/**
+	 * Set up on a client's first connection, or after a config change: rebuild the matrices and monitored paths from
+	 * the config, and register every path in use with the provider, the configured ones, the actions' (through their
+	 * subscribe) and the feedbacks' (through their callback).
+	 */
 	private async finalizeSetup(): Promise<void> {
 		this.state.clearCache()
 		this.setupMatrices()
@@ -170,7 +214,10 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 		// Re-run subscribe/callbacks so paths registered at runtime are subscribed on the new client.
 		// Feedbacks re-register from their callback; actions only register from subscribe, which Companion won't call again on its own.
 		this.subscribeActions()
-		this.checkFeedbacks()
+		this.checkAllFeedbacks()
+		// Once the actions and feedbacks have registered again, end the streams nothing uses any more: a stream variable
+		// turned off, or a configured path removed
+		this.debouncedStreamSync()
 	}
 
 	/**
@@ -190,7 +237,10 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 		if (options.updateFeedbacks)
 			this.setFeedbackDefinitions(GetFeedbacksList(this, this.client, this.config, this.state))
 		if (options.updateVariables) this.updateVariableDefinitions()
-		if (options.updatePresets) this.setPresetDefinitions(GetPresetsList())
+		if (options.updatePresets) {
+			const { structure, presets } = GetPresetsList()
+			this.setPresetDefinitions(structure, presets)
+		}
 	}
 
 	/**
@@ -198,7 +248,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	 * Every feedback re-registering its path after a reconnect lands here, almost always with an unchanged set.
 	 */
 	private updateVariableDefinitions(): void {
-		const variables = GetVariablesList(this.state)
+		const variables = GetVariablesList(this.state, this.parameterVariables)
 		const serialised = JSON.stringify(variables)
 		if (serialised === this.lastVariableDefinitions) return
 		this.lastVariableDefinitions = serialised
@@ -209,181 +259,282 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 		this.updateCompanionBits()
 	}, 500)
 
+	/**
+	 * Which parameters get variables (Parameter - Values and Parameter - Streams in Connection Variables). A config
+	 * without the option (none should reach here: v300 adds it) gets the default
+	 */
+	private get parameterVariables(): ParameterVariables {
+		const chosen = this.config.variables ?? connectionVariablesDefault
+		return { values: chosen.includes('parameterValues'), streams: chosen.includes('parameterStreams') }
+	}
+
+	/**
+	 * Whether a stream parameter's values are wanted: while a feedback reads it, or while it has a variable (Parameter -
+	 * Streams, for a monitored path). Actions don't keep a stream: they read the value when they run
+	 */
+	private streamInUse(path: string): boolean {
+		return (
+			this.state.getFeedbacksByPath(path).size > 0 ||
+			(this.parameterVariables.streams && this.state.monitoredParameters.has(path))
+		)
+	}
+
+	/**
+	 * Subscribe to a stream parameter's values while they are in use, and unsubscribe once they aren't: a provider sends
+	 * stream values, many times a second, only to the consumers that subscribed. The values reach the path's callback.
+	 * Anything else at the path needs nothing.
+	 */
+	public updateStreamSubscription(path: string): void {
+		const client = this.emberClient
+		if (!client) return
+		const subscribed = this.streamSubscriptions.get(path)
+		const node = this.state.emberElement.get(path)
+		const stream = isStreamNode(node) ? node : undefined
+
+		if (stream && !subscribed && this.streamInUse(path)) {
+			this.streamSubscriptions.set(path, stream)
+			this.log('debug', `Subscribing to the stream of ${path}`)
+			// A Subscribe made while the connection is down isn't sent, and the library won't send it after reconnecting:
+			// so it isn't held as subscribed either, and registerAgain subscribes again
+			const notSent = (reason: string) => {
+				if (this.streamSubscriptions.get(path) === stream) this.streamSubscriptions.delete(path)
+				this.log('warn', `Failed to subscribe to the stream of ${path}: ${reason}`)
+			}
+			client.subscribe(stream).then(
+				(request) => {
+					if (!request.sentOk) notSent('not sent')
+				},
+				(e) => notSent(describe(e)),
+			)
+		} else if (subscribed && !this.streamInUse(path)) {
+			this.unsubscribeStream(client, path, subscribed)
+		}
+	}
+
+	/**
+	 * End a stream. The library holds one subscription for an element, whichever spelling of its path (1.2.3,
+	 * device.meters.meter) subscribed: while another spelling is still subscribed, only this one's entry goes. Otherwise
+	 * unsubscribing drops every callback the library holds for the element, and the GetDirectory it would send again
+	 * after a reconnect: so forget every spelling of the element, and each one's next use registers it afresh.
+	 */
+	private unsubscribeStream(
+		client: EmberClient,
+		path: string,
+		subscribed: EmberTypes.ElementOf<EmberModel.Parameter>,
+	): void {
+		this.streamSubscriptions.delete(path)
+		const element = client.getInternalNodePath(subscribed)
+		const sameElement = (node: EmberModel.TreeElement<EmberModel.EmberElement>) =>
+			node === subscribed || (element !== undefined && client.getInternalNodePath(node) === element)
+
+		for (const [other, node] of this.streamSubscriptions) {
+			if (sameElement(node)) {
+				this.log('debug', `The stream of ${path} goes on for ${other}, the same element`)
+				return
+			}
+		}
+
+		for (const [other, node] of this.state.emberElement) {
+			if (other !== path && !sameElement(node)) continue
+			this.pathCallbacks.delete(other)
+			this.state.emberElement.delete(other)
+		}
+		this.pathCallbacks.delete(path)
+		this.state.emberElement.delete(path)
+		this.log('debug', `Unsubscribing from the stream of ${path}`)
+		client
+			.unsubscribe(subscribed)
+			.catch((e) => this.log('warn', `Failed to unsubscribe from the stream of ${path}: ${describe(e)}`))
+	}
+
+	/**
+	 * Bring the streams in line with what uses them, once a config change or a reconnect has settled: end those no longer
+	 * in use, and subscribe to those in use but not subscribed (a Subscribe that wasn't sent)
+	 */
+	private debouncedStreamSync = debounce(() => {
+		const paths = new Set([
+			...this.streamSubscriptions.keys(),
+			...this.state.monitoredParameters,
+			...this.state.feedbackPaths(),
+		])
+		for (const path of paths) this.updateStreamSubscription(path)
+	}, 1000)
+
+	/**
+	 * A parameter feedback reads a path: register it, recheck the feedback when it changes, and keep its stream while
+	 * the feedback reads it. A feedback edited onto another path leaves the one it read. Returns whether the path holds
+	 * an element.
+	 */
+	public async useParameterForFeedback(feedbackId: string, path: string, signal?: AbortSignal): Promise<boolean> {
+		// Registering waits in the queue. Meanwhile the feedback may be released, or checked again on another path: then
+		// this check's outcome is stale, and applying it would put back a feedback Companion has removed, its stream with it
+		const generation = ++this.feedbackGenerationCounter
+		this.feedbackGenerations.set(feedbackId, generation)
+		const found = (await this.registerNewParameter(path, signal)) !== undefined
+		signal?.throwIfAborted()
+		if (this.feedbackGenerations.get(feedbackId) !== generation) return found
+		const previous = this.state.feedbackPath(feedbackId)
+		if (found) this.state.addIdToPathMap(feedbackId, path)
+		else this.state.removeFeedbackId(feedbackId)
+		if (previous !== undefined && previous !== path) this.updateStreamSubscription(previous)
+		if (found) this.updateStreamSubscription(path)
+		return found
+	}
+
+	/** A parameter feedback is removed or disabled: stop rechecking it, and end its stream if nothing else reads it */
+	public releaseParameterFeedback(feedbackId: string): void {
+		this.feedbackGenerations.delete(feedbackId)
+		const previous = this.state.feedbackPath(feedbackId)
+		this.state.removeFeedbackId(feedbackId)
+		if (previous !== undefined) this.updateStreamSubscription(previous)
+	}
+
 	private get client(): EmberClient {
 		return this.emberClient
 	}
 
 	/**
-	 * Tear down the current client and retry after an exponentially increasing delay.
-	 * Only one retry is ever pending; the backoff resets once a connection succeeds.
+	 * Whether a client is the one in use. Work that started on a client a host change has since replaced must not
+	 * cache what it found: an element from the old provider, cached, would be returned for the path in place of
+	 * registering it with the new one.
 	 */
-	private scheduleReconnect(): void {
-		this.destroyEmberClient()
-		if (this.reconnectTimer !== undefined) return
-
-		this.reconnectAttempts++
-		const delay = nextReconnectDelay(this.reconnectAttempts)
-		this.logger.info(`Reconnecting in ${delay / 1000}s (attempt ${this.reconnectAttempts})`)
-		this.reconnectTimer = setTimeout(() => {
-			this.reconnectTimer = undefined
-			this.setupEmberConnection().catch(() => {})
-		}, delay)
-	}
-
-	private cancelReconnect(): void {
-		if (this.reconnectTimer !== undefined) {
-			clearTimeout(this.reconnectTimer)
-			this.reconnectTimer = undefined
-		}
-	}
-
-	/**
-	 * emberplus-connection's S101Client retries every 5s on its own, and discard() does not stop it
-	 * if the socket never connected, leaving orphaned clients retrying forever. Reconnection is
-	 * handled by scheduleReconnect instead, so a discarded client must never connect again.
-	 */
-	private static stopLibraryReconnect(client: EmberClient): void {
-		const s101 = (client as any)._client
-		if (!s101) return
-		s101._autoReconnect = false
-		s101._shouldBeConnected = false
-		s101.connect = async () => Promise.resolve()
-		s101._clearConnectionAttemptTimer?.()
-		s101.socket?.destroy()
+	public isCurrentClient(client: EmberClient): boolean {
+		return client === this.emberClient
 	}
 
 	private destroyEmberClient(): void {
 		if (this.emberClient !== undefined) {
 			this.emberClient.removeAllListeners()
-			EmberPlusInstance.stopLibraryReconnect(this.emberClient)
+			// discard() stops the library's reconnect attempts, also for a client that never connected
 			this.emberClient.discard()
+			this.clientSetUp = false
+			this.treeLoaded = false
+			this.pathCallbacks.clear()
+			this.streamSubscriptions.clear()
 			// A host change destroys the client twice, via resetConnection and setupEmberConnection
 			this.emberClient = undefined as unknown as EmberClient
 		}
 	}
 
-	private async setupEmberConnection(): Promise<void> {
-		this.cancelReconnect()
+	/** Connect without waiting: the library goes on trying, and the events report how it goes */
+	private connect(): void {
+		this.setupEmberConnection().catch((e) => {
+			this.log('error', `Failed to set up the connection: ${describe(e)}`)
+			this.statusManager.updateStatus(InstanceStatus.UnknownError, describe(e))
+		})
+	}
 
+	/**
+	 * Build the client for the configured host and connect it. The library retries a connection that fails or drops,
+	 * backing off from 5 s to a minute, and once reconnected sends its GetDirectories and Subscribes again, keeping its
+	 * tree and callbacks: the module only builds a new client when the host or port changes.
+	 */
+	private async setupEmberConnection(): Promise<void> {
 		this.destroyEmberClient()
+
+		// The action callbacks hold the client they were defined with: define them with this one, so that after a host
+		// change none uses the client just discarded, connected or not
+		// The host and port variables say where the module is connecting, reachable or not
+		const define = () => {
+			this.updateCompanionBits({
+				updateActions: true,
+				updateFeedbacks: true,
+				updatePresets: true,
+				updateVariables: true,
+			})
+			this.setVariableValues({ host: this.config.host ?? '', port: this.config.port ?? portDefault })
+		}
 
 		if (!this.config.host) {
 			this.statusManager.updateStatus(InstanceStatus.BadConfig, 'No Host')
-			throw new Error('No host configured')
+			define()
+			return
 		}
 
-		this.logger.info(`Connecting to ${this.config.host}:${this.config.port}`)
+		this.log('info', `Connecting to ${this.config.host}:${this.config.port}`)
 		this.statusManager.updateStatus(InstanceStatus.Connecting)
 
-		return new Promise<void>((resolve, reject) => {
-			const settledState = { settled: false }
+		const client = new EmberClient(this.config.host, this.config.port)
+		this.emberClient = client
+		define()
 
-			const client = new EmberClient(this.config.host!, this.config.port)
-			this.emberClient = client
-			// Reconnection is handled by scheduleReconnect
-			if ((client as any)._client) (client as any)._client._autoReconnect = false
+		client.on('error', (e) => this.handleConnectionError(client, e))
+		client.on('connected', () => this.handleConnected(client))
+		client.on('disconnected', () => this.handleDisconnected(client))
 
-			this.setupEmberClientHandlers(resolve, reject, settledState)
-
-			// A connection timeout resolves with an Error rather than rejecting
-			client
-				.connect()
-				.then((result: unknown) => {
-					if (result instanceof Error && client === this.emberClient)
-						this.handleConnectionFailure(result, reject, settledState)
-				})
-				.catch((e) => {
-					if (client === this.emberClient) this.handleConnectionFailure(e, reject, settledState)
-				})
-		})
+		// Settles once connected, or with the Error of a failed attempt; the library goes on retrying either way, and
+		// the error event has logged it
+		const result = await client.connect()
+		if (result instanceof Error && this.isCurrentClient(client) && !client.connected) {
+			this.statusManager.updateStatus(InstanceStatus.ConnectionFailure, result.message)
+		}
 	}
 
-	private setupEmberClientHandlers(
-		resolve: () => void,
-		reject: (reason?: any) => void,
-		settledState: { settled: boolean },
-	): void {
-		this.emberClient.on('error', (e) => {
-			this.handleConnectionError(e, reject, settledState)
-		})
-
-		this.emberClient.on('connected', () => {
-			this.handleConnected(resolve, reject, settledState)
-		})
-
-		this.emberClient.on('disconnected', () => {
-			this.handleDisconnected()
-		})
+	private handleConnectionError(client: EmberClient, error: Error): void {
+		if (!this.isCurrentClient(client)) return
+		this.log('error', `Connection Error: ${describe(error)}`)
+		// The library also reports errors on a working connection, such as a message it couldn't decode
+		if (!client.connected) this.statusManager.updateStatus(InstanceStatus.ConnectionFailure, error.message)
 	}
 
-	private handleConnectionError(error: any, reject: (reason?: any) => void, settledState: { settled: boolean }): void {
-		this.logger.error('Connection Error', error)
-		this.statusManager.updateStatus(InstanceStatus.ConnectionFailure)
-		if (!this.emberClient?.connected) this.scheduleReconnect()
+	private handleConnected(client: EmberClient): void {
+		if (!this.isCurrentClient(client)) return
+		this.log('info', `Connected to ${this.config.host}:${this.config.port}`)
 
-		if (settledState.settled) return
-		settledState.settled = true
-		reject(error)
-	}
-
-	private handleConnected(
-		resolve: () => void,
-		reject: (reason?: any) => void,
-		settledState: { settled: boolean },
-	): void {
-		this.cancelReconnect()
-		this.logger.info(`Connected to ${this.config.host}:${this.config.port}`)
-		const client = this.emberClient
+		if (this.clientSetUp) {
+			this.statusManager.updateStatus(InstanceStatus.Ok)
+			this.registerAgain(client)
+			return
+		}
+		this.clientSetUp = true
 
 		void (async () => {
-			try {
-				const request = await client.getDirectory(client.tree)
-				await request.response
-				if (client !== this.emberClient) return
-				this.reconnectAttempts = 0
-				discoverFunctionsFromTree(this.emberClient.tree, this.state)
-				this.statusManager.updateStatus(InstanceStatus.Ok)
-				this.finalizeSetup().catch((e) => {
-					this.logger.error('Error during finalize setup', e)
-				})
-				if (!settledState.settled) {
-					settledState.settled = true
-					resolve()
-				}
-			} catch (e) {
-				if (e instanceof Error) {
-					this.logger.error('Failed to discover root or subscribe to path:', e)
-					this.statusManager.updateStatus(InstanceStatus.UnknownWarning, e.toString())
-				}
-
-				if (client === this.emberClient) this.scheduleReconnect()
-
-				if (!settledState.settled) {
-					settledState.settled = true
-					reject(new Error(`Failed to discover root or subscribe to path: ${e}`))
-				}
-			}
+			await this.loadTree(client)
+			if (!this.isCurrentClient(client)) return
+			this.finalizeSetup().catch((e) => this.log('error', `Error during finalize setup: ${describe(e)}`))
 		})()
 	}
 
-	private handleDisconnected(): void {
-		this.statusManager.updateStatus(InstanceStatus.Connecting, 'Disconnected')
-		this.logger.warn(`Disconnected from ${this.config.host}:${this.config.port}`)
-		this.scheduleReconnect()
+	/**
+	 * Load the top level of the tree, for the functions it lists. Registering paths doesn't need it: the library loads
+	 * the top level itself for a path it doesn't have
+	 */
+	private async loadTree(client: EmberClient): Promise<void> {
+		try {
+			const request = await client.getDirectory(client.tree)
+			await request.response
+			if (!this.isCurrentClient(client)) return
+			this.treeLoaded = true
+			discoverFunctionsFromTree(client.tree, this.state)
+			this.statusManager.updateStatus(InstanceStatus.Ok)
+		} catch (e) {
+			if (!this.isCurrentClient(client)) return
+			this.log('warn', `Failed to load the top level of the tree: ${describe(e)}`)
+			this.statusManager.updateStatus(InstanceStatus.UnknownWarning, describe(e))
+		}
 	}
 
-	private handleConnectionFailure(
-		error: any,
-		reject: (reason?: any) => void,
-		settledState: { settled: boolean },
-	): void {
-		this.statusManager.updateStatus(InstanceStatus.ConnectionFailure)
-		this.logger.error('Connection Failure:', error)
-		this.scheduleReconnect()
+	/**
+	 * The library reconnected this client, keeping its tree and callbacks, and has sent again the GetDirectories and
+	 * Subscribes that reached the provider. What didn't (a lookup that failed, or a Subscribe made while the connection
+	 * was down) it knows nothing of, so register every path in use again: one already registered costs nothing more,
+	 * having its callback (pathCallbacks), and gets no second one. Then subscribe again to the streams in use.
+	 */
+	private registerAgain(client: EmberClient): void {
+		void (async () => {
+			if (!this.treeLoaded) await this.loadTree(client)
+			if (!this.isCurrentClient(client)) return
+			await this.registerParameters()
+			this.subscribeActions()
+			this.checkAllFeedbacks()
+			this.debouncedStreamSync()
+		})().catch((e) => this.log('error', `Error registering again after reconnecting: ${describe(e)}`))
+	}
 
-		if (settledState.settled) return
-		settledState.settled = true
-		reject(new Error(`Connection Failure: ${error}`))
+	private handleDisconnected(client: EmberClient): void {
+		if (!this.isCurrentClient(client)) return
+		this.statusManager.updateStatus(InstanceStatus.Connecting, 'Disconnected')
+		this.log('warn', `Disconnected from ${this.config.host}:${this.config.port}`)
 	}
 
 	private setupMatrices(): void {
@@ -417,94 +568,127 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	}
 
 	private async registerParameters() {
-		this.logger.debug('Start parameter registration')
+		this.log('debug', 'Start parameter registration')
+		// A reconnect or config change clears the queue, rejecting the registration awaited below. Stop there, rather
+		// than go on to register the remaining paths against the next client, or none
+		const client = this.emberClient
 		for (const path of this.state.monitoredParameters ?? []) {
+			if (!this.isCurrentClient(client)) return
 			if (path === '') continue
-			this.logger.debug('Attempt to subscribe to', path)
+			this.log('debug', `Attempt to subscribe to ${path}`)
 			await this.emberQueue
 				.add(async () => {
 					try {
-						const initial_node = await this.emberClient.getElementByPath(path, (node) => {
-							this.handleChangedValue(path, node).catch((e) => this.logger.error('Error handling parameter', e))
-						})
-						if (initial_node) {
-							this.logger.debug('Registered for path', path)
-							if (initial_node.contents.type === ElementType.Function) {
+						const initial_node = await this.getElementByPath(path)
+						if (initial_node && this.isCurrentClient(client)) {
+							this.log('debug', `Registered for path ${path}`)
+							if (initial_node.contents.type === EmberModel.ElementType.Function) {
 								this.state.updateFunctionMap(path, initial_node)
-							} else if (initial_node.contents.type === ElementType.Parameter) {
+							} else if (initial_node.contents.type === EmberModel.ElementType.Parameter) {
 								this.state.updateParameterMap(path, initial_node)
 								await this.handleChangedValue(path, initial_node)
 							}
 						}
-					} catch {
-						this.logger.error('Failed to subscribe to path', path)
+					} catch (e) {
+						if (this.isCurrentClient(client)) this.log('error', `Failed to subscribe to path ${path}: ${describe(e)}`)
 					}
 				})
 				.catch((e) => {
-					this.logger.debug(`Failed to register parameter:`, e)
+					this.log('debug', `Failed to register parameter: ${describe(e)}`)
 				})
 		}
 		this.debouncedUpdateActionFeedbackDefs()
 	}
 
+	/**
+	 * Look up a path, registering a callback for its changes the first time on this client. The library calls every
+	 * callback registered for an element, and keeps them across reconnects, so registering on every lookup would run
+	 * handleChangedValue once more per change after each config save or cache clear. Each spelling of a path (1.2.3,
+	 * device.channel.gain) has its own callback, so each spelling's state, variables and feedbacks follow the element.
+	 */
+	private async getElementByPath(path: string): Promise<EmberModel.TreeElement<EmberModel.EmberElement> | undefined> {
+		const client = this.emberClient
+		if (this.pathCallbacks.has(path)) return client.getElementByPath(path)
+
+		const node = await client.getElementByPath(path, (updatedNode) => {
+			if (!this.isCurrentClient(client)) return
+			this.handleChangedValue(path, updatedNode).catch((e) =>
+				this.log('error', `Error handling parameter ${path}: ${describe(e)}`),
+			)
+		})
+		if (node && this.isCurrentClient(client)) this.pathCallbacks.add(path)
+		return node
+	}
+
+	/**
+	 * Register a path an action or feedback uses: look it up, follow its changes, and for a parameter add it to the
+	 * monitored paths, which get variables when the Parameter - Values connection variables are on.
+	 */
 	public async registerNewParameter(
 		path: string,
-		createVar: boolean = true,
-	): Promise<TreeElement<EmberElement> | undefined> {
+		signal?: AbortSignal,
+	): Promise<EmberModel.TreeElement<EmberModel.EmberElement> | undefined> {
 		if (path === '') return undefined
 
-		// Return cached element if already registered
-		if (this.state.emberElement.has(path) && (this.state.monitoredParameters?.has(path) || !createVar)) {
-			return this.state.emberElement.get(path)
+		// Return cached element if already registered. A parameter is registered once it is monitored; anything else
+		// (a function, or a matrix an action cached) needs nothing more
+		const cached = this.state.emberElement.get(path)
+		if (
+			cached &&
+			(cached.contents.type !== EmberModel.ElementType.Parameter || this.state.monitoredParameters.has(path))
+		) {
+			return cached
 		}
 
+		const client = this.emberClient
 		return this.emberQueue
-			.add(async () => {
-				try {
-					const node = await this.emberClient.getElementByPath(path, (updatedNode) => {
-						this.handleChangedValue(path, updatedNode).catch((e) => this.logger.error('Error handling parameter', e))
-					})
+			.add(
+				async () => {
+					try {
+						const node = await this.getElementByPath(path)
 
-					if (!node) {
-						return node
-					}
+						// Found on a client a host change has replaced: caching it would keep the path from being registered
+						// with the new provider
+						if (!node || !this.isCurrentClient(client)) {
+							return undefined
+						}
 
-					if (node.contents.type === ElementType.Function) {
-						this.logger.debug('Registered function for path', path)
-						this.state.updateFunctionMap(path, node)
-						this.debouncedUpdateActionFeedbackDefs()
-						return node
-					}
+						if (node.contents.type === EmberModel.ElementType.Function) {
+							this.log('debug', `Registered function for path ${path}`)
+							this.state.updateFunctionMap(path, node)
+							this.debouncedUpdateActionFeedbackDefs()
+							return node
+						}
 
-					if (node.contents.type !== ElementType.Parameter) {
-						return node
-					}
+						if (node.contents.type !== EmberModel.ElementType.Parameter) {
+							return node
+						}
 
-					this.logger.debug('Registered for path', path)
-					this.logger.console(path, ':', node.contents)
+						this.log('debug', `Registered for path ${path}`)
+						if (this.config.verbose) this.log('debug', `${path}: ${describe(node.contents)}`)
 
-					if (createVar) {
 						this.state.monitoredParameters.add(path)
+
+						this.state.updateParameterMap(path, node)
+						this.updateCompanionBits({
+							updateVariables: true,
+							updateActions: false,
+							updateFeedbacks: false,
+							updatePresets: false,
+						})
+						this.debouncedUpdateActionFeedbackDefs()
+						await this.handleChangedValue(path, node)
+
+						return node
+					} catch (e) {
+						if (this.isCurrentClient(client)) this.log('error', `Failed to subscribe to path ${path}: ${describe(e)}`)
+						return undefined
 					}
-
-					this.state.updateParameterMap(path, node)
-					this.updateCompanionBits({
-						updateVariables: true,
-						updateActions: false,
-						updateFeedbacks: false,
-						updatePresets: false,
-					})
-					this.debouncedUpdateActionFeedbackDefs()
-					await this.handleChangedValue(path, node)
-
-					return node
-				} catch (e) {
-					this.logger.error('Failed to subscribe to path', path, String(e))
-					return undefined
-				}
-			})
+				},
+				{ signal },
+			)
 			.catch((e) => {
-				this.logger.debug('Failed to register parameter:', e)
+				this.log('debug', `Failed to register parameter: ${describe(e)}`)
 				return undefined
 			})
 	}
@@ -530,43 +714,43 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 		{ edges: ['leading', 'trailing'] },
 	)
 
-	public async handleChangedValue(path: string, node: TreeElement<EmberElement>): Promise<void> {
-		if (node.contents.type !== ElementType.Parameter) return
+	public async handleChangedValue(path: string, node: EmberModel.TreeElement<EmberModel.EmberElement>): Promise<void> {
+		if (node.contents.type !== EmberModel.ElementType.Parameter) return
 
-		this.logger.debug('Got parameter value for', path, ':', node.contents.value ?? '')
+		// Every value of every parameter, stream values many times a second: only with Verbose Logs
+		if (this.config.verbose)
+			this.log('debug', `Got parameter value for ${path}: ${describe(node.contents.value ?? '')}`)
 		this.state.updateParameterMap(path, node)
+		const parameter = this.state.parameters.get(path) ?? node.contents
 
-		const paramType = node.contents.parameterType
-		const { actionType, value } = parseParameterValue(path, node.contents, this.state)
+		// A stream identifier may come only with a later report
+		this.updateStreamSubscription(path)
+		this.updateFeedbacksAndVariables(path, parameter)
 
-		if (actionType === undefined) return
-
-		this.updateFeedbacksAndVariables(path, paramType, value, node.contents.value)
-
-		if (this.isRecordingActions) {
+		// A meter's values aren't actions to record
+		if (!this.isRecordingActions || isStreamParameter(parameter)) return
+		const { actionType, value } = parseParameterValue(node.contents)
+		// A null value can't be set, and a parameter of another type has no action
+		if (actionType !== undefined && value !== null) {
 			recordParameterAction(path, actionType, value, this, this.state)
 		}
 	}
 
-	private updateFeedbacksAndVariables(
-		path: string,
-		paramType: EmberModel.ParameterType,
-		value: boolean | number | string,
-		rawValue: EmberValue | undefined,
-	): void {
+	/**
+	 * Recheck the feedbacks reading a parameter, and set its variables if it has them, for any type of parameter: the
+	 * Parameter Property feedback reads octet strings and the rest too
+	 */
+	private updateFeedbacksAndVariables(path: string, parameter: EmberModel.Parameter): void {
 		this.state.getFeedbacksByPath(path).forEach((fbId) => this.feedbacksToCheck.add(fbId))
 
-		const varId = sanitiseVariableId(path)
-		this.variableValueUpdates[varId] = value
-
-		if (paramType === ParameterType.Integer && !this.config.factor) {
-			this.variableValueUpdates[varId] = Number(rawValue)
-		} else if (paramType === ParameterType.Enum) {
-			this.variableValueUpdates[`${varId}_ENUM`] = this.state.getCurrentEnumValue(path)
+		if (hasParameterVariables(parameter, this.parameterVariables)) {
+			const varId = sanitiseVariableId(path)
+			this.variableValueUpdates[varId] = parameterVariableValue(parameter, Boolean(this.config.factor))
+			if (parameter.parameterType === EmberModel.ParameterType.Enum) {
+				this.variableValueUpdates[`${varId}_ENUM`] = this.state.getCurrentEnumValue(path)
+			}
 		}
 
 		this.throttledFeedbackChecksVariableUpdates()
 	}
 }
-
-runEntrypoint(EmberPlusInstance, UpgradeScripts)

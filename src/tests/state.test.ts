@@ -1,17 +1,8 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { EmberPlusState } from './state.js'
-import { ElementType, ParameterType } from 'emberplus-connection/dist/model/index.js'
+import { describe, it, expect, beforeEach } from 'vitest'
+import { EmberPlusState } from '../state.js'
+import { Model as EmberModel } from '@phillipivan/emberplus-connection'
 
-vi.mock('emberplus-connection/dist/model', () => ({
-	ElementType: {
-		Parameter: 'parameter',
-		Node: 'node',
-		Function: 'function',
-	},
-	ParameterType: {
-		Real: 'real',
-	},
-}))
+const { ElementType, ParameterType } = EmberModel
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -193,6 +184,17 @@ describe('updateParameterMap', () => {
 		expect(state.parameters.get('0.1')?.value).toBe(10)
 	})
 
+	// A merge whose value doesn't fit the type it ends with is no parameter of any type: the report replaces it
+	it('takes a report of another type whole when merging would leave a value of the old type', () => {
+		state.updateParameterMap('0.1', {
+			contents: new EmberModel.ParameterImpl(ParameterType.String, 'label', undefined, 'abc'),
+		})
+		// Only what the report holds, as a partial report has it
+		const report = { type: ElementType.Parameter, parameterType: ParameterType.Integer }
+		state.updateParameterMap('0.1', { contents: report } as any)
+		expect(state.parameters.get('0.1')).toBe(report)
+	})
+
 	it('ignores nodes that are not Parameters', () => {
 		const node = { contents: { type: ElementType.Node } } as any
 		state.updateParameterMap('0.1', node)
@@ -239,13 +241,40 @@ describe('getCurrentEnumValue', () => {
 	it('returns empty string for unknown path', () => {
 		expect(state.getCurrentEnumValue('9.9.9')).toBe('')
 	})
+
+	it('names the current entry from an enumMap', () => {
+		state.updateParameterMap(
+			'0.1',
+			makeNode({
+				enumeration: 'Off\nOn',
+				value: 20,
+				enumMap: new Map([
+					['Mute', 10],
+					['Live', 20],
+				]),
+			}),
+		)
+		expect(state.getCurrentEnumValue('0.1')).toBe('Live')
+	})
+
+	// As the device names it, and as before 3.0: the library's enumEntries drops a hidden entry's "~"
+	it('names a hidden entry with its ~', () => {
+		state.updateParameterMap('0.1', makeNode({ enumeration: 'Off\n~Service', value: 1 }))
+		expect(state.getCurrentEnumValue('0.1')).toBe('~Service')
+	})
+
+	// Glow 2.50: a null value is none at present. Read as index 0, it gave the first entry
+	it('returns empty string when value is null', () => {
+		state.updateParameterMap('0.1', makeNode({ enumeration: 'Off\nOn', value: null }))
+		expect(state.getCurrentEnumValue('0.1')).toBe('')
+	})
 })
 
 // ---------------------------------------------------------------------------
 // getEnumIndex
 // ---------------------------------------------------------------------------
 
-describe('getEnumIndex', () => {
+describe('getEnumValue', () => {
 	let state: EmberPlusState
 
 	beforeEach(() => {
@@ -254,24 +283,52 @@ describe('getEnumIndex', () => {
 	})
 
 	it('returns the correct index for a known enum string', () => {
-		expect(state.getEnumIndex('0.1', 'On')).toBe(1)
+		expect(state.getEnumValue('0.1', 'On')).toBe(1)
 	})
 
 	it('returns 0 for the first enum entry', () => {
-		expect(state.getEnumIndex('0.1', 'Off')).toBe(0)
+		expect(state.getEnumValue('0.1', 'Off')).toBe(0)
 	})
 
 	it('returns undefined for a string not in the enumeration', () => {
-		expect(state.getEnumIndex('0.1', 'Unknown')).toBeUndefined()
+		expect(state.getEnumValue('0.1', 'Unknown')).toBeUndefined()
 	})
 
 	it('returns undefined when path has no enumeration', () => {
 		state.updateParameterMap('0.2', makeNode({ value: 0 }))
-		expect(state.getEnumIndex('0.2', 'Off')).toBeUndefined()
+		expect(state.getEnumValue('0.2', 'Off')).toBeUndefined()
 	})
 
 	it('returns undefined for unknown path', () => {
-		expect(state.getEnumIndex('9.9.9', 'Off')).toBeUndefined()
+		expect(state.getEnumValue('9.9.9', 'Off')).toBeUndefined()
+	})
+
+	// The library's enumEntries: a device's enumMap, whose values needn't be consecutive, comes before the enumeration
+	it('returns the value of an enumMap entry', () => {
+		state.updateParameterMap(
+			'0.3',
+			makeNode({
+				enumeration: 'Off\nOn',
+				enumMap: new Map([
+					['Mute', 10],
+					['Live', 20],
+				]),
+			}),
+		)
+		expect(state.getEnumValue('0.3', 'Live')).toBe(20)
+		expect(state.getEnumValue('0.3', 'On')).toBeUndefined()
+	})
+
+	it('finds an entry of exactly the name before a hidden one of it', () => {
+		state.updateParameterMap('0.5', makeNode({ enumeration: '~Service\nService' }))
+		expect(state.getEnumValue('0.5', 'Service')).toBe(1)
+		expect(state.getEnumValue('0.5', '~Service')).toBe(0)
+	})
+
+	it('finds a hidden entry with or without its ~', () => {
+		state.updateParameterMap('0.4', makeNode({ enumeration: 'Off\n~Service' }))
+		expect(state.getEnumValue('0.4', 'Service')).toBe(1)
+		expect(state.getEnumValue('0.4', '~Service')).toBe(1)
 	})
 })
 

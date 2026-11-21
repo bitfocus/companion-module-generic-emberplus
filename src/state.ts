@@ -1,5 +1,9 @@
-import type { Model as EmberModel } from 'emberplus-connection'
-import { type TreeElement, type EmberElement, ElementType } from 'emberplus-connection/dist/model/index.js'
+import { Model as EmberModel } from '@phillipivan/emberplus-connection'
+import { enumEntryName, enumEntryValue } from './enums.js'
+
+const { ElementType } = EmberModel
+type TreeElement<T extends EmberModel.EmberElement> = EmberModel.TreeElement<T>
+type EmberElement = EmberModel.EmberElement
 
 export interface CurrentSelected {
 	target: number
@@ -76,6 +80,20 @@ export class EmberPlusState {
 	}
 
 	/**
+	 * The path a feedback reads, if it is registered against one
+	 * @param id Feedback ID
+	 */
+	public feedbackPath(id: string): string | undefined {
+		const path = this.feedbacks.byId.get(id)
+		return path === '' ? undefined : path
+	}
+
+	/** The paths feedbacks read */
+	public feedbackPaths(): string[] {
+		return [...this.feedbacks.byPath.keys()]
+	}
+
+	/**
 	 * Get IDs of Feedbacks using Ember path
 	 * @param path Ember Path
 	 * @returns Set of Feedback IDs
@@ -110,8 +128,11 @@ export class EmberPlusState {
 	public updateParameterMap(path: string, node: TreeElement<EmberElement>): void {
 		if (node.contents.type !== ElementType.Parameter) return
 
+		// A report may carry only what changed, so merge it into what is known. A merge whose value doesn't fit the type
+		// it ends with (a report of another type) is a parameter of no type, so the report replaces what was known.
 		const existing = this.parameters.get(path)
-		this.parameters.set(path, existing ? { ...existing, ...node.contents } : node.contents)
+		const merged = { ...existing, ...node.contents }
+		this.parameters.set(path, EmberModel.fitsItsType(merged) ? merged : node.contents)
 		this.emberElement.set(path, node)
 	}
 
@@ -129,32 +150,28 @@ export class EmberPlusState {
 	}
 
 	/**
-	 * Returns the current enumeration string of the parameter
+	 * The name of the parameter's current entry, from its enumMap or else its enumeration, as the device names it (a
+	 * hidden entry with its "~"; see enums.ts).
 	 * @param path Ember Path
-	 * @returns Current enum value string, or empty string if not found
+	 * @returns The entry's name, or an empty string for a value with no entry, or none at present (null)
 	 */
 	public getCurrentEnumValue(path: string): string {
 		const param = this.parameters.get(path)
-		if (!param?.enumeration || param.value === undefined) return ''
-
-		const enumValues = param.enumeration.split('\n')
-		const index = Number(param.value)
-
-		return enumValues[index] ?? ''
+		if (!param || param.value === undefined || param.value === null) return ''
+		return enumEntryName(param) ?? ''
 	}
 
 	/**
-	 * Returns the index value of enum string
+	 * The value of the parameter's entry of a name, from its enumMap or else its enumeration: the entry's number in the
+	 * map, or its place in the enumeration. A name beginning with "~" matches with it or without it.
 	 * @param path Ember Path
-	 * @param enumStr Enum string to find
-	 * @returns Index of enum string, or undefined if not found
+	 * @param name The entry's name
+	 * @returns The entry's value, or undefined for a name with no entry
 	 */
-	public getEnumIndex(path: string, enumStr: string): number | undefined {
-		const enumeration = this.parameters.get(path)?.enumeration
-		if (!enumeration) return undefined
-
-		const index = enumeration.split('\n').indexOf(enumStr)
-		return index === -1 ? undefined : index
+	public getEnumValue(path: string, name: string): number | undefined {
+		const param = this.parameters.get(path)
+		if (!param) return undefined
+		return enumEntryValue(param, name)
 	}
 
 	/**

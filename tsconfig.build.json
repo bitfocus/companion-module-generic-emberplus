@@ -1,18 +1,17 @@
 {
-	"extends": "@companion-module/tools/tsconfig/node22/recommended-esm",
+	"extends": "@companion-module/tools/tsconfig/node26/recommended.json",
 	"include": ["src/**/*.ts"],
-	"exclude": ["node_modules/**", "src/**/*spec.ts", "src/**/__tests__/*", "src/**/__mocks__/*", "src/**/*test.ts"],
+	"exclude": [
+		"node_modules/**",
+		"src/**/*spec.ts",
+		"src/**/__tests__/*",
+		"src/**/__mocks__/*",
+		"src/**/*test.ts",
+		"src/tests/**"
+	],
 	"compilerOptions": {
 		"outDir": "./dist",
 		"rootDir": "./src",
-		"paths": {
-			"*": ["./node_modules/*"]
-		},
-		"target": "ES2022",
-		"module": "nodenext",
-		"moduleResolution": "nodenext",
-		"lib": ["ESNext"],
-		"verbatimModuleSyntax": true,
-		"alwaysStrict": true
+		"verbatimModuleSyntax": true
 	}
 }

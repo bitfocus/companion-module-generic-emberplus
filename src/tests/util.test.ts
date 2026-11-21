@@ -23,52 +23,16 @@ import {
 	parseParameterValue,
 	parseFunctionArguments,
 	discoverFunctionsFromTree,
-	nextReconnectDelay,
-	MinReconnectDelay,
-	MaxReconnectDelay,
-} from './util.js'
-import { ActionId } from './actions.js'
-import { EmberPlusState } from './state.js'
-import { Model as EmberModel } from 'emberplus-connection'
-import type { NumberedTreeNode } from 'emberplus-connection/dist/model/index.js'
-import type { Collection } from 'emberplus-connection/dist/types/types.js'
+} from '../util.js'
+import { ActionId } from '../actions.js'
+import { EmberPlusState } from '../state.js'
+import { Model as EmberModel } from '@phillipivan/emberplus-connection'
 
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
 
-vi.mock('emberplus-connection', () => ({
-	Model: {
-		ParameterType: {
-			Boolean: 'boolean',
-			Integer: 'integer',
-			Real: 'real',
-			Enum: 'enum',
-			String: 'string',
-		},
-		ElementType: {
-			Function: 'function',
-			Parameter: 'parameter',
-			Node: 'node',
-		},
-		ParameterAccess: {
-			None: 'none',
-			Read: 'read',
-			Write: 'write',
-			ReadWrite: 'readWrite',
-		},
-	},
-}))
-
-vi.mock('emberplus-connection/dist/model/index.js', () => ({
-	ElementType: {
-		Function: 'function',
-		Parameter: 'parameter',
-		Node: 'node',
-	},
-}))
-
-vi.mock('./actions', () => ({
+vi.mock('../actions', () => ({
 	ActionId: {
 		SetValueBoolean: 'setValueBoolean',
 		SetValueInt: 'setValueInt',
@@ -296,31 +260,37 @@ describe('checkNumberLimits', () => {
 describe('calcRelativeNumber', () => {
 	it('adds relative value to current state value', () => {
 		const state = makeState(new Map([['0.1', { value: 5 }]]))
-		const result = calcRelativeNumber(3, '0.1', '', '', EmberModel.ParameterType.Integer, state)
+		const result = calcRelativeNumber(3, '0.1', undefined, undefined, EmberModel.ParameterType.Integer, state)
 		expect(result).toBe(8)
 	})
 
 	it('rounds result for Integer type', () => {
 		const state = makeState(new Map([['0.1', { value: 5.4 }]]))
-		const result = calcRelativeNumber(1.3, '0.1', '', '', EmberModel.ParameterType.Integer, state)
+		const result = calcRelativeNumber(1.3, '0.1', undefined, undefined, EmberModel.ParameterType.Integer, state)
 		expect(result).toBe(Math.round(6.7))
 	})
 
 	it('enforces min/max limits', () => {
 		const state = makeState(new Map([['0.1', { value: 8 }]]))
-		const result = calcRelativeNumber(5, '0.1', '0', '10', EmberModel.ParameterType.Integer, state)
+		const result = calcRelativeNumber(5, '0.1', 0, 10, EmberModel.ParameterType.Integer, state)
 		expect(result).toBe(10)
 	})
 
 	it('defaults old value to 0 when path missing', () => {
 		const state = makeState(new Map())
-		const result = calcRelativeNumber(3, 'missing', '', '', EmberModel.ParameterType.Real, state)
+		const result = calcRelativeNumber(3, 'missing', undefined, undefined, EmberModel.ParameterType.Real, state)
 		expect(result).toBe(3)
+	})
+
+	it('enforces limits given as the ends of a range', () => {
+		const state = makeState(new Map([['0.1', { value: 8 }]]))
+		const result = calcRelativeNumber(-20, '0.1', Number.MIN_SAFE_INTEGER, 10, EmberModel.ParameterType.Integer, state)
+		expect(result).toBe(-12)
 	})
 
 	it('clamps Enum type to minimum of 0', () => {
 		const state = makeState(new Map([['0.1', { value: 0 }]]))
-		const result = calcRelativeNumber(-5, '0.1', '', '', EmberModel.ParameterType.Enum, state)
+		const result = calcRelativeNumber(-5, '0.1', undefined, undefined, EmberModel.ParameterType.Enum, state)
 		expect(result).toBe(0)
 	})
 })
@@ -394,17 +364,17 @@ describe('resolvePath', () => {
 // ---------------------------------------------------------------------------
 
 describe('resolveEventPath', () => {
-	it('uses path when usePathVar is false', () => {
-		const event = { options: { usePathVar: false, path: '0.1.2', pathVar: 'var.path' } } as any
-		expect(resolveEventPath(event)).toBe('0.1.2')
+	it('uses the path option', () => {
+		expect(resolveEventPath({ options: { path: '0.1.2' } })).toBe('0.1.2')
 	})
-	it('uses pathVar when usePathVar is true', () => {
-		const event = { options: { usePathVar: true, path: '0.1.2', pathVar: 'var.path' } } as any
-		expect(resolveEventPath(event)).toBe('var.path')
+	it('resolves the path as resolvePath does', () => {
+		expect(resolveEventPath({ options: { path: 'Gain [1/2/3]' } })).toBe('1.2.3')
+	})
+	it('reads a number an expression returned as a path', () => {
+		expect(resolveEventPath({ options: { path: 7 as unknown as string } })).toBe('7')
 	})
 	it('handles missing path gracefully', () => {
-		const event = { options: { usePathVar: false } } as any
-		expect(resolveEventPath(event)).toBe('')
+		expect(resolveEventPath({ options: {} })).toBe('')
 	})
 })
 
@@ -548,9 +518,32 @@ describe('recordParameterAction', () => {
 		const state = makeState(new Map([['0.1', { minimum: 0, maximum: 100, factor: 2 }]]))
 		recordParameterAction('0.1', ActionId.SetValueInt, 50, instance, state)
 		const call = instance.recordAction.mock.calls[0][0]
-		expect(call.options.min).toBe('0')
-		expect(call.options.max).toBe('100')
-		expect(call.options.factor).toBe('2')
+		expect(call.options.min).toBe(0)
+		expect(call.options.max).toBe(100)
+		expect(call.options).not.toHaveProperty('factor')
+	})
+
+	// The action takes a number as displayed, and converts it with the parameter's formula or factor
+	it.each([
+		[ActionId.SetValueInt, { parameterType: EmberModel.ParameterType.Integer, value: 500, factor: 100 }, 5],
+		[ActionId.SetValueReal, { parameterType: EmberModel.ParameterType.Real, value: 2, formula: '$ * 10\n$ / 10' }, 20],
+	])('records %s with the value as displayed', (actionId, parameter, displayed) => {
+		const instance = makeInstance()
+		recordParameterAction('0.1', actionId, 0, instance, makeState(new Map([['0.1', parameter]])))
+		expect(instance.recordAction.mock.calls[0][0].options.value).toBe(displayed)
+	})
+
+	// The limits are numbers now, so a parameter without them gets the ends of the range Ember+ allows its type:
+	// no limit, as an empty text limit was. A null limit (Glow: none) is none too
+	it.each([
+		[ActionId.SetValueInt, { minimum: null }, Number.MIN_SAFE_INTEGER, Number.MAX_SAFE_INTEGER],
+		[ActionId.SetValueReal, {}, -Number.MAX_VALUE, Number.MAX_VALUE],
+		[ActionId.SetValueEnum, {}, 0, Number.MAX_SAFE_INTEGER],
+	])('records %s without parameter limits as the whole range', (actionId, parameter, min, max) => {
+		const instance = makeInstance()
+		recordParameterAction('0.1', actionId, 1, instance, makeState(new Map([['0.1', parameter]])))
+		const { options } = instance.recordAction.mock.calls[0][0]
+		expect(options).toMatchObject({ min, max, relative: false })
 	})
 
 	it('records a real action', () => {
@@ -590,67 +583,57 @@ describe('recordParameterAction', () => {
 
 describe('parseParameterValue', () => {
 	it('parses Boolean parameter', () => {
-		const state = makeState()
-		const result = parseParameterValue(
-			'0.1',
-			{ parameterType: EmberModel.ParameterType.Boolean, value: true } as any,
-			state,
-		)
+		const result = parseParameterValue({ parameterType: EmberModel.ParameterType.Boolean, value: true } as any)
 		expect(result).toEqual({ actionType: ActionId.SetValueBoolean, value: true })
 	})
 
-	it('parses Integer parameter and divides by factor', () => {
-		const state = makeState(new Map([['0.1', { factor: 2 }]]))
-		const result = parseParameterValue(
-			'0.1',
-			{ parameterType: EmberModel.ParameterType.Integer, value: 100 } as any,
-			state,
-		)
-		expect(result).toEqual({ actionType: ActionId.SetValueInt, value: 50 })
-	})
-
-	it('defaults to factor 1 when param missing', () => {
-		const state = makeState()
-		const result = parseParameterValue(
-			'0.1',
-			{ parameterType: EmberModel.ParameterType.Integer, value: 100 } as any,
-			state,
-		)
-		expect(result.value).toBe(100)
+	// The recorder gives the action the displayed value, by the library's displayValue (recordParameterAction)
+	it('parses Integer parameter as the device has it, factor or not', () => {
+		const result = parseParameterValue({
+			parameterType: EmberModel.ParameterType.Integer,
+			value: 100,
+			factor: 2,
+		} as any)
+		expect(result).toEqual({ actionType: ActionId.SetValueInt, value: 100 })
 	})
 
 	it('parses Real parameter', () => {
-		const state = makeState()
-		const result = parseParameterValue(
-			'0.1',
-			{ parameterType: EmberModel.ParameterType.Real, value: 3.14 } as any,
-			state,
-		)
+		const result = parseParameterValue({ parameterType: EmberModel.ParameterType.Real, value: 3.14 } as any)
 		expect(result).toEqual({ actionType: ActionId.SetValueReal, value: 3.14 })
 	})
 
 	it('parses Enum parameter', () => {
-		const state = makeState()
-		const result = parseParameterValue('0.1', { parameterType: EmberModel.ParameterType.Enum, value: 2 } as any, state)
+		const result = parseParameterValue({ parameterType: EmberModel.ParameterType.Enum, value: 2 } as any)
 		expect(result).toEqual({ actionType: ActionId.SetValueEnum, value: 2 })
 	})
 
 	it('parses String parameter and substitutes escape characters', () => {
-		const state = makeState()
-		const result = parseParameterValue(
-			'0.1',
-			{ parameterType: EmberModel.ParameterType.String, value: 'line1\nline2' } as any,
-			state,
-		)
+		const result = parseParameterValue({
+			parameterType: EmberModel.ParameterType.String,
+			value: 'line1\nline2',
+		} as any)
 		expect(result.actionType).toBe(ActionId.SetValueString)
 		expect(result.value).toBe('line1\\nline2')
 	})
 
-	it('handles unknown parameter type', () => {
-		const state = makeState()
-		const result = parseParameterValue('0.1', { parameterType: 'unknown', value: 'raw' } as any, state)
-		expect(result.actionType).toBeUndefined()
-		expect(result.value).toBe('raw')
+	it('gives a parameter of another type no action', () => {
+		const result = parseParameterValue({ parameterType: EmberModel.ParameterType.Octets, value: null } as any)
+		expect(result).toEqual({ actionType: undefined, value: null })
+	})
+
+	// Glow 2.50: a null value means none at present, and keeps the parameter's type (library 0.5.0). The string
+	// case threw on one, and the integer case gave NaN
+	it.each([
+		[EmberModel.ParameterType.Boolean, ActionId.SetValueBoolean],
+		[EmberModel.ParameterType.Integer, ActionId.SetValueInt],
+		[EmberModel.ParameterType.Real, ActionId.SetValueReal],
+		[EmberModel.ParameterType.Enum, ActionId.SetValueEnum],
+		[EmberModel.ParameterType.String, ActionId.SetValueString],
+	])('reads a null %s value as null', (parameterType, actionType) => {
+		const result = parseParameterValue(
+			new EmberModel.ParameterImpl(parameterType, undefined, undefined, null) as EmberModel.Parameter,
+		)
+		expect(result).toEqual({ actionType, value: null })
 	})
 })
 
@@ -729,8 +712,32 @@ describe('parseFunctionArguments', () => {
 	})
 
 	it('passes through explicit typed objects in JSON array', () => {
-		const result = parseFunctionArguments('[{"type": "integer", "value": 55}]')
-		expect(result).toEqual([{ type: 'integer', value: 55 }])
+		const result = parseFunctionArguments('[{"type": "INTEGER", "value": 55}]')
+		expect(result).toEqual([{ type: EmberModel.ParameterType.Integer, value: 55 }])
+	})
+
+	// The library refuses a value that doesn't fit its type, so such an object is no typed value: it goes as text
+	it('does not pass through a typed object whose value does not fit its type', () => {
+		const result = parseFunctionArguments('[{"type": "INTEGER", "value": "x"}]')
+		expect(result).toEqual([{ type: EmberModel.ParameterType.String, value: '{"type":"INTEGER","value":"x"}' }])
+	})
+
+	it.each([
+		[EmberModel.ParameterType.Octets, '"ab"', Buffer.from('ab')],
+		[EmberModel.ParameterType.Null, '"ab"', null],
+		[EmberModel.ParameterType.Trigger, '7', 7],
+	])('gives a %s argument a value of its form', (type, json, value) => {
+		const result = parseFunctionArguments(`[${json}]`, [new EmberModel.FunctionArgumentImpl(type)])
+		expect(result).toEqual([{ type, value }])
+	})
+
+	it.each([
+		[EmberModel.ParameterType.Octets, Buffer.from('ab')],
+		[EmberModel.ParameterType.Null, null],
+		[EmberModel.ParameterType.Trigger, 'ab'],
+	])('gives a %s argument in a list a value of its form', (type, value) => {
+		const result = parseFunctionArguments('ab', [new EmberModel.FunctionArgumentImpl(type)])
+		expect(result).toEqual([{ type, value }])
 	})
 })
 
@@ -741,24 +748,17 @@ describe('parseFunctionArguments', () => {
 describe('discoverFunctionsFromTree', () => {
 	it('recursively discovers function nodes in tree', () => {
 		const state = new EmberPlusState()
-		// Literals rather than the model's *Impl classes: emberplus-connection is mocked
-		// above with only its enums, so the classes do not exist at runtime here.
-		const tree: Collection<NumberedTreeNode<EmberModel.EmberElement>> = {
-			0: {
-				number: 1,
-				contents: { type: EmberModel.ElementType.Node },
-				children: {
-					0: {
-						number: 2,
-						contents: { type: EmberModel.ElementType.Function, identifier: 'TestFunc' },
-					},
-					1: {
-						number: 3,
-						contents: { type: EmberModel.ElementType.Parameter, parameterType: EmberModel.ParameterType.Integer },
-					},
-				},
-			},
-		}
+		// The client's tree and an element's children are Maps by number
+		const tree = EmberModel.childrenOf([
+			new EmberModel.NumberedTreeNodeImpl(
+				1,
+				new EmberModel.EmberNodeImpl(),
+				EmberModel.childrenOf([
+					new EmberModel.NumberedTreeNodeImpl(2, new EmberModel.EmberFunctionImpl('TestFunc')),
+					new EmberModel.NumberedTreeNodeImpl(3, new EmberModel.ParameterImpl(EmberModel.ParameterType.Integer)),
+				]),
+			),
+		])
 
 		discoverFunctionsFromTree(tree, state)
 		expect(state.hasFunction('1.2')).toBe(true)
@@ -768,32 +768,10 @@ describe('discoverFunctionsFromTree', () => {
 
 	it.each([
 		['undefined', undefined],
-		['empty', {}],
+		['empty', new Map()],
 	])('handles %s tree gracefully', (_label, tree) => {
 		const state = new EmberPlusState()
 		discoverFunctionsFromTree(tree, state)
 		expect(state.functions.size).toBe(0)
-	})
-})
-
-// ---------------------------------------------------------------------------
-// nextReconnectDelay
-// ---------------------------------------------------------------------------
-
-describe('nextReconnectDelay', () => {
-	it('starts at the minimum delay', () => {
-		expect(nextReconnectDelay(0)).toBe(MinReconnectDelay)
-		expect(nextReconnectDelay(1)).toBe(MinReconnectDelay)
-	})
-
-	it('doubles with each consecutive failure', () => {
-		expect(nextReconnectDelay(2)).toBe(MinReconnectDelay * 2)
-		expect(nextReconnectDelay(3)).toBe(MinReconnectDelay * 4)
-		expect(nextReconnectDelay(4)).toBe(MinReconnectDelay * 8)
-	})
-
-	it('is capped at the maximum delay', () => {
-		expect(nextReconnectDelay(5)).toBe(MaxReconnectDelay)
-		expect(nextReconnectDelay(1000)).toBe(MaxReconnectDelay)
 	})
 })

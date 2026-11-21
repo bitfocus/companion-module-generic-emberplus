@@ -1,24 +1,23 @@
-import { combineRgb /*InstanceBase*/ } from '@companion-module/base'
+import { combineRgb } from '@companion-module/base'
 import type {
-	CompanionFeedbackDefinition,
 	CompanionFeedbackDefinitions,
-	CompanionInputFieldDropdown,
-	CompanionInputFieldTextInput,
 	CompanionInputFieldCheckbox,
+	CompanionInputFieldDropdown,
 	CompanionInputFieldNumber,
-	CompanionOptionValues,
 	CompanionInputFieldStaticText,
+	CompanionInputFieldTextInput,
 } from '@companion-module/base'
-import type { EmberPlusInstance } from './index.js'
-import { EmberClient, Model as EmberModel } from 'emberplus-connection'
+import type EmberPlusInstance from './index.js'
+import { EmberClient, Model as EmberModel } from '@phillipivan/emberplus-connection'
 import type { EmberPlusConfig } from './config.js'
 import {
 	learnParameterFeedbackOptions,
 	parameterFeedbackCallback,
-	parameterValueFeedbackCallback,
-	subscribeParameterFeedback,
+	parameterPropertyFeedbackCallback,
 	unsubscribeParameterFeedback,
 } from './feedbacks/parameter.js'
+import { parameterPropertyChoices, type ParameterProperty, type ParameterPropertyValue } from './feedbacks/property.js'
+import { EmberSignalRange } from './ranges.js'
 import { EmberPlusState } from './state.js'
 import { comparitorOptions, filterPathChoices, NumberComparitor } from './util.js'
 
@@ -27,25 +26,72 @@ export enum FeedbackId {
 	String = 'string',
 	Boolean = 'boolean',
 	ENUM = 'enum',
-	Value = 'value',
+	ParameterProperty = 'parameter_property',
 	Take = 'take',
 	Clear = 'clear',
 	SourceBackgroundSelected = 'sourceBackgroundSelected',
 	TargetBackgroundSelected = 'targetBackgroundSelected',
 }
 
-export interface parameterFeedbackOptions extends CompanionOptionValues {
+export type ParameterCompareOptions = {
 	path: string
-	pathVar: string
-	usePathVar: boolean
-	value: string | number | boolean
-	useVar?: boolean
-	valueVar?: string
 	comparitor: NumberComparitor
-	relative?: boolean
-	factor?: string
+	value: number
+	asInt: boolean
+	factor: number
+}
+
+export type ParameterStringOptions = {
+	path: string
+	value: string
+	parseEscapeChars: boolean
+}
+
+export type ParameterEnumOptions = {
+	path: string
+	value: string
+}
+
+export type ParameterBooleanOptions = {
+	path: string
+}
+
+export type ParameterPropertyOptions = {
+	path: string
+	property: ParameterProperty
+}
+
+/** The options of every parameter feedback, as the shared parameter callbacks read them */
+export type ParameterFeedbackOptions = {
+	path?: string
+	value?: string | number
+	comparitor?: NumberComparitor
 	asInt?: boolean
+	factor?: number
 	parseEscapeChars?: boolean
+	property?: ParameterProperty
+}
+
+export type SourceSelectedOptions = {
+	matrix: number
+	source: number
+}
+
+export type TargetSelectedOptions = {
+	matrix: number
+	target: number
+}
+
+export type FeedbackSchema = {
+	[FeedbackId.Parameter]: { type: 'boolean'; options: ParameterCompareOptions }
+	[FeedbackId.String]: { type: 'boolean'; options: ParameterStringOptions }
+	[FeedbackId.Boolean]: { type: 'boolean'; options: ParameterBooleanOptions }
+	[FeedbackId.ENUM]: { type: 'boolean'; options: ParameterEnumOptions }
+	[FeedbackId.ParameterProperty]: { type: 'value'; options: ParameterPropertyOptions; result: ParameterPropertyValue }
+	[FeedbackId.Take]: { type: 'boolean'; options: Record<string, never> }
+	[FeedbackId.Clear]: { type: 'boolean'; options: Record<string, never> }
+	[FeedbackId.SourceBackgroundSelected]: { type: 'boolean'; options: SourceSelectedOptions }
+	[FeedbackId.TargetBackgroundSelected]: { type: 'boolean'; options: TargetSelectedOptions }
 }
 
 const styles = {
@@ -59,40 +105,28 @@ const styles = {
 	},
 } as const
 
+const pathTooltip =
+	'Select a registered path or type one in. Path may be supplied in decimals: 1.2.3, text: path.to.ember.element, or with a descriptor and the decimals wrapped in brackets: path to ember element[1.2.3.4]'
+
+/** Registered paths to choose from, or a path typed in. Use expression mode to build the path from variables */
 const pathDropDown = {
 	type: 'dropdown',
-	label: 'Select registered path',
+	label: 'Path',
 	id: 'path',
 	choices: [],
 	default: 'No paths configured!',
 	allowCustom: true,
-	isVisibleExpression: '!$(options:usePathVar)',
-} as const satisfies CompanionInputFieldDropdown
-
-const pathString = {
-	type: 'textinput',
-	label: 'Path',
-	id: 'pathVar',
-	useVariables: { local: true },
-	default: '',
-	isVisibleExpression: '!!$(options:usePathVar)',
-} as const satisfies CompanionInputFieldTextInput
-
-const usePathVar = {
-	type: 'checkbox',
-	label: 'Path from String',
-	id: 'usePathVar',
-	default: false,
-} as const satisfies CompanionInputFieldCheckbox
+	tooltip: pathTooltip,
+} as const satisfies CompanionInputFieldDropdown<'path'>
 
 const valueText = {
 	type: 'textinput',
 	label: 'Value',
 	id: 'value',
-	useVariables: { local: true },
+	useVariables: true,
 	default: '',
 	multiline: true,
-} as const satisfies CompanionInputFieldTextInput
+} as const satisfies CompanionInputFieldTextInput<'value'>
 
 const valueNumber = {
 	type: 'number',
@@ -101,8 +135,7 @@ const valueNumber = {
 	min: -0xffffffff,
 	max: 0xffffffff,
 	default: 0,
-	isVisibleExpression: '!$(options:useVar)',
-} as const satisfies CompanionInputFieldNumber
+} as const satisfies CompanionInputFieldNumber<'value'>
 
 const comparitorDropdown = {
 	type: 'dropdown',
@@ -111,32 +144,30 @@ const comparitorDropdown = {
 	choices: comparitorOptions,
 	default: comparitorOptions[0].id,
 	allowCustom: false,
-} as const satisfies CompanionInputFieldDropdown
+} as const satisfies CompanionInputFieldDropdown<'comparitor', NumberComparitor>
 
-const useVarCheckbox = {
-	type: 'checkbox',
-	label: 'Use Variable?',
-	id: 'useVar',
-	default: false,
-} as const satisfies CompanionInputFieldCheckbox
-
+// Named in the factor's isVisibleExpression, so it must not be an expression itself
 const asIntCheckbox = {
 	type: 'checkbox',
 	label: 'As Integers?',
 	id: 'asInt',
 	default: false,
 	tooltip: '',
-} as const satisfies CompanionInputFieldCheckbox
+	disableAutoExpression: true,
+} as const satisfies CompanionInputFieldCheckbox<'asInt'>
 
-const factorOpt: CompanionInputFieldTextInput = {
-	type: 'textinput',
+const factorOpt = {
+	type: 'number',
 	label: 'Factor',
 	id: 'factor',
-	useVariables: { local: true },
-	default: '1',
+	default: 1,
+	min: 1,
+	max: 0xffffffff,
+	step: 1,
+	asInteger: true,
 	tooltip: `Value will be multiplied by this field`,
 	isVisibleExpression: '!!$(options:asInt)',
-} as const satisfies CompanionInputFieldTextInput
+} as const satisfies CompanionInputFieldNumber<'factor'>
 
 const parseEscapeCharactersCheckBox = {
 	type: 'checkbox',
@@ -144,226 +175,124 @@ const parseEscapeCharactersCheckBox = {
 	id: 'parseEscapeChars',
 	default: true,
 	tooltip: 'Parse escape characters such as \\r \\n \\t',
-} as const satisfies CompanionInputFieldCheckbox
+} as const satisfies CompanionInputFieldCheckbox<'parseEscapeChars'>
 
-const asEnumCheckbox = {
-	type: 'checkbox',
-	label: 'Return ENUM',
-	id: 'asEnum',
-	default: false,
-	description: 'For ENUM parameters, return the ENUM value instead of the index.',
-} as const satisfies CompanionInputFieldCheckbox
+const propertyDropdown = {
+	type: 'dropdown',
+	label: 'Property',
+	id: 'property',
+	choices: parameterPropertyChoices,
+	default: parameterPropertyChoices[0].id,
+	tooltip:
+		'Value: integers divided by their factor. Value with Units: by formula or factor, formatted, then the unit. Value by Formula and Value as Enumeration Entry: the plain value for a parameter without a formula, or without an enumeration. The rest as the provider reports them, or nothing for one it leaves out',
+} as const satisfies CompanionInputFieldDropdown<'property', ParameterProperty>
 
-const matrixNumber = {
+const indexNumber = {
 	type: 'number',
-	label: 'Select Matrix Number',
-	id: 'matrix',
-	required: true,
-	min: -0,
+	min: 0,
 	max: 0xffffffff,
 	default: 0,
-	isVisibleExpression: '!$(options:useVar)',
-} as const satisfies CompanionInputFieldNumber
+	step: 1,
+	asInteger: true,
+} as const satisfies Omit<CompanionInputFieldNumber, 'id' | 'label'>
 
-const matrixVar = {
-	type: 'textinput',
-	label: 'Select Matrix Number',
-	id: 'matrixVar',
-	regex: '',
-	useVariables: { local: true },
-	default: '0',
-	isVisibleExpression: '!!$(options:useVar)',
-} as const satisfies CompanionInputFieldTextInput
+const matrixNumber = { ...indexNumber, label: 'Select Matrix Number', id: 'matrix' } as const
 
-const sourceNumber = {
+/** A matrix target or source, in the range Ember+ allows */
+const signalNumber = {
 	type: 'number',
-	label: 'Value',
-	id: 'source',
-	required: true,
-	min: -0,
-	max: 0xffffffff,
+	min: EmberSignalRange.min,
+	max: EmberSignalRange.max,
 	default: 0,
-	isVisibleExpression: '!$(options:useVar)',
-} as const satisfies CompanionInputFieldNumber
-
-const sourceVar = {
-	type: 'textinput',
-	label: 'Value',
-	id: 'sourceVar',
-	regex: '',
-	useVariables: { local: true },
-	default: '0',
-	isVisibleExpression: '!!$(options:useVar)',
-} as const satisfies CompanionInputFieldTextInput
-
-const targetNumber = {
-	type: 'number',
-	label: 'Value',
-	id: 'target',
-	required: true,
-	min: -0,
-	max: 0xffffffff,
-	default: 0,
-	isVisibleExpression: '!$(options:useVar)',
-} as const satisfies CompanionInputFieldNumber
-
-const targetVar = {
-	type: 'textinput',
-	label: 'Value',
-	id: 'targetVar',
-	regex: '',
-	useVariables: { local: true },
-	default: '0',
-	isVisibleExpression: '!!$(options:useVar)',
-} as const satisfies CompanionInputFieldTextInput
-
-const useVar: CompanionInputFieldCheckbox = {
-	type: 'checkbox',
-	label: 'Use Variable?',
-	id: 'useVar',
-	default: false,
-} as const satisfies CompanionInputFieldCheckbox
+	step: 1,
+	asInteger: true,
+} as const satisfies Omit<CompanionInputFieldNumber, 'id' | 'label'>
 
 const valueFeedbackInfo = {
 	type: 'static-text',
 	id: 'info',
 	label: '',
-	value: 'Connection variables are not created from value feedbacks. Integer parameters are always factorialized.',
+	value:
+		'With Parameter - Values selected in the Connection Variables config option, the parameter also gets a connection variable, holding its value.',
 } as const satisfies CompanionInputFieldStaticText
 
+/** The note on the parameter feedbacks that Parameter Property and an expression replace */
+const deprecated = 'Deprecated: will be removed in a future release. Use Parameter Property in an expression instead.'
+
+/** The path dropdown, listing the registered parameters of the types given (any type if none), the first as default */
+function pathChoices(
+	state: EmberPlusState,
+	...paramTypes: EmberModel.ParameterType[]
+): CompanionInputFieldDropdown<'path', string | number> {
+	const choices = filterPathChoices(state, false, ...paramTypes)
+	return { ...pathDropDown, choices, default: choices[0]?.id ?? pathDropDown.default }
+}
+
 export function GetFeedbacksList(
-	self: EmberPlusInstance, //InstanceBase<EmberPlusConfig>,
+	self: EmberPlusInstance,
 	_emberClient: EmberClient,
 	_config: EmberPlusConfig,
 	state: EmberPlusState,
-): CompanionFeedbackDefinitions {
-	const feedbacks: { [id in FeedbackId]: CompanionFeedbackDefinition | undefined } = {
+): CompanionFeedbackDefinitions<FeedbackSchema> {
+	// No subscribe hook in API 2: each parameter callback registers its path when it runs
+	return {
 		[FeedbackId.Parameter]: {
-			name: 'Parameter Compare Number',
-			description: 'Checks the current value of a parameter',
+			name: 'Parameter Compare Number (Deprecated)',
+			description: `Checks the current value of a parameter. ${deprecated}`,
 			type: 'boolean',
 			defaultStyle: styles.blackOnWhite,
 			options: [
-				{
-					...pathDropDown,
-					choices: filterPathChoices(
-						state,
-						false,
-						EmberModel.ParameterType.Enum,
-						EmberModel.ParameterType.Real,
-						EmberModel.ParameterType.Integer,
-					),
-					default:
-						filterPathChoices(
-							state,
-							false,
-							EmberModel.ParameterType.Enum,
-							EmberModel.ParameterType.Real,
-							EmberModel.ParameterType.Integer,
-						).find(() => true)?.id ?? 'No paths configured!',
-				},
-				pathString,
-				usePathVar,
+				pathChoices(
+					state,
+					EmberModel.ParameterType.Enum,
+					EmberModel.ParameterType.Real,
+					EmberModel.ParameterType.Integer,
+				),
 				comparitorDropdown,
 				valueNumber,
-				{
-					...valueText,
-					id: 'valueVar',
-					default: '0',
-					isVisibleExpression: '!!$(options:useVar)',
-				},
-				useVarCheckbox,
 				asIntCheckbox,
 				factorOpt,
 			],
 			callback: parameterFeedbackCallback(self, state, FeedbackId.Parameter),
-			subscribe: subscribeParameterFeedback(state, self),
-			unsubscribe: unsubscribeParameterFeedback(state),
+			unsubscribe: unsubscribeParameterFeedback(self),
 			learn: learnParameterFeedbackOptions(state, FeedbackId.Parameter),
 		},
 		[FeedbackId.String]: {
-			name: 'Parameter Equals String',
-			description: 'Checks the current value of a parameter against a String',
+			name: 'Parameter Equals String (Deprecated)',
+			description: `Checks the current value of a parameter against a String. ${deprecated}`,
 			type: 'boolean',
 			defaultStyle: styles.blackOnWhite,
-			options: [
-				{
-					...pathDropDown,
-					choices: filterPathChoices(state, false, EmberModel.ParameterType.String),
-					default:
-						filterPathChoices(state, false, EmberModel.ParameterType.String).find(() => true)?.id ??
-						'No paths configured!',
-				},
-				pathString,
-				usePathVar,
-				valueText,
-				parseEscapeCharactersCheckBox,
-			],
+			options: [pathChoices(state, EmberModel.ParameterType.String), valueText, parseEscapeCharactersCheckBox],
 			callback: parameterFeedbackCallback(self, state, FeedbackId.String),
-			subscribe: subscribeParameterFeedback(state, self),
-			unsubscribe: unsubscribeParameterFeedback(state),
+			unsubscribe: unsubscribeParameterFeedback(self),
 			learn: learnParameterFeedbackOptions(state, FeedbackId.String),
 		},
 		[FeedbackId.ENUM]: {
-			name: 'Parameter ENUM Equals String',
-			description: 'Checks the current Enumeration of an ENUM parameter against a String',
+			name: 'Parameter ENUM Equals String (Deprecated)',
+			description: `Checks the current Enumeration of an ENUM parameter against a String. ${deprecated}`,
 			type: 'boolean',
 			defaultStyle: styles.blackOnWhite,
-			options: [
-				{
-					...pathDropDown,
-					choices: filterPathChoices(state, false, EmberModel.ParameterType.Enum),
-					default:
-						filterPathChoices(state, false, EmberModel.ParameterType.Enum).find(() => true)?.id ??
-						'No paths configured!',
-				},
-				pathString,
-				usePathVar,
-				valueText,
-			],
+			options: [pathChoices(state, EmberModel.ParameterType.Enum), valueText],
 			callback: parameterFeedbackCallback(self, state, FeedbackId.ENUM),
-			subscribe: subscribeParameterFeedback(state, self),
-			unsubscribe: unsubscribeParameterFeedback(state),
+			unsubscribe: unsubscribeParameterFeedback(self),
 			learn: learnParameterFeedbackOptions(state, FeedbackId.ENUM),
 		},
 		[FeedbackId.Boolean]: {
-			name: 'Parameter True',
-			description: 'Checks the current value of a parameter is true',
+			name: 'Parameter True (Deprecated)',
+			description: `Checks the current value of a parameter is true. ${deprecated}`,
 			type: 'boolean',
 			defaultStyle: styles.blackOnWhite,
-			options: [
-				{
-					...pathDropDown,
-					choices: filterPathChoices(state, false, EmberModel.ParameterType.Boolean),
-					default:
-						filterPathChoices(state, false, EmberModel.ParameterType.Boolean).find(() => true)?.id ??
-						'No paths configured!',
-				},
-				pathString,
-				usePathVar,
-			],
+			options: [pathChoices(state, EmberModel.ParameterType.Boolean)],
 			callback: parameterFeedbackCallback(self, state, FeedbackId.Boolean),
-			subscribe: subscribeParameterFeedback(state, self),
-			unsubscribe: unsubscribeParameterFeedback(state),
+			unsubscribe: unsubscribeParameterFeedback(self),
 		},
-		[FeedbackId.Value]: {
-			name: 'Parameter Value',
-			description: 'Return the value of a parameter to a local variable',
+		[FeedbackId.ParameterProperty]: {
+			name: 'Parameter Property',
+			description: 'Return a property of a parameter, such as its value, to a local variable',
 			type: 'value',
-			options: [
-				{
-					...pathDropDown,
-					choices: filterPathChoices(state, false),
-					default: filterPathChoices(state, false).find(() => true)?.id ?? 'No paths configured!',
-				},
-				pathString,
-				usePathVar,
-				asEnumCheckbox,
-				valueFeedbackInfo,
-			],
-			callback: parameterValueFeedbackCallback(self, state),
-			subscribe: subscribeParameterFeedback(state, self),
-			unsubscribe: unsubscribeParameterFeedback(state),
+			options: [pathChoices(state), propertyDropdown, valueFeedbackInfo],
+			callback: parameterPropertyFeedbackCallback(self, state),
+			unsubscribe: unsubscribeParameterFeedback(self),
 		},
 		[FeedbackId.Take]: {
 			name: 'Take is possible',
@@ -390,15 +319,9 @@ export function GetFeedbacksList(
 			description: 'Change Background of Source, when it is currently selected.',
 			type: 'boolean',
 			defaultStyle: styles.blackOnRed,
-			options: [matrixNumber, matrixVar, sourceNumber, sourceVar, useVar],
-			callback: async (feedback, context) => {
-				const matrix = feedback.options['useVar']
-					? Number.parseInt(await context.parseVariablesInString(feedback.options['matrixVar']?.toString() ?? ''))
-					: (feedback.options['matrix'] as number)
-				const source = feedback.options['useVar']
-					? Number.parseInt(await context.parseVariablesInString(feedback.options['sourceVar']?.toString() ?? ''))
-					: (feedback.options['source'] as number)
-				return state.selected.source == source && state.selected.matrix == matrix
+			options: [matrixNumber, { ...signalNumber, label: 'Value', id: 'source' }],
+			callback: (feedback) => {
+				return state.selected.source == feedback.options.source && state.selected.matrix == feedback.options.matrix
 			},
 		},
 		[FeedbackId.TargetBackgroundSelected]: {
@@ -406,18 +329,10 @@ export function GetFeedbacksList(
 			description: 'Change Background of Target, when it is currently selected.',
 			type: 'boolean',
 			defaultStyle: styles.blackOnRed,
-			options: [matrixNumber, matrixVar, targetNumber, targetVar, useVar],
-			callback: async (feedback, context) => {
-				const matrix = feedback.options['useVar']
-					? Number.parseInt(await context.parseVariablesInString(feedback.options['matrixVar']?.toString() ?? ''))
-					: (feedback.options['matrix'] as number)
-				const target = feedback.options['useVar']
-					? Number.parseInt(await context.parseVariablesInString(feedback.options['targetVar']?.toString() ?? ''))
-					: (feedback.options['target'] as number)
-				return state.selected.target == target && state.selected.matrix == matrix
+			options: [matrixNumber, { ...signalNumber, label: 'Value', id: 'target' }],
+			callback: (feedback) => {
+				return state.selected.target == feedback.options.target && state.selected.matrix == feedback.options.matrix
 			},
 		},
 	}
-
-	return feedbacks
 }

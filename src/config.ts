@@ -1,10 +1,31 @@
 import { Regex } from '@companion-module/base'
-import type { SomeCompanionConfigField } from '@companion-module/base'
-import { LoggerLevel, loggerLevelChoices } from './logger.js'
+import type { DropdownChoice, SomeCompanionConfigField } from '@companion-module/base'
 
 export const portDefault = 9000
 
-export interface EmberPlusConfig {
+/** What the connection makes variables for, chosen in the Connection Variables option */
+export const ConnectionVariable = [
+	'parameterValues',
+	'parameterStreams',
+	'matrixSourceNames',
+	'matrixTargetNames',
+	'matrixConnections',
+] as const
+export type ConnectionVariable = (typeof ConnectionVariable)[number]
+
+export const connectionVariableChoices = [
+	{ id: 'parameterValues', label: 'Parameter - Values' },
+	{ id: 'parameterStreams', label: 'Parameter - Streams' },
+	{ id: 'matrixSourceNames', label: 'Matrix - Source Names' },
+	{ id: 'matrixTargetNames', label: 'Matrix - Target Names' },
+	{ id: 'matrixConnections', label: 'Matrix - Connections' },
+] as const satisfies DropdownChoice<ConnectionVariable>[]
+
+/** Parameter values only, for new connections and those upgraded from before the option */
+export const connectionVariablesDefault: ConnectionVariable[] = [connectionVariableChoices[0].id]
+
+// A type, not an interface: InstanceTypes requires the config to be a JsonObject, and an interface has no index signature
+export type EmberPlusConfig = {
 	bonjourHost?: string
 	host?: string
 	port?: number
@@ -12,7 +33,10 @@ export interface EmberPlusConfig {
 	matricesString?: string
 	monitoredParametersString?: string
 	factor: boolean
-	logging: LoggerLevel
+	/** What the connection makes variables for. The matrix choices aren't acted on yet */
+	variables: ConnectionVariable[]
+	/** Turns on the Ember+ library's debug output, and fuller detail in the module's own debug messages */
+	verbose: boolean
 }
 
 export function GetConfigFields(): SomeCompanionConfigField[] {
@@ -83,21 +107,31 @@ export function GetConfigFields(): SomeCompanionConfigField[] {
 			multiline: true,
 		},
 		{
-			type: 'checkbox',
-			id: 'factor',
-			label: 'Factorise Integer Parameter Variables?',
-			width: 6,
-			default: true,
-			tooltip: 'Variables from Integer Parameters will be divided by the Factor field where reported',
+			type: 'multidropdown',
+			id: 'variables',
+			label: 'Connection Variables',
+			width: 12,
+			choices: connectionVariableChoices,
+			default: connectionVariablesDefault,
+			tooltip:
+				'Parameter - Values: a variable for each parameter in use, by the configured paths, actions and feedbacks. Parameter - Streams: the same for stream parameters, such as meters, which update many times a second. Without them, use the Parameter Property feedback',
 		},
 		{
-			type: 'dropdown',
-			id: 'logging',
-			label: 'Minimum Log Level',
-			default: LoggerLevel.Information,
-			choices: loggerLevelChoices,
-			allowCustom: false,
-			width: 8,
+			type: 'checkbox',
+			id: 'factor',
+			label: 'Apply Formula and Factor to Parameter Variables?',
+			width: 6,
+			default: true,
+			tooltip:
+				"Variables of number parameters hold the value as displayed: by the parameter's formula, or else divided by its factor. Off, they hold the device's value",
+		},
+		{
+			type: 'checkbox',
+			id: 'verbose',
+			label: 'Verbose Logs',
+			width: 6,
+			default: false,
+			tooltip: "Log the Ember+ library's debug output, and each registered parameter's full contents",
 		},
 	]
 }
