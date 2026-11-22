@@ -22,7 +22,10 @@ function feedback(feedbackId: string, options: Record<string, JsonValue | undefi
 	return { id: `f-${feedbackId}`, controlId: 'bank:1', feedbackId, options: wrap(options) }
 }
 
-/** Run the scripts from `from` on, as Companion does for a connection last upgraded before script `from` */
+/**
+ * Run the scripts from `from` on, as Companion does for a connection last upgraded before script `from`, up to (not
+ * including) `to`
+ */
 function upgrade(
 	{
 		actions = [],
@@ -34,10 +37,11 @@ function upgrade(
 		config?: EmberPlusConfig | null
 	},
 	from = 0,
+	to = UpgradeScripts.length,
 ) {
 	let currentConfig = config
 	const updated = { actions: new Set<string>(), feedbacks: new Set<string>() }
-	for (const script of UpgradeScripts.slice(from)) {
+	for (const script of UpgradeScripts.slice(from, to)) {
 		const result = script(
 			{ currentConfig: currentConfig ?? ({} as EmberPlusConfig) },
 			{ config: currentConfig, secrets: null, actions, feedbacks },
@@ -50,7 +54,10 @@ function upgrade(
 }
 
 /** The index of the API 2 script, so a test can start from a connection last upgraded by 2.9 */
-const API2 = UpgradeScripts.length - 1
+const API2 = UpgradeScripts.findIndex((script) => script.name === 'v300')
+
+/** The index of the matrices script, so a test can start from a connection last upgraded by a 3.0 pre-release */
+const MATRICES = UpgradeScripts.findIndex((script) => script.name === 'matricesByPath')
 
 /**
  * Evaluate an expression with Companion's own engine, with the options Companion's ResolveExpression passes
@@ -109,6 +116,7 @@ describe('API 2 upgrade, from a 2.9 connection', () => {
 		const { actions } = upgrade(
 			{ actions: [action('matrixConnect', { path: '1', target: 0, targetVar: '$(internal:custom_t)', useVar: true })] },
 			API2,
+			MATRICES,
 		)
 		expect(actions[0].options.target).toEqual({ isExpression: true, value: '$(internal:custom_t)' })
 		expect(actions[0].options).not.toHaveProperty('targetVar')
@@ -118,6 +126,7 @@ describe('API 2 upgrade, from a 2.9 connection', () => {
 		const { actions } = upgrade(
 			{ actions: [action('matrixDisconnect', { path: '1', target: 5, targetVar: '7', useVar: false })] },
 			API2,
+			MATRICES,
 		)
 		expect(actions[0].options.target).toEqual({ isExpression: false, value: 5 })
 		expect(actions[0].options).not.toHaveProperty('useVar')
@@ -130,6 +139,7 @@ describe('API 2 upgrade, from a 2.9 connection', () => {
 				feedbacks: [feedback('targetBackgroundSelected', { matrix: 1, matrixVar: '2', target: 3, targetVar: '4' })],
 			},
 			API2,
+			MATRICES,
 		)
 		expect(actions[0].options.matrix?.value).toBe(2)
 		expect(actions[0].options.source?.value).toBe(9)
@@ -387,7 +397,11 @@ describe('the upgrade scripts written before API 2, on wrapped options', () => {
 	})
 
 	it('keeps the target of a matrix action from before 2.8', () => {
-		const { actions } = upgrade({ actions: [action('matrixConnect', { path: '1', target: 5, sources: '1,2' })] })
+		const { actions } = upgrade(
+			{ actions: [action('matrixConnect', { path: '1', target: 5, sources: '1,2' })] },
+			0,
+			MATRICES,
+		)
 		expect(actions[0].options).toEqual({
 			path: { isExpression: false, value: '1' },
 			target: { isExpression: false, value: 5 },
@@ -416,5 +430,244 @@ describe('the upgrade scripts written before API 2, on wrapped options', () => {
 			verbose: false,
 			variables: ['parameterValues'],
 		})
+	})
+})
+
+describe('matrices by path, from a 3.0 pre-release connection', () => {
+	/** A config whose matrices are those given, as the module config holds them */
+	function withMatrices(matricesString: string): EmberPlusConfig {
+		return { host: '10.0.0.1', port: 9000, factor: true, verbose: false, variables: [], matricesString }
+	}
+
+	it('turns a selection by place in the list into the matrix by path, and moves its signal to that matrix', () => {
+		const { actions, feedbacks, config } = upgrade(
+			{
+				config: withMatrices('1.4, Audio/Router'),
+				actions: [action('setSelectedSource', { matrix: 1, source: 9 })],
+				feedbacks: [feedback('targetBackgroundSelected', { matrix: 0, target: 3 })],
+			},
+			MATRICES,
+		)
+		expect(actions[0].options).toEqual({
+			matrix: { isExpression: false, value: 'Audio.Router' },
+			source_Audio_Router: { isExpression: false, value: 9 },
+		})
+		expect(feedbacks[0].options).toEqual({
+			matrix: { isExpression: false, value: '1.4' },
+			target_1_4: { isExpression: false, value: 3 },
+		})
+		// Nothing to add to the config
+		expect(config?.matricesString).toBe('1.4, Audio/Router')
+	})
+
+	// The callbacks read the place with Number(), so empty text was the first matrix
+	it('reads an empty place as the first matrix', () => {
+		const { actions } = upgrade(
+			{ config: withMatrices('1.4, 1.5'), actions: [action('setSelectedTarget', { matrix: '', target: 1 })] },
+			MATRICES,
+		)
+		expect(actions[0].options.matrix).toEqual({ isExpression: false, value: '1.4' })
+	})
+
+	it('keeps an expression for the signal on its matrix field', () => {
+		const selection = action('setSelectedTarget', { matrix: 0 })
+		selection.options.target = { isExpression: true, value: '$(internal:custom_t) + 1' }
+		const { actions } = upgrade({ config: withMatrices('1.4'), actions: [selection] }, MATRICES)
+		expect(actions[0].options.target_1_4).toEqual({ isExpression: true, value: '$(internal:custom_t) + 1' })
+	})
+
+	// The user's call: the matrix is chosen from a dropdown only, so one given by an expression can't be kept working
+	it.each([
+		['a place past the list', { isExpression: false, value: 2 } as const, '2'],
+		['an expression', { isExpression: true, value: '$(internal:custom_m)' } as const, '$(internal:custom_m)'],
+	])('keeps %s as text naming no matrix, and the signal where it was', (_name, matrix, text) => {
+		const selection = action('setSelectedSource', { source: 4 })
+		selection.options.matrix = matrix
+		const { actions } = upgrade({ config: withMatrices('1.4, 1.5'), actions: [selection] }, MATRICES)
+		expect(actions[0].options).toEqual({
+			matrix: { isExpression: false, value: text },
+			source: { isExpression: false, value: 4 },
+		})
+	})
+
+	it("names a connection action's matrix by the configured path of the same element", () => {
+		const { actions, config, updated } = upgrade(
+			{
+				config: withMatrices('router[1.4], 2.1'),
+				actions: [
+					action('matrixConnect', { path: '1/4', target: 7, sources: '1, 2' }),
+					action('matrixDisconnect', { path: ' 2.1 ', target: 0, sources: '3' }),
+				],
+			},
+			MATRICES,
+		)
+		expect(actions[0].options).toEqual({
+			matrix: { isExpression: false, value: 'router[1.4]' },
+			target_router_1_4_: { isExpression: false, value: 7 },
+			// A list, which the field shows as a multi-select (N:N) or a dropdown of one: an upgrade can't tell which
+			sources_router_1_4_: { isExpression: false, value: [1, 2] },
+		})
+		expect(actions[1].options.matrix).toEqual({ isExpression: false, value: '2.1' })
+		expect(actions[1].options.sources_2_1).toEqual({ isExpression: false, value: [3] })
+		expect(config?.matricesString).toBe('router[1.4], 2.1')
+		expect(updated.actions.size).toBe(2)
+	})
+
+	it("adds a connection action's path to the config's matrices when it isn't there", () => {
+		const { actions, config } = upgrade(
+			{
+				config: withMatrices('1.4,'),
+				actions: [
+					action('matrixSetConnection', { path: '3/2', target: 1, sources: '' }),
+					action('matrixConnect', { path: '3.2', target: 2, sources: '5' }),
+				],
+			},
+			MATRICES,
+		)
+		// Once, however often it is used
+		expect(config?.matricesString).toBe('1.4, 3.2')
+		expect(actions[0].options).toEqual({
+			matrix: { isExpression: false, value: '3.2' },
+			target_3_2: { isExpression: false, value: 1 },
+			// No sources: an empty list, which Set Connection sends as no source
+			sources_3_2: { isExpression: false, value: [] },
+		})
+	})
+
+	it("starts the config's matrices with a connection action's path when it has none", () => {
+		const { config } = upgrade(
+			{ config: withMatrices(''), actions: [action('matrixConnect', { path: '1.4', target: 0, sources: '1' })] },
+			MATRICES,
+		)
+		expect(config?.matricesString).toBe('1.4')
+	})
+
+	it('turns sources holding variables into an expression giving the same text', () => {
+		const { actions } = upgrade(
+			{
+				config: withMatrices('1.4'),
+				actions: [action('matrixConnect', { path: '1.4', target: 0, sources: '$(internal:custom_a),4' })],
+			},
+			MATRICES,
+		)
+		const expression = { isExpression: true, value: 'parseVariables("$(internal:custom_a),4")' }
+		expect(actions[0].options.sources_1_4).toEqual(expression)
+		expect(actions[0].options).not.toHaveProperty('source_1_4')
+		expect(evaluate(expression.value, { 'internal:custom_a': '3' })).toBe('3,4')
+	})
+
+	// The user's call: a path built from variables can't be a configured matrix, so the action is chosen again by hand
+	it('keeps a path holding variables as text naming no matrix, without adding it to the config', () => {
+		const { actions, config } = upgrade(
+			{
+				config: withMatrices('1.4'),
+				actions: [action('matrixConnect', { path: '1.$(internal:custom_m)', target: 2, sources: '3' })],
+			},
+			MATRICES,
+		)
+		expect(actions[0].options).toEqual({
+			matrix: { isExpression: false, value: '1.$(internal:custom_m)' },
+			target: { isExpression: false, value: 2 },
+			sources: { isExpression: false, value: '3' },
+		})
+		expect(config?.matricesString).toBe('1.4')
+	})
+
+	// Companion upgrades buttons imported into a connection already upgraded without its config
+	it("upgrades imported buttons against the connection's config, which it can't add to", () => {
+		const actions = [
+			action('matrixConnect', { path: '9.9', target: 1, sources: '2' }),
+			action('setSelectedTarget', { matrix: 0, target: 5 }),
+		]
+		const result = UpgradeScripts[MATRICES](
+			{ currentConfig: withMatrices('1.4') },
+			{ config: null, secrets: null, actions, feedbacks: [] },
+		)
+		expect(result.updatedConfig).toBeNull()
+		expect(actions[0].options.matrix).toEqual({ isExpression: false, value: '9.9' })
+		expect(actions[0].options.target_9_9).toEqual({ isExpression: false, value: 1 })
+		expect(actions[1].options).toEqual({
+			matrix: { isExpression: false, value: '1.4' },
+			target_1_4: { isExpression: false, value: 5 },
+		})
+	})
+
+	it('tells apart the fields of two paths that would share a key', () => {
+		const { actions } = upgrade(
+			{
+				config: withMatrices('1.4, 1_4'),
+				actions: [
+					action('setSelectedTarget', { matrix: 0, target: 1 }),
+					action('setSelectedTarget', { matrix: 1, target: 2 }),
+				],
+			},
+			MATRICES,
+		)
+		expect(actions[0].options.target_1_4).toEqual({ isExpression: false, value: 1 })
+		expect(actions[1].options.target_1_005f4).toEqual({ isExpression: false, value: 2 })
+	})
+
+	it('changes nothing when run on its own output', () => {
+		const first = upgrade(
+			{
+				config: withMatrices('1.4'),
+				actions: [
+					action('matrixConnect', { path: '2.1', target: 1, sources: '2' }),
+					action('setSelectedSource', { matrix: 0, source: 3 }),
+				],
+				feedbacks: [feedback('sourceBackgroundSelected', { matrix: 0, source: 3 })],
+			},
+			MATRICES,
+		)
+		const second = upgrade({ config: first.config, actions: first.actions, feedbacks: first.feedbacks }, MATRICES)
+		expect(second.updated.actions.size).toBe(0)
+		expect(second.updated.feedbacks.size).toBe(0)
+		expect(second.config?.matricesString).toBe('1.4, 2.1')
+	})
+
+	it('upgrades a 2.9 selection made from variables, through v300, into text naming no matrix', () => {
+		const { actions } = upgrade(
+			{
+				config: withMatrices('1.4'),
+				actions: [
+					action('setSelectedSource', {
+						matrix: 0,
+						matrixVar: '$(internal:custom_m)',
+						source: 1,
+						sourceVar: '2',
+						useVar: true,
+					}),
+				],
+			},
+			API2,
+		)
+		expect(actions[0].options).toEqual({
+			matrix: { isExpression: false, value: '$(internal:custom_m)' },
+			source: { isExpression: false, value: 2 },
+		})
+	})
+
+	it("upgrades a 2.9 connection action through v300 onto its matrix's fields", () => {
+		const { actions, config } = upgrade(
+			{
+				config: withMatrices(''),
+				actions: [
+					action('matrixConnect', {
+						path: '1.4',
+						target: 0,
+						targetVar: '$(internal:custom_t)',
+						useVar: true,
+						sources: '2',
+					}),
+				],
+			},
+			API2,
+		)
+		expect(actions[0].options).toEqual({
+			matrix: { isExpression: false, value: '1.4' },
+			target_1_4: { isExpression: true, value: '$(internal:custom_t)' },
+			sources_1_4: { isExpression: false, value: [2] },
+		})
+		expect(config?.matricesString).toBe('1.4')
 	})
 })

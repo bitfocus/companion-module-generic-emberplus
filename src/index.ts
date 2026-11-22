@@ -2,12 +2,15 @@ import {
 	createModuleLogger,
 	InstanceBase,
 	InstanceStatus,
+	type CompanionVariableDefinitions,
 	type CompanionVariableValues,
 	type SomeCompanionConfigField,
 } from '@companion-module/base'
 import { type ActionSchema, GetActionsList } from './actions.js'
+import { type CompositeElementSchema, UpdateCompositeElements } from './composites.js'
 import { connectionVariablesDefault, type EmberPlusConfig, GetConfigFields, portDefault } from './config.js'
 import { GetPresetsList } from './presets.js'
+import { presetFieldsChanged } from './presets/fields.js'
 import { type FeedbackSchema, GetFeedbacksList } from './feedback.js'
 import { EmberPlusState } from './state.js'
 import {
@@ -17,6 +20,15 @@ import {
 	type Types as EmberTypes,
 } from '@phillipivan/emberplus-connection'
 import { describe } from './logging.js'
+import {
+	isMatrixNode,
+	isNToN,
+	matrixLabel,
+	matrixPaths,
+	readSignalLabels,
+	signalChoices,
+	type MatrixInfo,
+} from './matrices.js'
 import { StatusManager } from './status.js'
 import { UpgradeScripts } from './upgrades.js'
 import {
@@ -29,11 +41,15 @@ import {
 	isStreamParameter,
 	isValidHostname,
 	isValidPort,
+	resolvePath,
 } from './util.js'
 import {
+	GetMatrixVariablesList,
 	GetVariablesList,
 	hasParameterVariables,
+	matrixVariableValues,
 	parameterVariableValue,
+	type MatrixVariables,
 	type ParameterVariables,
 } from './variables.js'
 import PQueue from 'p-queue'
@@ -59,6 +75,7 @@ export type ModuleTypes = {
 	feedbacks: FeedbackSchema
 	// One variable per monitored parameter, so the ids are only known at runtime
 	variables: CompanionVariableValues
+	compositeElements: CompositeElementSchema
 }
 
 export { UpgradeScripts }
@@ -101,6 +118,15 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 	/** Each parameter feedback's latest check, so that a check overtaken by a release or a later check is dropped */
 	private feedbackGenerations: Map<string, number> = new Map()
 	private feedbackGenerationCounter = 0
+	/** Matrices the provider has reported changes to, or that were loaded, for the next throttled update */
+	private matricesToUpdate: Set<string> = new Set()
+	/** What each matrix's dropdowns last listed, so that the definitions are only rebuilt when that changes */
+	private matrixChoiceSignatures: Map<string, string> = new Map()
+	/** Each matrix variable's value as last set, serialised, so that only the ones a report changed are set */
+	private matrixValuesSet: Map<string, string> = new Map()
+	/** The matrix variables' definitions, built once for each change to the matrices or the kinds chosen */
+	private matrixVariableDefinitions:
+		{ kinds: string; definitions: CompanionVariableDefinitions; serialised: string } | undefined
 	private statusManager = new StatusManager(this, { status: InstanceStatus.Connecting, message: 'Initialising' }, 2000)
 
 	/**
@@ -109,6 +135,9 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 	 */
 	public async init(config: EmberPlusConfig): Promise<void> {
 		this.applyConfig(config)
+		// Nothing here comes from the device, and a button saved with one of these elements needs its definition whether
+		// or not the connection is ever made
+		UpdateCompositeElements(this)
 		// The variables of the configured paths exist from the start, connected or not
 		this.setupMatrices()
 		this.setupMonitoredParams()
@@ -126,6 +155,10 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 
 		if (hasConnectionChanged(oldConfig, config)) {
 			this.resetConnection()
+			// The matrices the config now names, for the dropdowns while connecting, or for good if the new host can't be
+			// reached. (The monitored paths stay as they were until connected, keeping their variables: see
+			// EmberPlusState.clear.)
+			this.setupMatrices()
 			this.connect()
 		} else {
 			this.finalizeSetup().catch((e) => this.log('error', `Error during finalize setup: ${describe(e)}`))
@@ -192,6 +225,15 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 		this.destroyEmberClient()
 		this.variableValueUpdates = {}
 		this.state.clear()
+		this.matricesToUpdate.clear()
+		this.forgetMatrixUpdates()
+	}
+
+	/** Forget what was sent for the matrices, so that it is all sent again: the matrices are being loaded afresh */
+	private forgetMatrixUpdates(): void {
+		this.matrixChoiceSignatures.clear()
+		this.matrixValuesSet.clear()
+		this.matrixVariableDefinitions = undefined
 	}
 
 	/**
@@ -218,6 +260,7 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 		// Once the actions and feedbacks have registered again, end the streams nothing uses any more: a stream variable
 		// turned off, or a configured path removed
 		this.debouncedStreamSync()
+		await this.loadMatrices()
 	}
 
 	/**
@@ -238,7 +281,7 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 			this.setFeedbackDefinitions(GetFeedbacksList(this, this.client, this.config, this.state))
 		if (options.updateVariables) this.updateVariableDefinitions()
 		if (options.updatePresets) {
-			const { structure, presets } = GetPresetsList()
+			const { structure, presets } = GetPresetsList(this.state)
 			this.setPresetDefinitions(structure, presets)
 		}
 	}
@@ -248,15 +291,22 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 	 * Every feedback re-registering its path after a reconnect lands here, almost always with an unchanged set.
 	 */
 	private updateVariableDefinitions(): void {
+		// A large matrix has thousands of variables, which only change as the matrices do: build them once for that
+		const kinds = JSON.stringify(this.matrixVariables)
+		if (this.matrixVariableDefinitions?.kinds !== kinds) {
+			const definitions = GetMatrixVariablesList(this.state, this.matrixVariables)
+			this.matrixVariableDefinitions = { kinds, definitions, serialised: JSON.stringify(definitions) }
+		}
 		const variables = GetVariablesList(this.state, this.parameterVariables)
-		const serialised = JSON.stringify(variables)
+		const serialised = JSON.stringify(variables) + this.matrixVariableDefinitions.serialised
 		if (serialised === this.lastVariableDefinitions) return
 		this.lastVariableDefinitions = serialised
-		this.setVariableDefinitions(variables)
+		this.setVariableDefinitions({ ...variables, ...this.matrixVariableDefinitions.definitions })
 	}
 
+	/** The definitions and presets, once the registrations or reports that changed them have settled */
 	public debouncedUpdateActionFeedbackDefs = debounce(() => {
-		this.updateCompanionBits()
+		this.updateCompanionBits({ updateActions: true, updateFeedbacks: true, updatePresets: true, updateVariables: true })
 	}, 500)
 
 	/**
@@ -266,6 +316,16 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 	private get parameterVariables(): ParameterVariables {
 		const chosen = this.config.variables ?? connectionVariablesDefault
 		return { values: chosen.includes('parameterValues'), streams: chosen.includes('parameterStreams') }
+	}
+
+	/** Which matrix variables there are (Matrix - Target Names, Source Names and Connections in Connection Variables) */
+	private get matrixVariables(): MatrixVariables {
+		const chosen = this.config.variables ?? connectionVariablesDefault
+		return {
+			targetNames: chosen.includes('matrixTargetNames'),
+			sourceNames: chosen.includes('matrixSourceNames'),
+			connections: chosen.includes('matrixConnections'),
+		}
 	}
 
 	/**
@@ -528,6 +588,8 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 			this.subscribeActions()
 			this.checkAllFeedbacks()
 			this.debouncedStreamSync()
+			// Their labels may have changed while disconnected, and a provider may have gained a matrix it lacked
+			await this.loadMatrices()
 		})().catch((e) => this.log('error', `Error registering again after reconnecting: ${describe(e)}`))
 	}
 
@@ -537,21 +599,139 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 		this.log('warn', `Disconnected from ${this.config.host}:${this.config.port}`)
 	}
 
+	/** Set the matrices from the config, and clear the XY selection */
 	private setupMatrices(): void {
-		if (this.config.matricesString) {
-			this.state.matrices = [
-				...new Set<string>(
-					this.config.matricesString
-						.replaceAll('/', '.')
-						.split(',')
-						.map((s) => s.trim())
-						.filter((s) => s !== ''),
-				),
-			]
+		this.state.setMatrixPaths(matrixPaths(this.config.matricesString))
+		// A matrix no longer configured takes its variables with it
+		this.matrixVariableDefinitions = undefined
+		this.state.clearSelection()
+	}
+
+	/**
+	 * Load the configured matrices from the provider, one by one, on connecting, reconnecting, and after a config change.
+	 * Each starts out configured, so one dropped last time, as not a matrix, is looked for again. What was sent for them
+	 * is forgotten, so that their definitions and variables are sent afresh.
+	 */
+	private async loadMatrices(): Promise<void> {
+		const client = this.emberClient
+		if (!client) return
+		this.state.setMatrixPaths(matrixPaths(this.config.matricesString))
+		this.forgetMatrixUpdates()
+		this.debouncedUpdateActionFeedbackDefs()
+		for (const info of [...this.state.matrices.values()]) {
+			if (!this.isCurrentClient(client)) return
+			await this.loadMatrix(client, info)
+		}
+	}
+
+	/**
+	 * Load a matrix: look it up, following its changes, then send a GetDirectory on it, which a provider answers with its
+	 * targets, sources and connections and which asks it to report their changes; then read its labels. A path that
+	 * holds no element, or one that isn't a matrix, is dropped with a warning. One that can't be looked up just now (the
+	 * connection dropped, or the provider didn't answer) is kept, and looked for again on reconnecting.
+	 */
+	private async loadMatrix(client: EmberClient, info: MatrixInfo): Promise<void> {
+		const { path } = info
+		let node: EmberModel.TreeElement<EmberModel.EmberElement> | undefined
+		try {
+			node = await this.emberQueue.add(async () => this.getElementByPath(path, resolvePath(path)))
+		} catch (e) {
+			if (!this.isCurrentClient(client)) return
+			if (describe(e).includes('Could not find node')) {
+				this.dropMatrix(path, 'was not found')
+			} else {
+				this.log('warn', `Matrix ${path} could not be loaded, and is looked for again on reconnecting: ${describe(e)}`)
+			}
+			return
+		}
+		if (!this.isCurrentClient(client) || this.state.matrices.get(path) !== info) return
+		if (!isMatrixNode(node)) {
+			this.dropMatrix(path, node ? 'is not a matrix' : 'was not found')
+			return
+		}
+		// Another element (the provider was changed) has its connections to load afresh
+		if (info.node !== node) info.connectionsLoaded = false
+		info.node = node
+		this.matrixChanged(path)
+
+		try {
+			// A GetDirectory that wasn't sent (the connection is down) has no response, and loads nothing
+			const answered = await this.emberQueue.add(async () => {
+				const request = await client.getDirectory(node)
+				if (!request.response) return false
+				await request.response
+				return true
+			})
+			if (answered && this.isCurrentClient(client) && info.node === node) info.connectionsLoaded = true
+		} catch (e) {
+			if (!this.isCurrentClient(client)) return
+			this.log('warn', `Matrix ${path}: its targets, sources and connections could not be loaded: ${describe(e)}`)
 		}
 
-		this.state.selected.source = -1
-		this.state.selected.target = -1
+		try {
+			// A signal whose label can't be read just now keeps the one it had
+			info.labels = await readSignalLabels(
+				client,
+				node,
+				(location, e) => this.log('debug', `Matrix ${path}: no labels from ${location}: ${describe(e)}`),
+				info.labels,
+			)
+		} catch (e) {
+			if (!this.isCurrentClient(client)) return
+			this.log('warn', `Matrix ${path}: its labels could not be read: ${describe(e)}`)
+		}
+		if (!this.isCurrentClient(client)) return
+		const { targets, sources } = node.contents
+		this.log(
+			'debug',
+			`Matrix ${path} loaded: ${targets?.size ?? node.contents.targetCount ?? 0} targets, ${sources?.size ?? node.contents.sourceCount ?? 0} sources, ${info.labels.targets.size + info.labels.sources.size} labels`,
+		)
+		this.matrixChanged(path)
+	}
+
+	/** Leave out a configured matrix the provider showed not to be one, until the next connection or config change */
+	private dropMatrix(path: string, reason: string): void {
+		this.log('warn', `Matrix ${path} ${reason}, so it is left out until the next connection or config change`)
+		this.state.matrices.delete(path)
+		this.matrixVariableDefinitions = undefined
+		this.state.getMatrixFeedbacks(path).forEach((id) => this.feedbacksToCheck.add(id))
+		this.throttledFeedbackChecksVariableUpdates()
+		this.debouncedUpdateActionFeedbackDefs()
+	}
+
+	/** A matrix was loaded, or the provider reported a change to it: update what shows it, at the next throttled update */
+	private matrixChanged(path: string): void {
+		this.matricesToUpdate.add(path)
+		this.throttledFeedbackChecksVariableUpdates()
+	}
+
+	/**
+	 * Bring what shows a matrix up to date: the definitions, when what its dropdowns list has changed (a label, or a
+	 * signal, which come with the matrix's own reports); the variable definitions with them; the variables a report
+	 * changed; and the Matrix Property feedbacks reading it.
+	 */
+	private updateMatrix(path: string): void {
+		const info = this.state.matrices.get(path)
+		if (!info) return
+		const signature = JSON.stringify([
+			matrixLabel(info),
+			isNToN(info.node?.contents),
+			signalChoices(info, 'target'),
+			signalChoices(info, 'source'),
+		])
+		if (this.matrixChoiceSignatures.get(path) !== signature) {
+			this.matrixChoiceSignatures.set(path, signature)
+			this.matrixVariableDefinitions = undefined
+			this.updateVariableDefinitions()
+			this.debouncedUpdateActionFeedbackDefs()
+		}
+		for (const [id, value] of Object.entries(matrixVariableValues(info, this.matrixVariables))) {
+			const serialised = JSON.stringify(value)
+			if (this.matrixValuesSet.get(id) === serialised) continue
+			this.matrixValuesSet.set(id, serialised)
+			this.variableValueUpdates[id] = value
+		}
+		this.state.getMatrixFeedbacks(path).forEach((id) => this.feedbacksToCheck.add(id))
 	}
 
 	private setupMonitoredParams(): void {
@@ -606,11 +786,14 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 	 * handleChangedValue once more per change after each config save or cache clear. Each spelling of a path (1.2.3,
 	 * device.channel.gain) has its own callback, so each spelling's state, variables and feedbacks follow the element.
 	 */
-	private async getElementByPath(path: string): Promise<EmberModel.TreeElement<EmberModel.EmberElement> | undefined> {
+	private async getElementByPath(
+		path: string,
+		lookup: string = path,
+	): Promise<EmberModel.TreeElement<EmberModel.EmberElement> | undefined> {
 		const client = this.emberClient
-		if (this.pathCallbacks.has(path)) return client.getElementByPath(path)
+		if (this.pathCallbacks.has(path)) return client.getElementByPath(lookup)
 
-		const node = await client.getElementByPath(path, (updatedNode) => {
+		const node = await client.getElementByPath(lookup, (updatedNode) => {
 			if (!this.isCurrentClient(client)) return
 			this.handleChangedValue(path, updatedNode).catch((e) =>
 				this.log('error', `Error handling parameter ${path}: ${describe(e)}`),
@@ -701,6 +884,8 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 	// Throttled feedback checks and variable updates for better efficiency in busy systems
 	private throttledFeedbackChecksVariableUpdates = throttle(
 		() => {
+			for (const path of this.matricesToUpdate) this.updateMatrix(path)
+			this.matricesToUpdate.clear()
 			if (this.feedbacksToCheck.size > 0) {
 				this.checkFeedbacksById(...this.feedbacksToCheck.values())
 				this.feedbacksToCheck.clear()
@@ -715,13 +900,21 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 	)
 
 	public async handleChangedValue(path: string, node: EmberModel.TreeElement<EmberModel.EmberElement>): Promise<void> {
+		// A configured matrix's connections, targets or sources, or its contents
+		if (node.contents.type === EmberModel.ElementType.Matrix) {
+			if (this.state.matrices.has(path)) this.matrixChanged(path)
+			return
+		}
 		if (node.contents.type !== EmberModel.ElementType.Parameter) return
 
 		// Every value of every parameter, stream values many times a second: only with Verbose Logs
 		if (this.config.verbose)
 			this.log('debug', `Got parameter value for ${path}: ${describe(node.contents.value ?? '')}`)
+		const previous = this.state.parameters.get(path)
 		this.state.updateParameterMap(path, node)
 		const parameter = this.state.parameters.get(path) ?? node.contents
+		// Its presets follow its type, access, range and online state, not its value
+		if (previous && presetFieldsChanged(previous, parameter)) this.debouncedUpdateActionFeedbackDefs()
 
 		// A stream identifier may come only with a later report
 		this.updateStreamSubscription(path)

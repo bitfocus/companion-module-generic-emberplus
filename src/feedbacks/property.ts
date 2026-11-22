@@ -10,6 +10,7 @@ export const ParameterProperty = [
 	'value',
 	'units',
 	'formula',
+	'displayed',
 	'enumeration',
 	'identifier',
 	'description',
@@ -33,6 +34,7 @@ export const parameterPropertyChoices = [
 	{ id: 'value', label: 'Value' },
 	{ id: 'units', label: 'Value with Units' },
 	{ id: 'formula', label: 'Value by Formula' },
+	{ id: 'displayed', label: 'Value as Displayed' },
 	{ id: 'enumeration', label: 'Value as Enumeration Entry' },
 	{ id: 'identifier', label: 'Identifier' },
 	{ id: 'description', label: 'Description' },
@@ -86,6 +88,22 @@ function formulaValue(parameter: EmberModel.Parameter): ParameterPropertyValue {
 }
 
 /**
+ * A number's value as displayed, as a number: by the parameter's formula, or else divided by its factor (the library's
+ * displayValue), as the parameter variables give it. A formula that can't be computed gives the plain value, as does a
+ * value that isn't a number.
+ */
+function displayedValue(parameter: EmberModel.Parameter): ParameterPropertyValue {
+	if (typeof parameter.value !== 'number') return plainValue(parameter)
+	try {
+		const { value } = EmberModel.displayValue(parameter)
+		return typeof value === 'number' ? value : plainValue(parameter)
+	} catch (e) {
+		logger.debug(`Value of ${parameter.identifier ?? 'parameter'} can't be displayed: ${describe(e)}`)
+		return plainValue(parameter)
+	}
+}
+
+/**
  * The value by formula or factor, as its format gives it, with the unit: the library's display text, which keeps the
  * format's text after the "°" that marks the unit. One space goes between the number and the unit, whether the
  * format had one ("%.1f°dB" and "%.1f° dB" both give "-12.5 dB")
@@ -129,6 +147,8 @@ export function parameterProperty(
 			return unitsValue(parameter)
 		case 'formula':
 			return formulaValue(parameter)
+		case 'displayed':
+			return displayedValue(parameter)
 		case 'enumeration':
 			return enumerationValue(parameter)
 		case 'defaultValue':

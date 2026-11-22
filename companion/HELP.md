@@ -14,7 +14,7 @@ Some devices support mDNS announcements according to the Ember Plus [specificati
 
 ### Matrix Control
 
-If you require matrix control, enter the ember path(s) here.
+If you require matrix control, enter the ember path(s) of the matrices here, separated by commas. The matrix actions and feedbacks choose from these. On connecting, the module loads each one: its targets, sources and connections, and its labels. A path that holds no element, or one that isn't a matrix, is left out, with a warning in the log, until the next connection or config change. See [Matrices](#matrices).
 
 ### Auto Take
 
@@ -30,7 +30,8 @@ What the connection makes variables for:
 
 - **Parameter - Values**: a variable for each parameter in use, whether configured above or used by an action or feedback, holding its value (an enumeration also gets an `_ENUM` variable holding its entry). Selected by default. Without it no parameter variables are made: the **Parameter Property** feedback gives a parameter's value to a button's local variable instead. This replaces the actions' **Auto Create Variable** option of earlier versions.
 - **Parameter - Streams**: the same for stream parameters, such as audio meters, whose values the device sends many times a second. Off by default: a meter's values are only streamed while something uses them, and with this on every meter in use streams for its variable.
-- **Matrix - Source Names**, **Matrix - Target Names** and **Matrix - Connections**: not used yet.
+- **Matrix - Target Names** and **Matrix - Source Names**: a variable for each target or source of each configured matrix, holding its name (see [Matrices](#matrices)), eg `matrix_1.4_target_1001_name`.
+- **Matrix - Connections**: a variable for each target of each configured matrix, holding the numbers of the sources connected to it, as an array, eg `matrix_1.4_target_1001_sources`.
 
 ### Apply Formula and Factor to Parameter Variables
 
@@ -62,7 +63,7 @@ Central to the concept of ember+ is the address or path of the data element you 
 
 - ### Variables and Expressions
 
-  Except in the module configuration, all of the above can be built from variables. The path dropdown of each action and feedback lists the registered paths, and also takes a path typed in. To build a path from variables, switch the field to expression mode and use `parseVariables`, eg `parseVariables("Gain[1.2.$(internal:custom_channel)]")`. The path field of the matrix actions is text, and takes variables directly.
+  Except in the module configuration, all of the above can be built from variables. The path dropdown of each action and feedback lists the registered paths, and also takes a path typed in. To build a path from variables, switch the field to expression mode and use `parseVariables`, eg `parseVariables("Gain[1.2.$(internal:custom_channel)]")`. Matrices are the exception: they are chosen from those in the module config.
 
 ## Value Fields
 
@@ -79,6 +80,17 @@ Any value field can be switched to expression mode to set it from variables or a
 Ember+ devices may expose executable functions (such as triggering snapshots, firing macros, or executing remote methods).
 
 - **Invoke Function**: Invokes an Ember+ `Function` node on the target device. Arguments can be passed comma-separated (e.g. `123, "text", true`), line-separated, or as a JSON array (e.g. `[123, "text", true]`). Dynamic Companion variables are supported.
+
+## Matrices
+
+The matrix actions and feedbacks choose a matrix from those in the module config, by path. The chosen matrix's targets and sources are then chosen from dropdowns listing each by number and name, eg `1001: Studio A`. A signal's name is its first label: from the first of the matrix's label sets that has one, or else the first in its own labels node, as the device provides them. A signal without a label is named by its identifier, or else listed by number alone. The dropdowns list a matrix's signals once it is loaded from the device; until then, or for a number not listed, switch the field to expression mode and give the number.
+
+Labels are read when the module connects, reconnects, or its config is saved. Changes the device reports to a matrix's connections, and to its signals' identifiers, are followed as they happen, updating the dropdowns and variables.
+
+- **Matrix Connect**, **Matrix Disconnect** and **Matrix Set Connection** connect sources to a target, disconnect them from it, or connect exactly those sources, replacing the target's others. For an N:N matrix several sources can be chosen; for any other matrix, one. Set Connection's source can be **None**, which disconnects the target's sources. The Ember+ specification has connect and disconnect requests for N:N matrices only, so on any other matrix Matrix Connect sets the target's source outright, as Set Connection does (the first source, where an expression gives several), and Matrix Disconnect clears it if the chosen source is the one connected; if another source is connected, nothing is sent. Until the matrix's connections have loaded from the device, Matrix Disconnect is sent as a disconnect request.
+- **Set Selected Target**, **Set Selected Source**, **Take** and **Clear** make an XY selection on a matrix, connected by Take, or at once with Auto-Take, as Matrix Connect connects.
+
+On upgrading, the matrix actions and feedbacks of earlier versions are converted. Those that chose a matrix by its number in the config list choose it by path. The path of a Matrix Connect, Disconnect or Set Connection action is added to the module config's matrices if it isn't there. One built from variables can't be: such an action fails until a matrix is chosen for it, and its target and sources set again.
 
 ## Actions
 
@@ -106,6 +118,7 @@ The host accepts variables, and may be left empty to keep the currently configur
 ## Feedbacks
 
 - Parameter Property
+- Matrix Property
 - Parameter Compare Number (Deprecated)
 - Parameter Equals String (Deprecated)
 - Parameter ENUM Equals String (Deprecated)
@@ -122,10 +135,22 @@ Returns a property of a parameter to a button's local variable, chosen from:
 - **Value**: integers divided by their factor, as the Parameter Value feedback of earlier versions returned them. Octet strings are returned as an array of bytes.
 - **Value with Units**: the value by its formula or factor, formatted by the parameter's format, with its unit, eg `-12.5 dB`.
 - **Value by Formula**: the value computed by the parameter's formula. A parameter without a formula returns its plain value.
+- **Value as Displayed**: the value as a number, by the parameter's formula, or else divided by its factor: what Set Value Integer and Set Value Real take, and what the parameter variables hold with Apply Formula and Factor on.
 - **Value as Enumeration Entry**: the name of the value's entry, from the parameter's enumeration map or enumeration. A parameter with neither returns its plain value. This replaces the Return ENUM checkbox of earlier versions.
 - The parameter's own properties, as the provider reports them: Identifier, Description, Type, Access, Minimum, Maximum, Default Value, Factor, Format, Step, Online, Stream Identifier, Stream Descriptor, Schema Identifiers and Template Reference. A property the provider doesn't report returns nothing.
 
 Use it in an expression to style a button, or compare the value, in place of the deprecated feedbacks.
+
+### Matrix Property
+
+Returns a property of a matrix's target or source to a button's local variable. Choose the matrix, Source or Target, which one, then the property:
+
+- **Name**: its first label, or else its identifier, as for the dropdowns (see [Matrices](#matrices)).
+- **Identifier**, **Online** and **Labels Location**, as the device reports them. Online is true unless the device says otherwise.
+- A target's **Connected Sources**: the numbers of the sources connected to it, as an array.
+- A target's **Connection Disposition**: the device's last report on its connection: `tally`, `modified`, `pending` (a change is queued) or `locked` (the target refused a change).
+
+The feedback returns nothing for a matrix not yet loaded, or a signal it doesn't have.
 
 ### Deprecated feedbacks
 
@@ -133,10 +158,31 @@ Parameter Compare Number, Parameter Equals String, Parameter ENUM Equals String 
 
 Parameter Compare Number, Parameter Equals String, and Parameter True type coerce all data to the respective data type, thus can be used on any node type. Ie, you can check a boolean node with the Parameter Equals String feedback by setting the Value to _true_. However, the path dropdown for each feedback is filtered to parameters of the appropriate type(s) for ease of use. Prior to version 2.5 all data was coerced to strings prior to equality tests. The path field of each feedback presents a dropdown of registered paths. New paths can be typed in, or built from variables in expression mode, and if valid will be automatically registered and added to the dropdowns and, with Parameter - Values selected, the variable list.
 
+## Composite Elements
+
+The module also provides graphics elements for your own layered buttons:
+
+- `Signal Meter`: a bar for a level, such as an audio meter, along any edge of the button, coloured by the audio metering scale or in one colour.
+- `Value Dial`, `Centred Dial` and `Width Dial`: knob-style arcs, filling from the minimum, growing out from zero, or opening out from the middle.
+
+Give each one a value and the ends of its range, eg from Parameter Property feedbacks into local variables. A parameter's Minimum and Maximum properties are its device values, so they suit its plain Value; for a Value by Formula, such as a meter's level in dB, give the ends as displayed, eg -60 and 0.
+
 ## Presets
 
-- Take
-- Clear
+The module offers presets for the parameters it has registered: those in Paths to Monitor, and any an action or feedback uses. Add a parameter's path to Paths to Monitor to get its preset. Each is grouped under its parent node, and shows the parameter's path by its identifiers, eg `Device.Inputs.Gain`. A parameter offline, or under a node offline, gets none.
+
+- **Toggles**, for a boolean parameter with read-write access: a press toggles it. ON or OFF in the middle, green while on, and its path along the bottom.
+- **Rotaries**, for an integer, real or enumeration parameter with read-write access: a turn steps it, and a turn while pressed takes a finer step. A dial shows where the value sits in its range, with the value in the middle (by formula or factor, with its units, or an enumeration's entry name) and the path along the bottom. A number needs a minimum and a maximum, or it gets no rotary; an enumeration stating none takes its entries as its range.
+- **Meters**, for a stream parameter such as an audio meter: a meter along the bottom, its level by formula or factor, the path in the middle and the level with its units at the top. Its range is the parameter's, or -100 to 0 where the parameter gives none.
+- **Take** and **Clear**, for XY matrix control.
+
+Each button has local variables to fine tune it:
+
+- `font_size_value` and `font_size_name`: the size of the value and of the path.
+- On a rotary, `min` and `max`: its range, as displayed. Narrow them to limit what the dial sets.
+- On a number rotary, `step_size` and `step_size_fine`: the step a turn takes, and while pressed, as displayed.
+- On a number rotary, `logarithmic`: set it to `true` for a parameter read on a log scale, such as a frequency. A turn then multiplies the value, by a fraction of a doubling (`step_divisions`, 3 by default: a third of an octave; `step_divisions_fine`, 24, while pressed), and the dial is drawn on a log scale.
+- On a meter, `meter_min` and `meter_max`: its range.
 
 ## Action Recorder
 

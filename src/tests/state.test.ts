@@ -35,9 +35,9 @@ function makeFunctionNode(overrides: Record<string, any> = {}) {
 // ---------------------------------------------------------------------------
 
 describe('EmberPlusState constructor', () => {
-	it('initialises selected with -1 for all fields', () => {
+	it('initialises selected with none', () => {
 		const state = new EmberPlusState()
-		expect(state.selected).toEqual({ source: -1, target: -1, matrix: -1 })
+		expect(state.selected).toEqual({ source: -1, target: -1, matrix: '' })
 	})
 
 	it('initialises empty parameters map', () => {
@@ -48,8 +48,8 @@ describe('EmberPlusState constructor', () => {
 		expect(new EmberPlusState().monitoredParameters.size).toBe(0)
 	})
 
-	it('initialises empty matrices array', () => {
-		expect(new EmberPlusState().matrices.length).toBe(0)
+	it('initialises no matrices', () => {
+		expect(new EmberPlusState().matrices.size).toBe(0)
 	})
 
 	it('initialises empty emberElement map', () => {
@@ -370,15 +370,32 @@ describe('clear', () => {
 		state.updateParameterMap('0.1', makeNode())
 		state.addIdToPathMap('fb1', '0.1')
 		state.monitoredParameters.add('0.1')
-		state.matrices.push('0.1')
-		state.selected = { source: 1, target: 2, matrix: 3 }
+		state.selected = { source: 1, target: 2, matrix: '0.2' }
 
 		state.clear()
 
 		expect(state.parameters.size).toBe(0)
 		expect(state.emberElement.size).toBe(0)
+		expect(state.parameterElements.size).toBe(0)
 		expect(state.getFeedbacksByPath('0.1').size).toBe(0)
-		expect(state.selected).toEqual({ source: -1, target: -1, matrix: -1 })
+		expect(state.selected).toEqual({ source: -1, target: -1, matrix: '' })
+	})
+
+	// The next provider's matrices are loaded afresh, but the config still names them, and feedbacks still read them
+	it('keeps the matrices configured, and their feedbacks, without what was learnt of them', () => {
+		const state = new EmberPlusState()
+		state.setMatrixPaths(['0.2'])
+		const info = state.matrices.get('0.2')!
+		info.node = new EmberModel.NumberedTreeNodeImpl(2, new EmberModel.MatrixImpl('router'))
+		info.labels.targets.set(1, 'Mon')
+		state.addMatrixFeedback('fb1', '0.2')
+
+		state.clear()
+
+		expect([...state.matrices.keys()]).toEqual(['0.2'])
+		expect(state.matrices.get('0.2')?.node).toBeUndefined()
+		expect(state.matrices.get('0.2')?.labels.targets.size).toBe(0)
+		expect(state.getMatrixFeedbacks('0.2')).toEqual(new Set(['fb1']))
 	})
 
 	it('can be called on an already-empty state without throwing', () => {
@@ -440,5 +457,42 @@ describe('updateFunctionMap / getFunction / hasFunction', () => {
 		const stored = state.getFunction('1.2.3')
 		expect(stored?.identifier).toBe('fn1')
 		expect(stored?.description).toBe('New description')
+	})
+})
+
+// ---------------------------------------------------------------------------
+// matrices
+// ---------------------------------------------------------------------------
+
+describe('matrices', () => {
+	it('are the paths given, in order, each with the key its fields are named by', () => {
+		const state = new EmberPlusState()
+		state.setMatrixPaths(['1.4', 'Audio.Router'])
+		expect([...state.matrices.values()].map(({ path, key }) => [path, key])).toEqual([
+			['1.4', '1_4'],
+			['Audio.Router', 'Audio_Router'],
+		])
+	})
+
+	// A config change loads them again: meanwhile their fields keep their choices
+	it('keep what was learnt of one still configured', () => {
+		const state = new EmberPlusState()
+		state.setMatrixPaths(['1.4', '1.5'])
+		const node = new EmberModel.NumberedTreeNodeImpl(4, new EmberModel.MatrixImpl('router')) as any
+		state.matrices.get('1.4')!.node = node
+		state.setMatrixPaths(['1.4'])
+		expect(state.matrices.get('1.4')?.node).toBe(node)
+		expect(state.matrices.has('1.5')).toBe(false)
+	})
+
+	it('register a feedback against the matrix it reads, moving it when edited onto another', () => {
+		const state = new EmberPlusState()
+		state.addMatrixFeedback('fb1', '1.4')
+		state.addMatrixFeedback('fb2', '1.4')
+		state.addMatrixFeedback('fb1', '1.5')
+		expect(state.getMatrixFeedbacks('1.4')).toEqual(new Set(['fb2']))
+		expect(state.getMatrixFeedbacks('1.5')).toEqual(new Set(['fb1']))
+		state.removeMatrixFeedback('fb1')
+		expect(state.getMatrixFeedbacks('1.5').size).toBe(0)
 	})
 })

@@ -3,46 +3,106 @@ import {
 	type CompanionActionCallbackContext,
 	type CompanionActionEvent,
 } from '@companion-module/base'
-import { EmberClient, Model as EmberModel, type Types as EmberTypes } from '@phillipivan/emberplus-connection'
+import { EmberClient, Model as EmberModel } from '@phillipivan/emberplus-connection'
 import type PQueue from 'p-queue'
 import type { MatrixActionOptions, SetSelectedSourceOptions, SetSelectedTargetOptions } from '../actions.js'
 import type { EmberPlusConfig } from '../config.js'
 import { FeedbackId } from '../feedback.js'
 import type EmberPlusInstance from '../index.js'
-import { isSignalNumber } from '../ranges.js'
+import { isMatrixNode, isNToN, loadedConnections, type MatrixInfo, type MatrixNode } from '../matrices.js'
+import { chosenMatrix, sourceOf, sourcesOf, targetOf } from '../matrixOptions.js'
 import { EmberPlusState } from '../state.js'
 import { resolvePath } from '../util.js'
 
 const logger = createModuleLogger('Actions/Matrix')
 
-type MatrixNode = EmberTypes.ElementOf<EmberModel.Matrix>
 type MatrixMethod = EmberClient['matrixConnect'] | EmberClient['matrixDisconnect'] | EmberClient['matrixSetConnection']
 
-function isMatrixNode(node: EmberModel.TreeElement<EmberModel.EmberElement> | undefined): node is MatrixNode {
-	return (
-		node?.contents.type === EmberModel.ElementType.Matrix &&
-		(EmberModel.isNumbered(node) || EmberModel.isQualified(node))
-	)
+/** What an action asks of a target: connect sources (Matrix Connect, Take), disconnect them, or set them (absolute) */
+export type MatrixOperation = 'connect' | 'disconnect' | 'absolute'
+
+/** A request to send: the library method, which gives the connection's operation, and the sources */
+export interface MatrixRequest {
+	method: 'matrixConnect' | 'matrixDisconnect' | 'matrixSetConnection'
+	sources: number[]
 }
 
 /**
- * Resolves a matrix node, returning the cached element when one is already known.
- * Only the tree walk on a cache miss goes through the queue, mirroring registerNewParameter.
+ * The request to send for an operation on a matrix's target. The Glow DTD has the operations connect and disconnect for
+ * an N:N matrix only ("nToN only"), and absolute, the default, for any. So on any other matrix (1:N, the default, or
+ * 1:1, where a target has one source) a connect goes as absolute with its source, the first of several (an expression
+ * may give a list); and a disconnect as absolute with the target's sources less those given, once the matrix's
+ * connections are loaded to tell (`connections`, see MatrixInfo.connectionsLoaded), or else as a disconnect. Undefined
+ * for nothing to send there: a connect without a source, which absolute would make a disconnect, or a disconnect of a
+ * source not connected to the target, which absolute would make the disconnect of another.
+ */
+export function matrixRequest(
+	matrix: EmberModel.Matrix,
+	connections: EmberModel.Connections | undefined,
+	operation: MatrixOperation,
+	target: number,
+	sources: number[],
+): MatrixRequest | undefined {
+	if (operation === 'absolute') return { method: 'matrixSetConnection', sources }
+	if (isNToN(matrix)) return { method: operation === 'connect' ? 'matrixConnect' : 'matrixDisconnect', sources }
+	if (operation === 'connect')
+		return sources.length ? { method: 'matrixSetConnection', sources: sources.slice(0, 1) } : undefined
+	if (!connections) return { method: 'matrixDisconnect', sources }
+	const connected = connections.get(target)?.sources ?? []
+	if (!sources.some((source) => connected.includes(source))) return undefined
+	return { method: 'matrixSetConnection', sources: connected.filter((source) => !sources.includes(source)) }
+}
+
+/**
+ * Send an operation on a matrix's target, as matrixRequest makes it, without waiting for the provider's report.
+ * Logs, rather than sends, a request with nothing to do.
+ */
+async function sendMatrixRequest(
+	emberClient: EmberClient,
+	info: MatrixInfo,
+	node: MatrixNode,
+	operation: MatrixOperation,
+	target: number,
+	sources: number[],
+): Promise<void> {
+	const { path } = info
+	// The loaded matrix's connections; none for one looked up because it couldn't be loaded
+	const connections = info.node === node ? loadedConnections(info) : undefined
+	const request = matrixRequest(node.contents, connections, operation, target, sources)
+	if (!request) {
+		logger.debug(
+			operation === 'connect'
+				? `Matrix ${path}: no source to connect to target ${target}, so nothing was sent`
+				: `Matrix ${path}: source ${sources.join(', ')} isn't connected to target ${target}, so nothing was sent`,
+		)
+		return
+	}
+	if (operation === 'connect' && request.sources.length < sources.length) {
+		logger.debug(`Matrix ${path}: one source a target, so only the first of ${sources.join(', ')} was sent`)
+	}
+	logger.debug(`Matrix ${path}: ${request.method}, target ${target}, sources ${request.sources.join(', ')}`)
+	handleMatrixReport(path, target, await emberClient[request.method](node, target, request.sources))
+}
+
+/**
+ * A configured matrix's element: the one loaded on connecting, or else (it couldn't be loaded then) looked up now.
+ * Only the lookup goes through the queue, as registerNewParameter does. Undefined for a path that holds no matrix.
  */
 async function resolveMatrixNode(
 	self: EmberPlusInstance,
 	emberClient: EmberClient,
 	state: EmberPlusState,
 	queue: PQueue,
-	path: string,
+	info: MatrixInfo,
 ): Promise<MatrixNode | undefined> {
-	const cached = state.emberElement.get(path)
+	if (info.node) return info.node
+	const cached = state.emberElement.get(info.path)
 	if (isMatrixNode(cached)) return cached
 
-	const node = await queue.add(async () => emberClient.getElementByPath(path))
+	const node = await queue.add(async () => emberClient.getElementByPath(resolvePath(info.path)))
 	if (isMatrixNode(node)) {
 		// Not cached when a host change has replaced the client it came from
-		if (self.isCurrentClient(emberClient)) state.emberElement.set(path, node)
+		if (self.isCurrentClient(emberClient)) state.emberElement.set(info.path, node)
 		return node
 	}
 
@@ -71,47 +131,37 @@ export function handleMatrixReport(matrix: string, target: number, request: Awai
 	)
 }
 
+/**
+ * Matrix Connect, Disconnect and Set Connection: the chosen matrix's target, and its source or sources. The request is
+ * made in the queue, from the matrix's connections as they are when it goes (see matrixRequest).
+ */
 export const doMatrixAction =
-	(self: EmberPlusInstance, emberClient: EmberClient, method: MatrixMethod, queue: PQueue, state: EmberPlusState) =>
+	(
+		self: EmberPlusInstance,
+		emberClient: EmberClient,
+		operation: MatrixOperation,
+		queue: PQueue,
+		state: EmberPlusState,
+	) =>
 	async (action: CompanionActionEvent<MatrixActionOptions>, context: CompanionActionCallbackContext): Promise<void> => {
-		const path = resolvePath(action.options.path ?? '')
-		const target = Number(action.options.target)
-		const sources = (action.options.sources ?? '')
-			.split(',')
-			.filter((v) => v !== '')
-			.map((s) => Number(s))
+		const info = chosenMatrix(state, action.options.matrix)
+		const target = targetOf(action.options, info)
+		const sources = sourcesOf(action.options, info)
 
-		if (!isSignalNumber(target)) {
-			throw new Error(`Invalid target passed to matrix action: ${target}`)
-		}
-		const invalidSource = sources.find((source) => !isSignalNumber(source))
-		if (invalidSource !== undefined) {
-			throw new Error(`Invalid source passed to matrix action: ${invalidSource}`)
-		}
-
-		logger.debug('Get node ' + path)
-		const node = await resolveMatrixNode(self, emberClient, state, queue, path)
+		const node = await resolveMatrixNode(self, emberClient, state, queue, info)
 		if (!node) {
-			logger.warn('Matrix ' + path + ' not found or not a matrix')
+			logger.warn(`Matrix ${info.path} not found or not a matrix`)
 			return
 		}
 
-		await queue.add(
-			async () => {
-				logger.debug('Got node on ' + path)
-				handleMatrixReport(path, target, await method(node, target, sources))
-			},
-			{ signal: context.signal },
-		)
+		await queue.add(async () => sendMatrixRequest(emberClient, info, node, operation, target, sources), {
+			signal: context.signal,
+		})
 	}
 
 /**
- * Performs a connection on a specified matrix.
- * @param self reference to the BaseInstance
- * @param emberClient reference to the emberClient
- * @param config reference to the config of the module
- * @param state reference to the state of the module
- * @param queue reference to the PQueue of the module
+ * Connect the selected source to the selected target (see matrixRequest), then clear the selection, whether it worked
+ * or not.
  */
 export const doMatrixActionFunction = async function (
 	self: EmberPlusInstance,
@@ -119,67 +169,39 @@ export const doMatrixActionFunction = async function (
 	state: EmberPlusState,
 	queue: PQueue,
 ): Promise<void> {
-	if (
-		state.selected.source === -1 ||
-		state.selected.target === -1 ||
-		state.selected.matrix === -1 ||
-		state.matrices.length <= state.selected.matrix
-	) {
-		return
-	}
+	const { matrix, target, source } = state.selected
+	const info = state.matrices.get(matrix)
+	if (source === -1 || target === -1 || !info) return
 
-	const matrixIndex = state.selected.matrix
-	const matrixPath = state.matrices[matrixIndex]
-	const target = state.selected.target
-	const sources = [state.selected.source]
-
-	logger.debug('Get node ' + matrixIndex)
 	try {
-		const node = await resolveMatrixNode(self, emberClient, state, queue, matrixPath)
+		const node = await resolveMatrixNode(self, emberClient, state, queue, info)
 		if (!node) {
-			logger.warn('Matrix ' + matrixIndex + ' not found or not a matrix')
+			logger.warn(`Matrix ${matrix} not found or not a matrix`)
 			return
 		}
 
 		await queue.add(async () => {
-			logger.debug('Got node on ' + matrixIndex)
-			handleMatrixReport(matrixPath, target, await emberClient.matrixConnect(node, target, sources))
+			logger.debug(`Take on matrix ${matrix}: target ${target}, source ${source}`)
+			await sendMatrixRequest(emberClient, info, node, 'connect', target, [source])
 		})
 	} catch (e) {
 		logger.debug('Failed to doMatrixActionFunction: ' + e)
 	} finally {
 		// Reset selections regardless of success or failure
-		state.selected.matrix = state.selected.source = state.selected.target = -1
+		state.clearSelection()
 		self.checkFeedbacks(FeedbackId.TargetBackgroundSelected, FeedbackId.SourceBackgroundSelected, FeedbackId.Take)
 	}
 }
 
 /**
- * Gets called, when take is not on Auto-Take.
- * Performs a connect on the wanted matrix
- * @param self reference to the BaseInstance
- * @param emberClient reference to the emberClient
- * @param config reference to the config of the module
- * @param state reference to the state of the module
- * @param queue reference to the PQueue of the module
+ * Take, for when Auto-Take is off: connect the selected source to the selected target
  */
 export const doTake =
 	(self: EmberPlusInstance, emberClient: EmberClient, state: EmberPlusState, queue: PQueue) =>
 	async (_action: CompanionActionEvent): Promise<void> => {
-		if (
-			state.selected.target !== -1 &&
-			state.selected.source !== -1 &&
-			state.selected.matrix !== -1 &&
-			state.matrices.length > state.selected.matrix
-		) {
-			logger.debug(
-				'TAKE: selectedDest: ' +
-					state.selected.target +
-					' selected.source: ' +
-					state.selected.source +
-					' on matrix ' +
-					state.selected.matrix,
-			)
+		const { matrix, target, source } = state.selected
+		if (target !== -1 && source !== -1 && state.matrices.has(matrix)) {
+			logger.debug(`TAKE: selected target ${target}, selected source ${source} on matrix ${matrix}`)
 			await doMatrixActionFunction(self, emberClient, state, queue)
 		} else {
 			logger.debug('TAKE went wrong.')
@@ -192,7 +214,7 @@ export const doTake =
  * @param state reference to the modules state
  */
 export const doClear = (self: EmberPlusInstance, state: EmberPlusState) => (): void => {
-	state.selected.matrix = state.selected.source = state.selected.target = -1
+	state.clearSelection()
 	self.checkFeedbacks(
 		FeedbackId.SourceBackgroundSelected,
 		FeedbackId.TargetBackgroundSelected,
@@ -202,53 +224,38 @@ export const doClear = (self: EmberPlusInstance, state: EmberPlusState) => (): v
 }
 
 /**
- * Selects a source on a specific matrix.
- * When Auto-Take is enabled the source is routed to the selected target.
- * @param self reference to the BaseInstance
- * @param emberClient reference to the emberClient
- * @param config reference to the config of the module
- * @param state reference to the state of the module
+ * Select a source of the matrix whose target is selected. With Auto-Take, the source is connected to the target.
  */
 export const setSelectedSource =
 	(self: EmberPlusInstance, emberClient: EmberClient, config: EmberPlusConfig, state: EmberPlusState, queue: PQueue) =>
 	async (action: CompanionActionEvent<SetSelectedSourceOptions>): Promise<void> => {
-		const source = Number(action.options.source)
-		const matrix = Number(action.options.matrix)
-		if (!isSignalNumber(source) || Number.isNaN(matrix) || matrix < 0 || matrix > 0xffffffff) {
-			throw new Error(`Invalid source selection: Matrix: ${matrix}, Source: ${source}`)
-		}
-		if (matrix === state.selected.matrix) {
+		const info = chosenMatrix(state, action.options.matrix)
+		const source = sourceOf(action.options, info)
+		if (info.path === state.selected.matrix) {
 			state.selected.source = source
 			logger.debug('Take is: ' + config.take)
 			if (config.take) await doMatrixActionFunction(self, emberClient, state, queue)
 			self.checkFeedbacks(FeedbackId.SourceBackgroundSelected, FeedbackId.Clear, FeedbackId.Take)
-			logger.debug('setSelectedSource: ' + source + ' on Matrix: ' + matrix)
+			logger.debug(`setSelectedSource: ${source} on Matrix: ${info.path}`)
 		} else {
-			logger.warn('setSelectedSource: matrix mismatch, expected ' + state.selected.matrix + ' got ' + matrix)
+			logger.warn(`setSelectedSource: matrix mismatch, expected ${state.selected.matrix} got ${info.path}`)
 		}
 	}
 
 /**
- * Selects a target on a specified matrix.
- * @param self reference to the BaseInstance
- * @param state reference to the state of the module
+ * Select a target of a matrix, clearing any source selected
  */
 export const setSelectedTarget =
 	(self: EmberPlusInstance, state: EmberPlusState) =>
 	async (action: CompanionActionEvent<SetSelectedTargetOptions>): Promise<void> => {
-		const target = Number(action.options.target)
-		const matrix = Number(action.options.matrix)
-		if (!isSignalNumber(target) || Number.isNaN(matrix) || matrix < 0 || matrix > 0xffffffff) {
-			throw new Error(`Invalid target selection: Matrix: ${matrix}, Target: ${target}`)
-		}
-		state.selected.target = target
-		state.selected.matrix = matrix
-		state.selected.source = -1
+		const info = chosenMatrix(state, action.options.matrix)
+		const target = targetOf(action.options, info)
+		state.selected = { matrix: info.path, target, source: -1 }
 		self.checkFeedbacks(
 			FeedbackId.SourceBackgroundSelected,
 			FeedbackId.TargetBackgroundSelected,
 			FeedbackId.Take,
 			FeedbackId.Clear,
 		)
-		logger.debug('setSelectedTarget: ' + target + ' on Matrix: ' + state.selected.matrix)
+		logger.debug(`setSelectedTarget: ${target} on Matrix: ${info.path}`)
 	}

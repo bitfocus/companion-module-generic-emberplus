@@ -17,7 +17,22 @@ import {
 	unsubscribeParameterFeedback,
 } from './feedbacks/parameter.js'
 import { parameterPropertyChoices, type ParameterProperty, type ParameterPropertyValue } from './feedbacks/property.js'
-import { EmberSignalRange } from './ranges.js'
+import {
+	matrixPropertyFeedbackCallback,
+	signalKindChoices,
+	sourceSelectedFeedbackCallback,
+	targetSelectedFeedbackCallback,
+	unsubscribeMatrixFeedback,
+} from './feedbacks/matrix.js'
+import {
+	sourcePropertyChoices,
+	targetPropertyChoices,
+	type MatrixPropertyValue,
+	type SignalKind,
+	type SourceProperty,
+	type TargetProperty,
+} from './matrices.js'
+import { matrixDropdown, sourceFields, targetFields, type MatrixOptions } from './matrixOptions.js'
 import { EmberPlusState } from './state.js'
 import { comparitorOptions, filterPathChoices, NumberComparitor } from './util.js'
 
@@ -27,6 +42,7 @@ export enum FeedbackId {
 	Boolean = 'boolean',
 	ENUM = 'enum',
 	ParameterProperty = 'parameter_property',
+	MatrixProperty = 'matrix_property',
 	Take = 'take',
 	Clear = 'clear',
 	SourceBackgroundSelected = 'sourceBackgroundSelected',
@@ -72,14 +88,17 @@ export type ParameterFeedbackOptions = {
 	property?: ParameterProperty
 }
 
-export type SourceSelectedOptions = {
-	matrix: number
-	source: number
-}
+/** The matrix, by its configured path, and its source */
+export type SourceSelectedOptions = MatrixOptions
 
-export type TargetSelectedOptions = {
-	matrix: number
-	target: number
+/** The matrix, by its configured path, and its target */
+export type TargetSelectedOptions = MatrixOptions
+
+/** The matrix, by its configured path, whether a target or a source, which one, and the property */
+export type MatrixPropertyOptions = MatrixOptions & {
+	signal: SignalKind
+	targetProperty: TargetProperty
+	sourceProperty: SourceProperty
 }
 
 export type FeedbackSchema = {
@@ -88,6 +107,7 @@ export type FeedbackSchema = {
 	[FeedbackId.Boolean]: { type: 'boolean'; options: ParameterBooleanOptions }
 	[FeedbackId.ENUM]: { type: 'boolean'; options: ParameterEnumOptions }
 	[FeedbackId.ParameterProperty]: { type: 'value'; options: ParameterPropertyOptions; result: ParameterPropertyValue }
+	[FeedbackId.MatrixProperty]: { type: 'value'; options: MatrixPropertyOptions; result: MatrixPropertyValue }
 	[FeedbackId.Take]: { type: 'boolean'; options: Record<string, never> }
 	[FeedbackId.Clear]: { type: 'boolean'; options: Record<string, never> }
 	[FeedbackId.SourceBackgroundSelected]: { type: 'boolean'; options: SourceSelectedOptions }
@@ -187,26 +207,39 @@ const propertyDropdown = {
 		'Value: integers divided by their factor. Value with Units: by formula or factor, formatted, then the unit. Value by Formula and Value as Enumeration Entry: the plain value for a parameter without a formula, or without an enumeration. The rest as the provider reports them, or nothing for one it leaves out',
 } as const satisfies CompanionInputFieldDropdown<'property', ParameterProperty>
 
-const indexNumber = {
-	type: 'number',
-	min: 0,
-	max: 0xffffffff,
-	default: 0,
-	step: 1,
-	asInteger: true,
-} as const satisfies Omit<CompanionInputFieldNumber, 'id' | 'label'>
+// Named in the visibility of the signal and property fields, so it must not be an expression itself
+const signalKindDropdown = {
+	type: 'dropdown',
+	label: 'Source / Target',
+	id: 'signal',
+	choices: signalKindChoices,
+	default: signalKindChoices[0].id,
+	disableAutoExpression: true,
+} as const satisfies CompanionInputFieldDropdown<'signal', SignalKind>
 
-const matrixNumber = { ...indexNumber, label: 'Select Matrix Number', id: 'matrix' } as const
+const forTargets = "$(options:signal) == 'target'"
+const forSources = "$(options:signal) == 'source'"
 
-/** A matrix target or source, in the range Ember+ allows */
-const signalNumber = {
-	type: 'number',
-	min: EmberSignalRange.min,
-	max: EmberSignalRange.max,
-	default: 0,
-	step: 1,
-	asInteger: true,
-} as const satisfies Omit<CompanionInputFieldNumber, 'id' | 'label'>
+const targetPropertyDropdown = {
+	type: 'dropdown',
+	label: 'Property',
+	id: 'targetProperty',
+	choices: targetPropertyChoices,
+	default: targetPropertyChoices[0].id,
+	isVisibleExpression: forTargets,
+	tooltip:
+		"Name: the target's first label, or else its identifier. Connected Sources: their numbers. Connection Disposition: tally, modified, pending or locked, as the provider last reported the target's connection",
+} as const satisfies CompanionInputFieldDropdown<'targetProperty', TargetProperty>
+
+const sourcePropertyDropdown = {
+	type: 'dropdown',
+	label: 'Property',
+	id: 'sourceProperty',
+	choices: sourcePropertyChoices,
+	default: sourcePropertyChoices[0].id,
+	isVisibleExpression: forSources,
+	tooltip: "Name: the source's first label, or else its identifier",
+} as const satisfies CompanionInputFieldDropdown<'sourceProperty', SourceProperty>
 
 const valueFeedbackInfo = {
 	type: 'static-text',
@@ -301,7 +334,7 @@ export function GetFeedbacksList(
 			defaultStyle: styles.blackOnWhite,
 			options: [],
 			callback: () => {
-				return state.selected.target != -1 && state.selected.source != -1 && state.selected.matrix != -1
+				return state.selected.target != -1 && state.selected.source != -1 && state.selected.matrix !== ''
 			},
 		},
 		[FeedbackId.Clear]: {
@@ -311,7 +344,7 @@ export function GetFeedbacksList(
 			defaultStyle: styles.blackOnRed,
 			options: [],
 			callback: () => {
-				return state.selected.target != -1 || state.selected.source != -1 || state.selected.matrix != -1
+				return state.selected.target != -1 || state.selected.source != -1 || state.selected.matrix !== ''
 			},
 		},
 		[FeedbackId.SourceBackgroundSelected]: {
@@ -319,20 +352,32 @@ export function GetFeedbacksList(
 			description: 'Change Background of Source, when it is currently selected.',
 			type: 'boolean',
 			defaultStyle: styles.blackOnRed,
-			options: [matrixNumber, { ...signalNumber, label: 'Value', id: 'source' }],
-			callback: (feedback) => {
-				return state.selected.source == feedback.options.source && state.selected.matrix == feedback.options.matrix
-			},
+			options: [matrixDropdown(state), ...sourceFields(state, { several: false })],
+			callback: sourceSelectedFeedbackCallback(state),
 		},
 		[FeedbackId.TargetBackgroundSelected]: {
 			name: 'Target Background if Selected',
 			description: 'Change Background of Target, when it is currently selected.',
 			type: 'boolean',
 			defaultStyle: styles.blackOnRed,
-			options: [matrixNumber, { ...signalNumber, label: 'Value', id: 'target' }],
-			callback: (feedback) => {
-				return state.selected.target == feedback.options.target && state.selected.matrix == feedback.options.matrix
-			},
+			options: [matrixDropdown(state), ...targetFields(state)],
+			callback: targetSelectedFeedbackCallback(state),
+		},
+		[FeedbackId.MatrixProperty]: {
+			name: 'Matrix Property',
+			description:
+				"Return a property of a matrix's target or source, such as its name or connected sources, to a local variable",
+			type: 'value',
+			options: [
+				matrixDropdown(state),
+				signalKindDropdown,
+				...targetFields(state, forTargets),
+				...sourceFields(state, { several: false, also: forSources }),
+				targetPropertyDropdown,
+				sourcePropertyDropdown,
+			],
+			callback: matrixPropertyFeedbackCallback(state),
+			unsubscribe: unsubscribeMatrixFeedback(state),
 		},
 	}
 }

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
-import type { CompanionRecordedAction } from '@companion-module/base'
+import { ParseExpression, ResolveExpression } from '@companion-app/expressions'
+import type { CompanionMigrationAction, CompanionRecordedAction, JsonValue } from '@companion-module/base'
 import { Model as EmberModel, type EmberClient } from '@phillipivan/emberplus-connection'
 import type PQueue from 'p-queue'
 import { ActionId, GetActionsList } from '../actions.js'
@@ -9,10 +10,12 @@ import type EmberPlusInstance from '../index.js'
 import { EmberPlusState } from '../state.js'
 import {
 	limitOptionsApi2,
+	matrixOptionsMoved,
 	numericOptionsApi2,
 	numericPairsApi2,
 	pathPairsApi2,
 	renamedFeedbacksApi2,
+	UpgradeScripts,
 } from '../upgrades.js'
 import { recordParameterAction } from '../util.js'
 
@@ -27,6 +30,8 @@ interface Field {
 	allowCustom?: boolean
 	disableAutoExpression?: boolean
 	isVisibleExpression?: string
+	choices?: Array<{ id: JsonValue; label: string }>
+	default?: JsonValue
 }
 
 interface Definition {
@@ -55,7 +60,32 @@ function field(definition: Definition | undefined, id: string): Field | undefine
 	return definition?.options.find((option) => option.id === id)
 }
 
-const all = definitions()
+/**
+ * Two configured matrices, loaded: 1.4, 1:N, with target 1 and sources 1 and 2, labelled; and Video.Router, N:N,
+ * unlabelled, its targets and sources named by identifier
+ */
+function matrixState(): EmberPlusState {
+	const state = new EmberPlusState()
+	state.setMatrixPaths(['1.4', "Video's Router"])
+	const audio = new EmberModel.MatrixImpl('audio')
+	audio.targets = new Map([[1, {}]])
+	audio.sources = new Map([
+		[1, {}],
+		[2, {}],
+	])
+	const info = state.matrices.get('1.4')!
+	info.node = new EmberModel.NumberedTreeNodeImpl(4, audio)
+	info.labels.targets.set(1, ' Mon ')
+	info.labels.sources.set(1, 'Mic')
+	const video = new EmberModel.MatrixImpl('video')
+	video.matrixType = EmberModel.MatrixType.NToN
+	video.targets = new Map([[3, { identifier: 'Out 3' }]])
+	video.sources = new Map([[5, { identifier: 'Cam 5' }]])
+	state.matrices.get("Video's Router")!.node = new EmberModel.NumberedTreeNodeImpl(5, video)
+	return state
+}
+
+const all = definitions(matrixState())
 const everything = [
 	...Object.entries(all.actions).map(([id, d]) => [`action ${id}`, d] as const),
 	...Object.entries(all.feedbacks).map(([id, d]) => [`feedback ${id}`, d] as const),
@@ -123,9 +153,11 @@ describe('the API 2 upgrade matches the definitions', () => {
 		['feedbacks', numericPairsApi2.feedbacks],
 	] as const) {
 		for (const [id, fold] of Object.entries(lists)) {
-			it(`${kind} ${id}: each folded number is a number option`, () => {
+			it(`${kind} ${id}: each folded number is a number option, unless a later script moves it`, () => {
+				const moved = matrixOptionsMoved[kind][id] ?? []
 				for (const pair of fold?.pairs ?? []) {
-					expect(field(all[kind][id], pair.value)).toMatchObject({ type: 'number' })
+					if (moved.includes(pair.value)) expect(field(all[kind][id], pair.value)?.type).not.toBe('number')
+					else expect(field(all[kind][id], pair.value)).toMatchObject({ type: 'number' })
 				}
 			})
 		}
@@ -227,19 +259,190 @@ describe('recorded actions', () => {
 	})
 })
 
-// Glow gives a matrix's targets as Integer32, and its sources as path numbers the library holds to 2^31 - 1
-describe('matrix targets and sources', () => {
-	const signalFields = everything.flatMap(([name, definition]) =>
-		definition.options
-			.filter((option) => (option.id === 'target' || option.id === 'source') && option.type === 'number')
-			.map((option) => [`${name} ${option.id}`, option] as const),
-	)
+/**
+ * Whether a field shows, as Companion decides it (shared-lib/lib/IsVisible.ts): its expression, reading only fields
+ * that can't be expressions, with the values given; an expression it can't evaluate shows the field
+ */
+function isVisible(definition: Definition, option: Field, values: Record<string, JsonValue>): boolean {
+	if (!option.isVisibleExpression) return true
+	const readable = new Set(definition.options.filter((o) => o.disableAutoExpression).map((o) => o.id))
+	try {
+		const value = ResolveExpression(ParseExpression(option.isVisibleExpression), {
+			// This version of the engine names a variable `label:name`
+			getVariableValue: (id: string) => {
+				const [label, name] = id.split(':')
+				if (label !== 'options' || !readable.has(name)) throw new Error(`${id} not allowed`)
+				return values[name]
+			},
+			unknownVariableValue: undefined,
+			parseVariables: null,
+		})
+		return !!value && value !== 'false' && value !== '0'
+	} catch {
+		return true
+	}
+}
 
-	it('are on every matrix and selection action and feedback', () => {
-		expect(signalFields.length).toBe(7)
+const matrixItems = [
+	['actions', ActionId.MatrixConnect],
+	['actions', ActionId.MatrixDisconnect],
+	['actions', ActionId.MatrixSetConnection],
+	['actions', ActionId.SetSelectedSource],
+	['actions', ActionId.SetSelectedTarget],
+	['feedbacks', 'sourceBackgroundSelected'],
+	['feedbacks', 'targetBackgroundSelected'],
+	['feedbacks', 'matrix_property'],
+] as const
+
+describe('matrix fields', () => {
+	it.each(matrixItems)('%s %s chooses the matrix from the configured ones, by path', (kind, id) => {
+		expect(field(all[kind][id], 'matrix')).toMatchObject({
+			type: 'dropdown',
+			disableAutoExpression: true,
+			choices: [
+				{ id: '1.4', label: '1.4: audio' },
+				{ id: "Video's Router", label: "Video's Router: video" },
+			],
+			default: '1.4',
+		})
 	})
 
-	it.each(signalFields)('%s is held to the range Ember+ allows', (_name, option) => {
-		expect(option).toMatchObject({ min: 0, max: 2 ** 31 - 1 })
+	// Companion only reads a field that can't be an expression in isVisibleExpression; on any other it shows every field
+	it.each(matrixItems)("%s %s shows only the chosen matrix's fields", (kind, id) => {
+		const definition = all[kind][id]
+		const signalField = (option: Field) => /^(target|source|sources)_/.test(option.id)
+		const extra = kind === 'feedbacks' && id === 'matrix_property' ? [{ signal: 'target' }, { signal: 'source' }] : [{}]
+		for (const values of extra) {
+			for (const [matrix, key] of [
+				['1.4', '1_4'],
+				["Video's Router", 'Video_s_Router'],
+			]) {
+				const shown = definition.options
+					.filter((option) => signalField(option) && isVisible(definition, option, { matrix, ...values }))
+					.map((option) => option.id)
+				expect(shown.length, `${matrix} ${JSON.stringify(values)}`).toBeGreaterThan(0)
+				for (const shownId of shown) expect(shownId.endsWith(`_${key}`), shownId).toBe(true)
+			}
+		}
+	})
+
+	it("lists a matrix's signals by number and name, lowest first", () => {
+		const definition = all.actions[ActionId.MatrixConnect]
+		expect(field(definition, 'target_1_4')).toMatchObject({
+			type: 'dropdown',
+			choices: [{ id: 1, label: '1: Mon' }],
+			default: 1,
+		})
+		expect(field(definition, 'sources_1_4')?.choices).toEqual([
+			{ id: 1, label: '1: Mic' },
+			{ id: 2, label: '2' },
+		])
+		expect(field(definition, 'target_Video_s_Router')?.choices).toEqual([{ id: 3, label: '3: Out 3' }])
+	})
+
+	// One id for both, so a source chosen before the matrix loads isn't lost when it turns out to be N:N
+	it.each([ActionId.MatrixConnect, ActionId.MatrixDisconnect, ActionId.MatrixSetConnection])(
+		'%s takes several sources of an N:N matrix, and one of any other, in the one field',
+		(id) => {
+			const definition = all.actions[id]
+			expect(field(definition, 'sources_Video_s_Router')).toMatchObject({ type: 'multidropdown', default: [] })
+			expect(field(definition, 'sources_1_4')).toMatchObject({ type: 'dropdown' })
+			expect(field(definition, 'source_Video_s_Router')).toBeUndefined()
+			expect(field(definition, 'source_1_4')).toBeUndefined()
+		},
+	)
+
+	it("offers None for Set Connection's one source, which disconnects the target", () => {
+		expect(field(all.actions[ActionId.MatrixSetConnection], 'sources_1_4')?.choices?.[0]).toEqual({
+			id: -1,
+			label: 'None',
+		})
+		expect(field(all.actions[ActionId.MatrixConnect], 'sources_1_4')?.choices?.[0]).toEqual({ id: 1, label: '1: Mic' })
+	})
+
+	it.each([
+		['actions', ActionId.SetSelectedSource],
+		['feedbacks', 'sourceBackgroundSelected'],
+		['feedbacks', 'matrix_property'],
+	] as const)('%s %s takes one source, of an N:N matrix too', (kind, id) => {
+		expect(field(all[kind][id], 'source_Video_s_Router')).toMatchObject({ type: 'dropdown' })
+		expect(field(all[kind][id], 'sources_Video_s_Router')).toBeUndefined()
+	})
+
+	it("shows Matrix Property's properties of a target or a source, as chosen", () => {
+		const definition = all.feedbacks['matrix_property']
+		const shown = (signal: string) =>
+			['targetProperty', 'sourceProperty'].filter((id) => isVisible(definition, field(definition, id)!, { signal }))
+		expect(shown('target')).toEqual(['targetProperty'])
+		expect(shown('source')).toEqual(['sourceProperty'])
+		expect(field(definition, 'targetProperty')?.choices?.map((c) => c.id)).toEqual(
+			expect.arrayContaining(['connections', 'disposition']),
+		)
+	})
+
+	// A matrix not yet loaded (offline) keeps its fields, with nothing to list
+	it('keeps the fields of a matrix not yet loaded', () => {
+		const state = new EmberPlusState()
+		state.setMatrixPaths(['1.4'])
+		const definition = definitions(state).actions[ActionId.MatrixConnect]
+		expect(field(definition, 'target_1_4')).toMatchObject({ type: 'dropdown', choices: [], default: 0 })
+		expect(field(definition, 'sources_1_4')).toMatchObject({ type: 'dropdown', choices: [] })
+	})
+
+	// Counted as 1:N until it loads; once it loads as N:N, the field it was saved under is the multi-select
+	it("keeps the id of a connection action's sources field when the matrix loads as N:N", () => {
+		const state = new EmberPlusState()
+		state.setMatrixPaths(['1.4'])
+		const before = field(definitions(state).actions[ActionId.MatrixSetConnection], 'sources_1_4')
+		const matrix = new EmberModel.MatrixImpl('router')
+		matrix.matrixType = EmberModel.MatrixType.NToN
+		state.matrices.get('1.4')!.node = new EmberModel.NumberedTreeNodeImpl(4, matrix)
+		const after = field(definitions(state).actions[ActionId.MatrixSetConnection], 'sources_1_4')
+		expect([before?.type, after?.type]).toEqual(['dropdown', 'multidropdown'])
+	})
+})
+
+describe('the matrices upgrade matches the definitions', () => {
+	/** Run the matrices script alone on an action */
+	function upgraded(item: CompanionMigrationAction, matricesString: string): CompanionMigrationAction {
+		const script = UpgradeScripts.find((s) => s.name === 'matricesByPath')!
+		const config = { matricesString } as EmberPlusConfig
+		script({ currentConfig: config }, { config, secrets: null, actions: [item], feedbacks: [] })
+		return item
+	}
+	const plain = (value: JsonValue) => ({ isExpression: false as const, value })
+
+	it.each([ActionId.MatrixConnect, ActionId.MatrixDisconnect, ActionId.MatrixSetConnection])(
+		'%s: each option written is a field, for a 1:N matrix or an N:N one',
+		(actionId) => {
+			const action = upgraded(
+				{
+					id: 'a',
+					controlId: 'c',
+					actionId,
+					options: { path: plain("Video's Router"), target: plain(3), sources: plain('5') },
+				},
+				"1.4, Video's Router",
+			)
+			const nToN = definitions(matrixState()).actions[actionId]
+			const oneToN = matrixState()
+			oneToN.matrices.get("Video's Router")!.node!.contents.matrixType = EmberModel.MatrixType.OneToN
+			const other = definitions(oneToN).actions[actionId]
+			for (const key of Object.keys(action.options)) {
+				expect(field(nToN, key) ?? field(other, key), key).toBeDefined()
+			}
+		},
+	)
+
+	it.each([
+		[ActionId.SetSelectedSource, 'source'],
+		[ActionId.SetSelectedTarget, 'target'],
+	])('%s: each option written is a field', (actionId, kind) => {
+		const action = upgraded(
+			{ id: 'a', controlId: 'c', actionId, options: { matrix: plain(1), [kind]: plain(3) } },
+			"1.4, Video's Router",
+		)
+		const definition = all.actions[actionId]
+		for (const key of Object.keys(action.options)) expect(field(definition, key), key).toBeDefined()
 	})
 })

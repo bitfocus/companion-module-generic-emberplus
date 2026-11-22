@@ -2,11 +2,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import EmberPlusInstance from '../index.js'
 import { EmberPlusState } from '../state.js'
 import * as util from '../util.js'
-import { parseBonjourHost } from '../util.js'
+import { hasConnectionChanged, parseBonjourHost } from '../util.js'
 import { Model as EmberModel, setDebugLogging } from '@phillipivan/emberplus-connection'
 import { captureLogs } from './logs.js'
 import { GetActionsList } from '../actions.js'
 import { GetVariablesList } from '../variables.js'
+import { UpdateCompositeElements } from '../composites.js'
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -65,6 +66,7 @@ vi.mock('../feedback', () => ({
 	FeedbackId: {},
 }))
 vi.mock('../presets', () => ({ GetPresetsList: vi.fn().mockReturnValue({ structure: [], presets: {} }) }))
+vi.mock('../composites', () => ({ UpdateCompositeElements: vi.fn() }))
 // The real variable values and the choice of which parameters get them; only the definitions are faked
 vi.mock('../variables', async (importOriginal) => ({
 	...(await importOriginal<typeof import('../variables.js')>()),
@@ -142,37 +144,53 @@ describe('setupMatrices', () => {
 		const instance = makeInstance()
 		;(instance as any).config.matricesString = '0.1.0, 0.2.0, 0.3.0'
 		;(instance as any).setupMatrices()
-		expect((instance as any).state.matrices).toEqual(['0.1.0', '0.2.0', '0.3.0'])
+		expect([...(instance as any).state.matrices.keys()]).toEqual(['0.1.0', '0.2.0', '0.3.0'])
 	})
 
 	it('converts slashes to dots', () => {
 		const instance = makeInstance()
 		;(instance as any).config.matricesString = '0/1/0, 0/2/0'
 		;(instance as any).setupMatrices()
-		expect((instance as any).state.matrices.includes('0.1.0')).toBe(true)
+		expect((instance as any).state.matrices.has('0.1.0')).toBe(true)
 	})
 
 	it('filters out empty entries', () => {
 		const instance = makeInstance()
 		;(instance as any).config.matricesString = '0.1.0,,  , 0.2.0'
 		;(instance as any).setupMatrices()
-		expect((instance as any).state.matrices.length).toBe(2)
+		expect((instance as any).state.matrices.size).toBe(2)
 	})
 
 	it('resets selected source and target when matrices exist', () => {
 		const instance = makeInstance()
-		;(instance as any).state.selected = { source: 5, target: 3, matrix: 0 }
+		;(instance as any).state.selected = { source: 5, target: 3, matrix: '0.1.0' }
 		;(instance as any).config.matricesString = '0.1.0'
 		;(instance as any).setupMatrices()
-		expect((instance as any).state.selected.source).toBe(-1)
-		expect((instance as any).state.selected.target).toBe(-1)
+		expect((instance as any).state.selected).toEqual({ source: -1, target: -1, matrix: '' })
+	})
+
+	it('drops the variables of a matrix no longer configured', () => {
+		const instance = makeInstance() as any
+		instance.config.variables = ['matrixTargetNames']
+		instance.config.matricesString = '1.4'
+		instance.setupMatrices()
+		const matrix = new EmberModel.MatrixImpl('router')
+		matrix.targetCount = 1
+		instance.state.matrices.get('1.4').node = new EmberModel.NumberedTreeNodeImpl(4, matrix)
+		instance.matrixVariableDefinitions = undefined
+		instance.updateVariableDefinitions()
+		expect(Object.keys(instance.setVariableDefinitions.mock.lastCall[0])).toContain('matrix_1.4_target_0_name')
+		instance.config.matricesString = ''
+		instance.setupMatrices()
+		instance.updateVariableDefinitions()
+		expect(Object.keys(instance.setVariableDefinitions.mock.lastCall[0])).not.toContain('matrix_1.4_target_0_name')
 	})
 
 	it('does nothing when matricesString is undefined', () => {
 		const instance = makeInstance()
 		;(instance as any).config.matricesString = undefined
 		;(instance as any).setupMatrices()
-		expect((instance as any).state.matrices.length).toBe(0)
+		expect((instance as any).state.matrices.size).toBe(0)
 	})
 })
 
@@ -446,6 +464,17 @@ describe('handleChangedValue', () => {
 		expect((instance as any).setVariableValues.mock.calls.length).toBe(0)
 	})
 
+	// A parameter's presets follow its access, range and online state; a stream's values mustn't rebuild them each time
+	it('builds the presets again for a report changing what they are built from, not for a value', async () => {
+		const instance = makeInstance() as any
+		await instance.handleChangedValue('0.1', makeNode({ access: EmberModel.ParameterAccess.ReadWrite }))
+		instance.setPresetDefinitions.mockClear()
+		await instance.handleChangedValue('0.1', makeNode({ access: EmberModel.ParameterAccess.ReadWrite, value: 11 }))
+		expect(instance.setPresetDefinitions).not.toHaveBeenCalled()
+		await instance.handleChangedValue('0.1', makeNode({ access: EmberModel.ParameterAccess.Read, value: 11 }))
+		expect(instance.setPresetDefinitions).toHaveBeenCalledTimes(1)
+	})
+
 	it('queues feedback check for registered feedback ids', async () => {
 		const instance = makeInstance()
 		;(instance as any).state.addIdToPathMap('fb1', '0.1')
@@ -594,6 +623,20 @@ describe('updateFeedbacksAndVariables', () => {
 // ---------------------------------------------------------------------------
 // setHost
 // ---------------------------------------------------------------------------
+
+describe('a config change with another host', () => {
+	// The dropdowns list the matrices the config names while connecting, and for good if the new host can't be reached
+	it('sets the matrices the config now names before connecting', async () => {
+		const instance = makeInstance() as any
+		instance.config.matricesString = '1.4'
+		instance.setupMatrices()
+		vi.mocked(hasConnectionChanged).mockReturnValueOnce(true)
+		await instance.configUpdated({ ...instance.config, host: '10.0.0.9', matricesString: '1.5, 1.6' })
+		expect([...instance.state.matrices.keys()]).toEqual(['1.5', '1.6'])
+		expect(vi.mocked(GetActionsList).mock.lastCall?.[3].matrices.has('1.5')).toBe(true)
+		await instance.destroy()
+	})
+})
 
 describe('setHost', () => {
 	function makeHostInstance(): EmberPlusInstance {
@@ -744,6 +787,21 @@ describe('connection', () => {
 		expect((instance as any).subscribeActions).toHaveBeenCalledTimes(1)
 		expect((instance as any).checkAllFeedbacks).toHaveBeenCalledTimes(1)
 		expect(sync).toHaveBeenCalled()
+	})
+
+	// Labels are read on connecting: a reconnect reads them again, as they may have changed meanwhile
+	it('loads the matrices again when the library reconnects the same client', async () => {
+		const instance = makeInstance()
+		const client = fakeClient()
+		;(instance as any).emberClient = client
+		vi.spyOn(instance as any, 'finalizeSetup').mockResolvedValue(undefined)
+		vi.spyOn(instance as any, 'registerParameters').mockResolvedValue(undefined)
+		const load = vi.spyOn(instance as any, 'loadMatrices').mockResolvedValue(undefined)
+		;(instance as any).handleConnected(client)
+		await vi.runAllTimersAsync()
+		;(instance as any).handleConnected(client)
+		await vi.runAllTimersAsync()
+		expect(load).toHaveBeenCalledTimes(1)
 	})
 
 	it('loads the top level on a reconnect when the first connection could not', async () => {
@@ -1073,6 +1131,103 @@ describe('getElementByPath', () => {
 		await (instance as any).getElementByPath('9.9')
 		await (instance as any).getElementByPath('9.9')
 		expect(typeof client.getElementByPath.mock.calls[1][1]).toBe('function')
+	})
+})
+
+describe('loading matrices', () => {
+	function matrixNode() {
+		return new EmberModel.NumberedTreeNodeImpl(4, new EmberModel.MatrixImpl('router'))
+	}
+
+	function withMatrices(matricesString: string, client: ReturnType<typeof fakeClient>) {
+		const instance = makeInstance()
+		;(instance as any).config.matricesString = matricesString
+		;(instance as any).emberClient = client
+		return instance as any
+	}
+
+	it('drops a path the library finds no element at, or no matrix, with a warning', async () => {
+		const client = fakeClient({
+			getElementByPath: vi.fn(async (path: string) => {
+				if (path === '1.5') throw new Error('Could not find node 5 on given path 1')
+				if (path === '1.6') return { number: 6, contents: { type: ElementType.Parameter } }
+				return matrixNode()
+			}),
+		})
+		const instance = withMatrices('1.4, 1.5, 1.6', client)
+		await instance.loadMatrices()
+		expect([...instance.state.matrices.keys()]).toEqual(['1.4'])
+		expect(instance.log).toHaveBeenCalledWith('warn', expect.stringContaining('Matrix 1.5 was not found'))
+		expect(instance.log).toHaveBeenCalledWith('warn', expect.stringContaining('Matrix 1.6 is not a matrix'))
+	})
+
+	// Not shown not to be a matrix: the connection dropped, or the provider didn't answer in time
+	it("keeps a matrix it couldn't look up just now, to look for again on reconnecting", async () => {
+		const client = fakeClient({ getElementByPath: vi.fn().mockRejectedValue(new Error('Request timed out')) })
+		const instance = withMatrices('1.4', client)
+		await instance.loadMatrices()
+		expect([...instance.state.matrices.keys()]).toEqual(['1.4'])
+		expect(instance.log).toHaveBeenCalledWith('warn', expect.stringContaining('Matrix 1.4 could not be loaded'))
+	})
+
+	it('looks for a dropped matrix again on the next load', async () => {
+		const client = fakeClient({
+			getElementByPath: vi.fn().mockResolvedValueOnce(undefined).mockResolvedValue(matrixNode()),
+		})
+		const instance = withMatrices('1.4', client)
+		await instance.loadMatrices()
+		expect(instance.state.matrices.size).toBe(0)
+		await instance.loadMatrices()
+		expect(instance.state.matrices.get('1.4')?.node).toBeDefined()
+	})
+
+	it('asks for its targets, sources and connections with a GetDirectory on the matrix', async () => {
+		const node = matrixNode()
+		const client = fakeClient({ getElementByPath: vi.fn().mockResolvedValue(node) })
+		const instance = withMatrices('1.4', client)
+		await instance.loadMatrices()
+		expect(client.getDirectory).toHaveBeenCalledWith(node)
+		expect(instance.state.matrices.get('1.4').connectionsLoaded).toBe(true)
+	})
+
+	// Until the provider answers, the library's connections may hold only the targets a report covered
+	it('counts its connections as loaded only once the provider has answered the GetDirectory on it', async () => {
+		const node = matrixNode()
+		const client = fakeClient({
+			getElementByPath: vi.fn().mockResolvedValue(node),
+			// Not sent: the connection is down
+			getDirectory: vi.fn().mockResolvedValue({ sentOk: false }),
+		})
+		const instance = withMatrices('1.4', client)
+		await instance.loadMatrices()
+		expect(instance.state.matrices.get('1.4').connectionsLoaded).toBe(false)
+		client.getDirectory.mockResolvedValue({ sentOk: true, response: Promise.reject(new Error('Request timed out')) })
+		await instance.loadMatrices()
+		expect(instance.state.matrices.get('1.4').connectionsLoaded).toBe(false)
+	})
+
+	// A path with a descriptor, as the actions' paths take, is looked up by its numbers
+	it('looks a matrix up by the numbers of a path with a descriptor, following its changes', async () => {
+		const node = matrixNode()
+		const client = fakeClient({ getElementByPath: vi.fn().mockResolvedValue(node) })
+		const instance = withMatrices('router[1.4]', client)
+		instance.state.addMatrixFeedback('fb1', 'router[1.4]')
+		await instance.loadMatrices()
+		const [path, callback] = client.getElementByPath.mock.calls[0]
+		expect(path).toBe('1.4')
+		instance.checkFeedbacksById.mockClear()
+		callback(node)
+		await vi.waitFor(() => expect(instance.checkFeedbacksById).toHaveBeenCalledWith('fb1'))
+	})
+})
+
+describe('composite elements', () => {
+	// Nothing in them comes from the device, and a button saved with one needs its definition offline too
+	it('are defined on init, before any connection', async () => {
+		const instance = new EmberPlusInstance('test')
+		await instance.init({ host: '10.0.0.1', port: 9000, factor: true, verbose: false, variables: [] })
+		expect(UpdateCompositeElements).toHaveBeenCalledWith(instance)
+		await instance.destroy()
 	})
 })
 

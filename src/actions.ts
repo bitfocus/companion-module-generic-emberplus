@@ -14,7 +14,8 @@ import { learnSetValueActionOptions, setValue, subscribeParameterAction } from '
 import { invokeFunctionAction } from './actions/function.js'
 import { setHostAction, learnSetHostActionOptions } from './actions/host.js'
 import { EmberPlusState } from './state.js'
-import { EmberNumberRange, EmberSignalRange, type NumericParameterType } from './ranges.js'
+import { matrixDropdown, sourceFields, targetFields, type MatrixOptions } from './matrixOptions.js'
+import { EmberNumberRange, type NumericParameterType } from './ranges.js'
 import { filterPathChoices, filterFunctionPathChoices } from './util.js'
 
 export enum ActionId {
@@ -90,21 +91,14 @@ export type SetValueOptions = {
 	factor?: number
 }
 
-export type MatrixActionOptions = {
-	path: string
-	target: number
-	sources: string
-}
+/** The matrix, by its configured path, its target, and its source or (an N:N matrix) sources */
+export type MatrixActionOptions = MatrixOptions
 
-export type SetSelectedSourceOptions = {
-	matrix: number
-	source: number
-}
+/** The matrix, by its configured path, and its source */
+export type SetSelectedSourceOptions = MatrixOptions
 
-export type SetSelectedTargetOptions = {
-	matrix: number
-	target: number
-}
+/** The matrix, by its configured path, and its target */
+export type SetSelectedTargetOptions = MatrixOptions
 
 export type InvokeFunctionOptions = {
 	path: string
@@ -147,14 +141,6 @@ const pathDropDown = {
 	allowCustom: true,
 	tooltip: `Select a registered path or type one in. ${pathTooltip}`,
 } as const satisfies CompanionInputFieldDropdown<'path'>
-
-const pathInput = {
-	type: 'textinput',
-	label: 'Path',
-	id: 'path',
-	useVariables: true,
-	tooltip: pathTooltip,
-} as const satisfies CompanionInputFieldTextInput<'path'>
 
 /**
  * A relative action's limit: a number in the range Ember+ allows the type, the range's ends meaning no limit. An
@@ -262,44 +248,6 @@ const enumVal = {
 	tooltip: 'Must exactly match a valid enumeration value',
 	isVisibleExpression: '!!$(options:asEnum)',
 } as const satisfies CompanionInputFieldTextInput<'enumValue'>
-
-const indexNumber = {
-	type: 'number',
-	min: 0,
-	max: 0xffffffff,
-	default: 0,
-	step: 1,
-	asInteger: true,
-} as const satisfies Omit<CompanionInputFieldNumber, 'id' | 'label'>
-
-/** A matrix target or source, in the range Ember+ allows */
-const signalNumber = {
-	type: 'number',
-	min: EmberSignalRange.min,
-	max: EmberSignalRange.max,
-	default: 0,
-	step: 1,
-	asInteger: true,
-} as const satisfies Omit<CompanionInputFieldNumber, 'id' | 'label'>
-
-const matrixInputs = [
-	pathInput,
-	{ ...signalNumber, label: 'Target', id: 'target' },
-	{
-		type: 'textinput',
-		label: 'Sources',
-		id: 'sources',
-		regex: '/^((\\s*\\d+,)*(\\s*\\d+)$)|$/', // comma separated list
-		useVariables: true,
-		tooltip: `Comma separated, each from 0 to ${EmberSignalRange.max}`,
-	},
-] as const satisfies [
-	CompanionInputFieldTextInput<'path'>,
-	CompanionInputFieldNumber<'target'>,
-	CompanionInputFieldTextInput<'sources'>,
-]
-
-const matrixNumber = { ...indexNumber, label: 'Select Matrix Number', id: 'matrix' } as const
 
 /** The path dropdown, listing the registered parameters of a type, or the first of them as the default */
 function pathChoices(
@@ -431,30 +379,22 @@ export function GetActionsList(
 		},
 		[ActionId.MatrixConnect]: {
 			name: 'Matrix Connect',
-			options: [...matrixInputs],
-			callback: doMatrixAction(self, emberClient, async (...args) => emberClient.matrixConnect(...args), queue, state),
+			description: 'Connect sources to a target, as well as those connected to it (for an N:N matrix)',
+			options: [matrixDropdown(state), ...targetFields(state), ...sourceFields(state, { several: true })],
+			callback: doMatrixAction(self, emberClient, 'connect', queue, state),
 		},
 		[ActionId.MatrixDisconnect]: {
 			name: 'Matrix Disconnect',
-			options: [...matrixInputs],
-			callback: doMatrixAction(
-				self,
-				emberClient,
-				async (...args) => emberClient.matrixDisconnect(...args),
-				queue,
-				state,
-			),
+			description: 'Disconnect sources from a target',
+			options: [matrixDropdown(state), ...targetFields(state), ...sourceFields(state, { several: true })],
+			callback: doMatrixAction(self, emberClient, 'disconnect', queue, state),
 		},
 		[ActionId.MatrixSetConnection]: {
 			name: 'Matrix Set Connection',
-			options: [...matrixInputs],
-			callback: doMatrixAction(
-				self,
-				emberClient,
-				async (...args) => emberClient.matrixSetConnection(...args),
-				queue,
-				state,
-			),
+			description:
+				"Connect exactly these sources to a target, replacing those connected to it. None disconnects the target's sources",
+			options: [matrixDropdown(state), ...targetFields(state), ...sourceFields(state, { several: true, none: true })],
+			callback: doMatrixAction(self, emberClient, 'absolute', queue, state),
 		},
 		[ActionId.Take]: {
 			name: 'Take',
@@ -468,12 +408,12 @@ export function GetActionsList(
 		},
 		[ActionId.SetSelectedSource]: {
 			name: 'Set Selected Source',
-			options: [matrixNumber, { ...signalNumber, label: 'Value', id: 'source' }],
+			options: [matrixDropdown(state), ...sourceFields(state, { several: false })],
 			callback: setSelectedSource(self, emberClient, config, state, queue),
 		},
 		[ActionId.SetSelectedTarget]: {
 			name: 'Set Selected Target',
-			options: [matrixNumber, { ...signalNumber, label: 'Value', id: 'target' }],
+			options: [matrixDropdown(state), ...targetFields(state)],
 			callback: setSelectedTarget(self, state),
 		},
 		[ActionId.InvokeFunction]: {
@@ -515,6 +455,7 @@ export function GetActionsList(
 					id: 'host',
 					useVariables: true,
 					default: config.host ?? '',
+					minLength: 1,
 					tooltip:
 						'The Hostname/IP of the Ember+ provider. Overrides any device selected by Bonjour. Leave empty to keep the current host.',
 				},

@@ -74,6 +74,30 @@ describe('parameterProperty', () => {
 		})
 	})
 
+	// What the Set Value actions take, so a preset's rotary steps from it: the library's displayValue, the inverse of
+	// the deviceValue they convert with
+	describe('value as displayed', () => {
+		it.each([
+			['an integer by its factor', { value: -125, factor: 10 }, -12.5],
+			['a real by its factor, as the library has it', { parameterType: ParameterType.Real, value: 5, factor: 2 }, 2.5],
+			['by the formula, before the factor', { value: 10, formula: '$ * 2 + 1\n($ - 1) / 2', factor: 10 }, 21],
+			['as it is with neither', { value: 7 }, 7],
+		])('gives %s', (_name, fields, expected) => {
+			expect(parameterProperty(parameter(fields), 'displayed')).toBe(expected)
+		})
+
+		it('gives the plain value for a formula it cannot compute', () => {
+			expect(parameterProperty(parameter({ value: 5, formula: '$ +' }), 'displayed')).toBe(5)
+		})
+
+		it('gives a value that is no number as it is', () => {
+			expect(parameterProperty(parameter({ parameterType: ParameterType.Boolean, value: true }), 'displayed')).toBe(
+				true,
+			)
+			expect(parameterProperty(parameter({ value: null }), 'displayed')).toBeNull()
+		})
+	})
+
 	describe('value with units', () => {
 		it("formats the factored value, then the unit after the format's °", () => {
 			expect(parameterProperty(parameter({ value: -125, factor: 10, format: '%.1f°dB' }), 'units')).toBe('-12.5 dB')

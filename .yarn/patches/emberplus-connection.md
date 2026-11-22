@@ -87,6 +87,7 @@ tracks every change and every known bug, and what has been sent upstream.
 | 67  | A reported qualified element put into the client's tree kept its `path`, and its children's `parent` was the reported element (`getInternalNodePath` gave `3` for 1.2.3)                                                                                                                                                     | nothing (affected: qualified-root providers)                                                                                                                   | fixed on fork `master` (`fa00b7b`), §Remaining casts                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | 68  | GetDirectory on an element the tree doesn't have, under a loaded parent, times out: the reply is put into the tree but reported at the parent's path, so the request (at the element's path) never matches                                                                                                                   | nothing yet (blocks: inline `parametersLocation`, which the spec says isn't listed; module-built paths such as `labelsLocation` or connection parameter nodes) | fixed on fork `master` (`af75640`, pushed): an inserted element also makes a change at its own path (`insertedChange`: the tree node, `emptyNode`, reported connections), at the top level too. Tests (GetDirectory below a loaded element with a callback called once, at the top level, a matrix connect on an unloaded matrix) fail without it (checked). Device check (192.168.3.71, module defaults): GetDirectory on a hand-built `1.4` with only the root loaded answered in 1.7 s, matrix in the tree                                                                                                                                       |
 | 69  | A spec-compliant answer to a GetDirectory on a node without children (the node "without any properties set", _Glow › Commands › GetDirectory_) times out when the node's parent, or its whole device, isn't loaded: the changes for elements reported as they came carry no `emptyNode`, so the wait for children never ends | nothing yet (hits `getMatrixLabels` on an empty label set whose `basePath`'s parent isn't loaded)                                                              | fixed on fork `master` (`42664bd`, changelog `3c3b71c`), found 2026-11-16 with a temporary client test (timed out with nothing loaded and with only the device loaded; resolved with the node above loaded, where `insertedChange` set it): both changes now come from `reportedChange`, which sets `emptyNode` as `insertedChange` does. Tests: those cases, `getMatrixLabels` on an empty set with nothing of its `basePath` loaded (fail without it, checked), and a reply with properties still waiting. A reply with properties but no children (a non-compliant provider) still waits: the spec says it can't be told from an ordinary update |
+| 70  | A label parameter's change reaches no callback at its label node: a consumer can't follow a matrix's labels without a GetDirectory (and a callback) per label                                                                                                                                                                | nothing yet (the module reads labels on connect, reconnect and config save only)                                                                               | to do in the fork (user's request, 2026-11-22), §70                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 
 "Sent" means pushed to the fork on 2026-10-03/04 with a description ready; open the PR from the compare link if
 not done yet, check "About the Contributor" and the Status boxes, and cross-link PR numbers.
@@ -717,7 +718,9 @@ locked`, anything else resolves with the matrix. PENDING resolves by decision (t
     connections are plain `{ target, sources, disposition }` now (no `operation`, not the decoder's objects). `Model`
     exports `Connection`, `ConnectionDisposition`, `ConnectionOperation`, `ConnectionImpl`. README example added.
 - Note: `matrixConnect()`/`matrixDisconnect()` send `connect`/`disconnect`, which the DTD marks "nToN only"; for 1:N
-  and 1:1 the spec's way is `absolute`, i.e. `matrixSetConnection()`. Not checked against devices.
+  and 1:1 the spec's way is `absolute`, i.e. `matrixSetConnection()`. Not checked against devices. (Ember+ Viewer
+  sends `connect` to the XACI's 1:N matrix, which carries it out: the 2026-10-05 capture below.) Since 2026-11-22 the
+  module sends `absolute` there itself (`matrixRequest` in `src/actions/matrix.ts`, Module update plan).
 
 Matrix, provider side (`EmberServer`) and encoder:
 
@@ -1978,6 +1981,86 @@ Open items:
 History: everything from the libember comparison (§47–58, #52–#59) and the typing review (ten items, then the
 remaining casts) is done; the details are in those sections.
 
+## 70. Live label changes (to do in the fork, 2026-11-22)
+
+The user asked (2026-11-22) to deal with this in the library, so the module can follow label changes live. Until then
+the module reads a matrix's labels on connecting, reconnecting and after a config change (`readSignalLabels` in
+`src/matrices.ts`), and follows only what comes in the matrix's own reports (connections, and signal identifiers).
+
+The problem: `_handleIncoming` calls the callbacks at each change's own path (`_callbacksAt(change.path)`). A label is
+a string parameter under a label node: `<basePath>.1.<target>` / `<basePath>.2.<source>` for a label set (`labels`),
+or under a signal's `labelsLocation` node. A provider reports a changed label as that parameter (the spec's "Changing
+Labels" sample is a `QualifiedParameter` at `1.2.3.1.1.3`), so the change is at the parameter's path, and a callback at
+the label node isn't called. `getMatrixLabels` sends its GetDirectories without a callback, and returns the labels once.
+
+What a consumer can do today, and why it doesn't serve: register a callback at every label parameter's path with
+`getElementByPath(path, cb)`. With `getDirectoryOnParams` (the default) each sends a GetDirectory on the parameter,
+recorded in `_sentGetDirectories` and so sent again after every reconnect: on the XACI (192.168.3.71, one label set)
+2208 + 2696 requests, on top of the two GetDirectories on the label nodes that already ask the provider for the changes
+("a GetDirectory on a node subscribes the consumer to its children's changes").
+
+Shapes to choose between (not decided):
+
+- A callback for the children of a node fetched with GetDirectory: `getDirectory(node, mask, cb)`'s callback also
+  called for a change to one of the node's direct children, which the GetDirectory subscribed to. General, and serves
+  `labelsLocation` nodes too, but it changes what an existing callback is called for, so it wants an option or a new
+  method rather than a silent change.
+- A callback on `getMatrixLabels(matrix, onChange?)`, called with the label set and the signal whose label changed (or
+  the sets afresh), and a like method for a signal's `labelsLocation` labels. Narrower, and says what it is for.
+- A client-wide change event (`'change'`, with the path and the element), which a consumer filters itself. Simplest in
+  the library; leaves the matching, and its cost on busy trees, to the consumer.
+
+Either way: callbacks kept across a reconnect as the others are, the label nodes' GetDirectories restored as today,
+and a test of a provider (`EmberServer.update` on a label parameter) changing a label after the labels were fetched.
+
+Module side once it lands: in `loadMatrix` (`src/index.ts`), register for the label changes; on one, update
+`info.labels` and call `matrixChanged(path)`, which already rebuilds the definitions when the dropdowns' choices change
+and sets the name variables that changed. Then drop "labels are read on connect" from HELP.md's Matrices section.
+
+## Device checks before the 3.0 release (saved 2026-11-22)
+
+The user will make these on a device before publishing 3.0; the XACI (192.168.3.71:9003, matrix `1.4`, 1:N,
+non-linear, 2208 targets, 2696 sources, one label set) is the one known device with a matrix. Each has only been run
+against the library's `EmberServer` (`src/tests/matrixProvider.test.ts`, `src/tests/streams.test.ts`).
+
+Connection operations (`matrixRequest` in `src/actions/matrix.ts`; the XACI has only ever been sent `connect` and
+`disconnect`, by the module before and by Ember+ Viewer):
+
+- [ ] Matrix Connect: now sent as `absolute` with the one source. The target takes the source.
+- [ ] Take (Set Selected Target, Set Selected Source, Take; and with Auto-Take on): sent as `absolute` too.
+- [ ] Matrix Disconnect of the connected source: sent as `absolute` with no sources. The target is left with none.
+- [ ] Matrix Disconnect of a source that isn't connected: nothing sent, a debug line "isn't connected to target ...,
+      so nothing was sent" in the log, and the target's source kept.
+- [ ] A locked target (if the XACI can lock one): the warning "is locked, so the provider refused the connection".
+
+The matrix rework (Module update plan, "Matrices"):
+
+- [ ] On connecting: `1.4` loads (debug line "Matrix 1.4 loaded: 2208 targets, 2696 sources, ... labels"), and a
+      path in the config that isn't a matrix, or holds nothing, is left out with a warning.
+- [ ] The dropdowns in Companion: the matrix by path and name, then targets and sources as `number: label` (the
+      XACI's padded labels trimmed). That a 2696-entry dropdown, in every matrix action and feedback, is usable in the
+      UI, and the definitions (several hundred kB) don't slow Companion.
+- [ ] Variables with the three Matrix choices on: names (as reported, padding kept) and each target's sources, about
+      7,100 variables; a crosspoint changed from Ember+ Viewer updates its `_sources` variable at once.
+- [ ] Matrix Property: Name, Connected Sources and Connection Disposition, rechecked when the crosspoint changes.
+- [ ] A reconnect (pull the cable, or restart the XACI): the matrix and its labels load again, and the actions work.
+- [ ] Upgrading a 2.x connection with matrix buttons: Set Selected Source/Target and their feedbacks pick the matrix
+      by path; Connect/Disconnect/Set Connection paths are added to the config's matrices, their target and sources
+      kept; one with a path built from variables names no matrix, and fails until a matrix is chosen.
+
+Presets:
+
+- [ ] A configured path of each kind gets its preset (toggle, rotary, meter), named by identifiers, grouped by parent.
+- [ ] A rotary on an integer with a factor (a gain in tenths of a dB) steps by its displayed step, shows its units,
+      and stops at its limits; held, the fine step.
+- [ ] A rotary with `logarithmic` set to true on a frequency: a third of an octave a detent, the arc logarithmic.
+- [ ] An enumeration rotary steps through the entries by name.
+- [ ] A meter follows its stream, on its formula's scale (dB).
+- [ ] The text sizes are sensible on a real button (long identifier paths), and changed by the font size variables.
+
+From earlier, also not checked on a device: streams (a meter feedback and Parameter - Streams variables, and a
+reconnect with a stream subscribed; Streams, Module update plan).
+
 ## Release notes draft (3.0, saved 2026-11-21)
 
 To go in the release notes of the module's 3.0 release, the user's decision on the Set Value Integer Factor:
@@ -1986,6 +2069,13 @@ To go in the release notes of the module's 3.0 release, the user's decision on t
 > parameter's own formula or factor. Set Value Integer actions whose Factor was 1 change behaviour on parameters that
 > have a factor or formula: check them, and use Learn to fill in the displayed value. Actions with any other Factor keep
 > it, marked Device Units, and send what they did before.
+
+And, the user's decision on matrices (2026-11-22: a matrix is chosen from a dropdown only):
+
+> The matrix actions and feedbacks now choose a matrix from those in the module config, and its targets and sources
+> from dropdowns with their labels. Matrix Connect, Disconnect and Set Connection actions have their path added to the
+> config's matrices. One whose path was built from variables, and a selection action or feedback whose matrix number
+> came from a variable, can't be converted: choose its matrix again, and set its target and sources.
 
 ## Module update plan (2026-11-15)
 
@@ -2080,7 +2170,75 @@ its yarn patch removed. What the module does now, against the plan above:
   Factor as before (`parseDeviceUnitsValue`); Learn unticks it. Set Host's port is a number field (the user's change):
   `v300` converts saved text, an empty port becoming the connection's port at upgrade.
 
-Not done: matrix labels, element renumbering across sessions.
+- Matrices (2026-11-22, the user's spec): each configured matrix is loaded on connecting, reconnecting and after a
+  config change (`loadMatrices` / `loadMatrix` in `index.ts`): looked up with a callback (by `resolvePath`, so a
+  descriptor path works, its changes keyed by the configured path), a GetDirectory on the matrix (targets, sources,
+  connections, and their changes), then its labels (`readSignalLabels` in `src/matrices.ts`: label sets through
+  `getMatrixLabels`, a signal's label from the first set that has one; else each signal's `labelsLocation` node, its
+  lowest numbered string parameter, 16 requests at a time). A path holding no element ("Could not find node", or
+  undefined) or no matrix is dropped with a warning until the next load; one that fails otherwise (timeout, not sent)
+  is kept. `state.matrices` is a Map of `MatrixInfo` by configured path; `selected.matrix` is a path. Every matrix
+  action and feedback chooses the matrix from a dropdown (`matrixDropdown` in `src/matrixOptions.ts`,
+  `disableAutoExpression`, as the per-matrix fields show by it), then per-matrix fields named by `matrixOptionKeys`
+  (`target_<key>`; the connection actions' `sources_<key>`, a multi-select for N:N and a dropdown of one otherwise,
+  under the one id so a source chosen before the matrix loads survives it loading as N:N (review fix, 2026-11-22; the
+  upgrade writes a list); the selection actions' and Matrix Property's `source_<key>`; Set Connection's single source
+  offers None, -1, for no source), `allowInvalidValues` so an expression's number reaches the callback. Choices
+  are `n: name` (first label, else identifier, trimmed). Matrix reports go through the 10 ms throttle (`updateMatrix`):
+  the definitions are rebuilt when a matrix's choices change, the matrix variables set only where a value changed, and
+  Matrix Property feedbacks rechecked by matrix (`state.addMatrixFeedback`). Matrix variables are wired: target and
+  source names (`matrix_<path>_<kind>_<n>_name`) and target connections (`matrix_<path>_target_<n>_sources`, an array),
+  their definitions built once per change (`matrixVariableDefinitions`). New value feedback Matrix Property
+  (`matrix_property`): matrix, Source / Target (`signal`), the signal, then `targetProperty` (name, identifier,
+  isOnline, labelsLocation, connections, disposition lowercased, tally by default) or `sourceProperty`. Upgrade script
+  `matricesByPath` after `v300` (so a 3.0 pre-release connection gets it): selection items' index becomes the path
+  (empty text the first, as `Number()` read it; an expression or a place past the list is kept as text naming no
+  matrix); the connection actions' `path` becomes `matrix`, the configured path of the same element by `resolvePath`
+  or else added to the config (only when Companion passes the config: not for imported buttons); target and sources
+  move onto the matrix's fields, sources written to both the single and the multi field (an upgrade can't tell N:N).
+  A path with variables is kept as text naming no matrix (user's call: dropdown only). `src/tests/matrixProvider.test.ts`
+  runs it against `EmberServer`. Not checked against a device.
+- Connection operations by matrix type (2026-11-22, the user's request; the user will check them on the XACI before
+  publishing): the DTD has `connect` and `disconnect` "nToN only", `absolute` for any. `matrixRequest` in
+  `src/actions/matrix.ts` picks the library method, in the queue, from the matrix as it is when the request goes:
+  N:N, and Set Connection on any matrix, unchanged. On any other matrix (1:N, 1:1, or no type: 1:N), Matrix Connect and
+  Take send `absolute` with the source (nothing, logged, for no source, which absolute would make a disconnect);
+  Matrix Disconnect sends `absolute` with the target's sources less those given, once the matrix's connections are
+  loaded (`MatrixInfo.connectionsLoaded`, set when the GetDirectory on the matrix is answered: review fix, as a report
+  on one target creates the library's connections); a connect with several sources sends the first (nothing, logged, when none of them is connected, as absolute would disconnect another), and `disconnect`
+  while they aren't. Before, every connect and disconnect was sent as such, which Ember+ Viewer does too and the XACI
+  accepts; `absolute` is untried on the XACI.
+- Composite elements (2026-11-22, the user's request): `src/composites.ts` and its tests copied from
+  companion-module-generic-oca at `3c525b8` (Signal Meter, Value Dial, Centred Dial, Width Dial), the AES70 wording
+  made Ember+ (Parameter Property feedbacks), defined in `init` whatever the connection. Added: tests resolving the
+  meter's placement, its stops and colours, and the dials' origins and marker colours with `@companion-app/expressions`.
+  The geometry is generic-oca's unchanged, so a change there should be carried over.
+- Parameter presets (2026-11-22, the user's spec; `src/presets/`, laid out as companion-module-generic-oca's, the text
+  and font size variables as companion-module-stagetec-nexus-udp's): for the registered parameters (`state.parameters`:
+  the configured paths and those in use), online with every node above them, named and grouped by their path's
+  identifiers from the library's tree (`presetParameters`), each element once. Toggles (boolean, read-write: Set Value
+  Boolean's toggle, ON/OFF, green while on); rotaries (integer and real with both limits, and enumerations, read-write:
+  a number steps from the new Parameter Property "Value as Displayed", `displayed`, the library's displayValue, set
+  absolutely through Set Value Integer/Real, within `min`/`max` local variables as displayed; `logarithmic` local
+  variable, off, multiplies by `2^(1/step_divisions)` and draws the arc on a log scale; an enumeration steps with Set
+  Value ENUM's relative change, its entries its range where it states none: my call); meters (stream parameters,
+  readable: Value as Displayed on the Signal Meter, `meter_min`/`meter_max` from the limits as displayed, or -100..0).
+  Value and name are separate text elements, `font_size_value` (24) and `font_size_name` (16). Built from
+  `state.parameterElements` (review fix), which a stream's unsubscribing and a config change's cache clear leave alone. Rebuilt with the
+  definitions (the debounced update now includes presets), and on a report changing what a preset is built from
+  (`presetFieldsChanged`, `src/presets/fields.ts`), not on a value. Tests evaluate the expressions with
+  `@companion-app/expressions`, check every preset's actions and feedbacks against the definitions, and one runs against
+  `EmberServer`.
+- Live label changes, not done (user's call, 2026-11-22: labels read on connect, reconnect and config save for now;
+  to be dealt with in the library, §70).
+  The library calls a callback only at the path that changed: a label parameter's change is reported at its own path,
+  so a callback at the label node (`basePath.1`, or a `labelsLocation`) isn't called. Registering each label path
+  (`getElementByPath` with a callback) sends a GetDirectory per label (`getDirectoryOnParams`), about 4,900 on the
+  XACI, and the library sends them all again after every reconnect. Needs a library change: for instance a callback
+  for the children of a node fetched with GetDirectory (the spec has such a GetDirectory subscribe to them), or one on
+  `getMatrixLabels`. Signal identifiers come with the matrix's own reports, so they are followed live already.
+
+Not done: live label changes (above), element renumbering across sessions.
 
 The module moves from `emberplus-connection` 0.3.1 (+ this yarn patch) to `@phillipivan/emberplus-connection` once
 the library work is complete, in the same update as the module's move to the Companion module API 2. Until then the

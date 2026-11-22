@@ -1,14 +1,21 @@
 import { Model as EmberModel } from '@phillipivan/emberplus-connection'
 import { enumEntryName, enumEntryValue } from './enums.js'
+import { emptyLabels, matrixOptionKeys, type MatrixInfo } from './matrices.js'
 
 const { ElementType } = EmberModel
 type TreeElement<T extends EmberModel.EmberElement> = EmberModel.TreeElement<T>
 type EmberElement = EmberModel.EmberElement
 
+/** The XY selection: a target and a source of a matrix, by its configured path. -1, and '' for the matrix, for none */
 export interface CurrentSelected {
 	target: number
 	source: number
-	matrix: number
+	matrix: string
+}
+
+/** No selection */
+function noSelection(): CurrentSelected {
+	return { source: -1, target: -1, matrix: '' }
 }
 
 interface Feedbacks {
@@ -21,19 +28,66 @@ export class EmberPlusState {
 	public parameters: Map<string, EmberModel.Parameter> = new Map()
 	public functions: Map<string, EmberModel.EmberFunction> = new Map()
 	public emberElement: Map<string, TreeElement<EmberElement>> = new Map()
+	/**
+	 * Each registered parameter's tree element, as last registered or reported, which its presets are named and checked
+	 * by. Unlike the element cache, which a config change clears and a stream's unsubscribing trims so that the next use
+	 * registers afresh, it is kept until the provider is changed
+	 */
+	public parameterElements: Map<string, TreeElement<EmberElement>> = new Map()
 	public monitoredParameters: Set<string> = new Set()
-	public matrices: string[] = []
+	/** The matrices in the module config, by path, in the order given, less any the provider showed not to be one */
+	public matrices: Map<string, MatrixInfo> = new Map()
 	private feedbacks: Feedbacks = {
+		byId: new Map(),
+		byPath: new Map(),
+	}
+	/** The Matrix Property feedbacks, by the matrix they read, so that a change to a matrix rechecks only its own */
+	private matrixFeedbacks: Feedbacks = {
 		byId: new Map(),
 		byPath: new Map(),
 	}
 
 	constructor() {
-		this.selected = {
-			source: -1,
-			target: -1,
-			matrix: -1,
-		}
+		this.selected = noSelection()
+	}
+
+	/**
+	 * Set the matrices from the module config. A matrix still configured keeps what was learnt of it until it is loaded
+	 * again, so its fields keep their choices meanwhile.
+	 */
+	public setMatrixPaths(paths: readonly string[]): void {
+		const keys = matrixOptionKeys(paths)
+		const previous = this.matrices
+		this.matrices = new Map(
+			paths.map((path) => [
+				path,
+				{ ...(previous.get(path) ?? { labels: emptyLabels() }), path, key: keys.get(path) ?? path },
+			]),
+		)
+	}
+
+	/** A feedback reads a matrix: recheck it when the matrix changes. A feedback edited onto another leaves the one it read */
+	public addMatrixFeedback(id: string, path: string): void {
+		this.removeMatrixFeedback(id)
+		this.matrixFeedbacks.byId.set(id, path)
+		const ids = this.matrixFeedbacks.byPath.get(path) ?? new Set<string>()
+		ids.add(id)
+		this.matrixFeedbacks.byPath.set(path, ids)
+	}
+
+	/** A Matrix Property feedback is removed or disabled */
+	public removeMatrixFeedback(id: string): void {
+		const path = this.matrixFeedbacks.byId.get(id)
+		if (path === undefined) return
+		this.matrixFeedbacks.byId.delete(id)
+		const ids = this.matrixFeedbacks.byPath.get(path)
+		ids?.delete(id)
+		if (ids?.size === 0) this.matrixFeedbacks.byPath.delete(path)
+	}
+
+	/** The feedbacks reading a matrix */
+	public getMatrixFeedbacks(path: string): Set<string> {
+		return this.matrixFeedbacks.byPath.get(path) ?? new Set()
 	}
 
 	/**
@@ -134,6 +188,7 @@ export class EmberPlusState {
 		const merged = { ...existing, ...node.contents }
 		this.parameters.set(path, EmberModel.fitsItsType(merged) ? merged : node.contents)
 		this.emberElement.set(path, node)
+		this.parameterElements.set(path, node)
 	}
 
 	/**
@@ -216,14 +271,26 @@ export class EmberPlusState {
 	}
 
 	/**
-	 * Clear all state
+	 * Clear what was learnt from the provider, for another. The matrices stay configured, without what was learnt of them,
+	 * and the Matrix Property feedbacks stay registered against them: the feedbacks are still on their buttons.
 	 */
 	public clear(): void {
 		this.parameters.clear()
 		this.functions.clear()
 		this.emberElement.clear()
+		this.parameterElements.clear()
 		this.feedbacks.byId.clear()
 		this.feedbacks.byPath.clear()
-		this.selected = { source: -1, target: -1, matrix: -1 }
+		for (const info of this.matrices.values()) {
+			info.node = undefined
+			info.connectionsLoaded = false
+			info.labels = emptyLabels()
+		}
+		this.selected = noSelection()
+	}
+
+	/** Clear the XY selection */
+	public clearSelection(): void {
+		this.selected = noSelection()
 	}
 }

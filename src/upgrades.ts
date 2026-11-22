@@ -13,7 +13,8 @@ import {
 import { ActionId } from './actions.js'
 import type { EmberPlusConfig } from './config.js'
 import { FeedbackId } from './feedback.js'
-import { comparitorOptions } from './util.js'
+import { matrixOptionKeys, matrixPaths } from './matrices.js'
+import { comparitorOptions, resolvePath } from './util.js'
 
 // Companion hands every script its options wrapped as { isExpression, value }, the scripts written before API 2
 // included. Those still run for a connection upgrading from a version older than they are, so they read and write
@@ -592,6 +593,147 @@ function v300(context: Context, props: Props): Result {
 	}
 }
 
+// 3.0, matrices: each is chosen from a dropdown of the configured matrices, by path, and its targets and sources from
+// dropdowns of their own (`target_<key>`, and `source_<key>` or, N:N, `sources_<key>`; see matrixOptionKeys). A
+// separate script from v300, so that a connection already upgraded by a 3.0 pre-release gets it too.
+
+/** The actions that held a matrix's path as text, with variables replaced */
+const matrixConnectionActions = ['matrixConnect', 'matrixDisconnect', 'matrixSetConnection']
+
+/** The actions and feedbacks that chose a matrix by its place in the config's list, from 0, and the signal option of each */
+const matrixSelections: {
+	actions: Record<string, 'source' | 'target'>
+	feedbacks: Record<string, 'source' | 'target'>
+} = {
+	actions: { setSelectedSource: 'source', setSelectedTarget: 'target' },
+	feedbacks: { sourceBackgroundSelected: 'source', targetBackgroundSelected: 'target' },
+}
+
+/** The options the matrices script moves from where v300 left them, by action or feedback */
+export const matrixOptionsMoved: {
+	actions: Partial<Record<string, string[]>>
+	feedbacks: Partial<Record<string, string[]>>
+} = {
+	actions: {
+		...Object.fromEntries(matrixConnectionActions.map((id) => [id, ['path', 'target', 'sources']])),
+		...Object.fromEntries(Object.entries(matrixSelections.actions).map(([id, kind]) => [id, ['matrix', kind]])),
+	},
+	feedbacks: Object.fromEntries(Object.entries(matrixSelections.feedbacks).map(([id, kind]) => [id, ['matrix', kind]])),
+}
+
+/**
+ * A matrix action's sources, comma separated text, as its sources field: a list, which both forms the field takes show
+ * (a multi-select for an N:N matrix; a dropdown of one for any other, which takes a list of one as that one), as an
+ * upgrade can't tell which the matrix is. Empty text is no source, an empty list. Text with variables becomes an
+ * expression whose text the callbacks read as comma separated; so does an expression. A number that is no number stays
+ * as text, which the action refuses, as it did.
+ */
+function matrixSourcesOf(option: OptionValue | undefined): OptionValue {
+	if (option?.isExpression) return option
+	const text = textOf(option)
+	if (text.includes('$(')) return { isExpression: true, value: parseVariablesOf(text) }
+	const sources = text
+		.split(',')
+		.map((part) => part.trim())
+		.filter((part) => part !== '')
+		.map((part) => (/^\d+$/.test(part) ? Number(part) : part))
+	return plain(sources)
+}
+
+/** Move an action's or feedback's signal option onto the field of its matrix */
+function moveSignal(options: CompanionMigrationOptionValues, from: string, to: string): void {
+	if (from in options) options[to] = options[from]
+	delete options[from]
+}
+
+/**
+ * Connect, Disconnect and Set Connection held the matrix's path as text, with variables replaced. It becomes the
+ * matrix dropdown's value: the configured matrix of that path, the path being added to the config if it isn't there.
+ * The target and sources move onto that matrix's fields. A path built from variables can't be a configured matrix: it is
+ * kept as the matrix's value, which names no configured matrix, so the action fails until one is chosen.
+ */
+function matrixConnectionOf(
+	action: CompanionMigrationAction,
+	path: string | undefined,
+	keys: Map<string, string>,
+): void {
+	const { options } = action
+	options.matrix = plain(path ?? textOf(options.path).trim())
+	delete options.path
+	const key = path === undefined ? undefined : keys.get(path)
+	if (key === undefined) return
+	moveSignal(options, 'target', `target_${key}`)
+	options[`sources_${key}`] = matrixSourcesOf(options.sources)
+	delete options.sources
+}
+
+/**
+ * Set Selected Source and Target, and their feedbacks, chose a matrix by its place in the config's list: it becomes that
+ * matrix's path, and the source or target moves onto its field. A place past the list, or an expression, names no
+ * configured matrix: it is kept as text, so the action fails, and the feedback is off, until one is chosen.
+ */
+function matrixSelectionOf(
+	options: CompanionMigrationOptionValues,
+	kind: 'source' | 'target',
+	configured: readonly string[],
+	keys: Map<string, string>,
+): boolean {
+	// Already upgraded: the matrix by path, and the signal moved
+	if (!(kind in options) && typeof options.matrix?.value === 'string') return false
+	const text = textOf(options.matrix).trim()
+	// As the callbacks read it, with Number(): empty text was the first matrix
+	const index = options.matrix?.isExpression ? NaN : Number(text)
+	const path = Number.isInteger(index) && index >= 0 ? configured[index] : undefined
+	options.matrix = plain(path ?? text)
+	const key = path === undefined ? undefined : keys.get(path)
+	if (key !== undefined) moveSignal(options, kind, `${kind}_${key}`)
+	return true
+}
+
+function matricesByPath(context: Context, props: Props): Result {
+	const result = emptyResult()
+	const configured = matrixPaths((props.config ?? context.currentConfig)?.matricesString)
+	const paths = [...configured]
+
+	/** The configured matrix of a text path, added to the paths if none is; undefined for a path with variables */
+	const matrixOfText = (text: string): string | undefined => {
+		const path = text.replaceAll('/', '.').trim()
+		if (path === '' || path.includes('$(')) return undefined
+		const resolved = resolvePath(path)
+		const known = paths.find((other) => resolvePath(other) === resolved)
+		if (known !== undefined) return known
+		paths.push(path)
+		return path
+	}
+
+	// The paths first: the keys of the matrices' fields are chosen across them all
+	const connections = props.actions
+		.filter((action) => matrixConnectionActions.includes(action.actionId) && 'path' in action.options)
+		.map((action) => ({ action, path: matrixOfText(textOf(action.options.path)) }))
+	const keys = matrixOptionKeys(paths)
+
+	for (const { action, path } of connections) {
+		matrixConnectionOf(action, path, keys)
+		result.updatedActions.push(action)
+	}
+	for (const action of props.actions) {
+		const kind = matrixSelections.actions[action.actionId]
+		if (kind && matrixSelectionOf(action.options, kind, configured, keys)) result.updatedActions.push(action)
+	}
+	for (const feedback of props.feedbacks) {
+		const kind = matrixSelections.feedbacks[feedback.feedbackId]
+		if (kind && matrixSelectionOf(feedback.options, kind, configured, keys)) result.updatedFeedbacks.push(feedback)
+	}
+
+	// Only while the config is upgraded with them: buttons imported into a connection already upgraded can't add to it
+	if (props.config && paths.length > configured.length) {
+		const added = paths.slice(configured.length).join(', ')
+		const existing = (props.config.matricesString ?? '').replace(/[\s,]+$/, '')
+		result.updatedConfig = { ...props.config, matricesString: existing ? `${existing}, ${added}` : added }
+	}
+	return result
+}
+
 export const UpgradeScripts: CompanionStaticUpgradeScript<EmberPlusConfig>[] = [
 	v250,
 	v260,
@@ -599,4 +741,5 @@ export const UpgradeScripts: CompanionStaticUpgradeScript<EmberPlusConfig>[] = [
 	mergeEnumActions,
 	v280,
 	v300,
+	matricesByPath,
 ]

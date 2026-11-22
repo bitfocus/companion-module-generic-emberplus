@@ -1,6 +1,12 @@
 import { describe, it, expect, vi } from 'vitest'
 import { Model as EmberModel } from '@phillipivan/emberplus-connection'
-import { GetVariablesList, hasParameterVariables, parameterVariableValue } from '../variables.js'
+import {
+	GetMatrixVariablesList,
+	GetVariablesList,
+	hasParameterVariables,
+	matrixVariableValues,
+	parameterVariableValue,
+} from '../variables.js'
 import { EmberPlusState } from '../state.js'
 
 // `../util.js` circularly imports `../actions.js`; mock it as the other tests do
@@ -108,5 +114,58 @@ describe('parameterVariableValue', () => {
 		expect(parameterVariableValue(parameter({ parameterType: ParameterType.Boolean, value: true }), true)).toBe(true)
 		expect(parameterVariableValue(parameter({ value: null }), true)).toBeNull()
 		expect(parameterVariableValue(parameter({}), true)).toBeNull()
+	})
+})
+
+describe('matrix variables', () => {
+	/** Matrix 1.4, loaded: targets 1 and 2, target 1 labelled and connected to sources 3 and 1; and 1.5, not loaded */
+	function matrixState(connections = true): EmberPlusState {
+		const state = new EmberPlusState()
+		state.setMatrixPaths(['1.4', '1.5'])
+		const matrix = new EmberModel.MatrixImpl('router')
+		matrix.addressingMode = EmberModel.MatrixAddressingMode.NonLinear
+		matrix.targets = new Map([
+			[1, {}],
+			[2, { identifier: 'Out 2' }],
+		])
+		matrix.sources = new Map([[3, {}]])
+		if (connections) matrix.connections = EmberModel.connectionsOf([{ target: 1, sources: [3, 1] }])
+		const info = state.matrices.get('1.4')!
+		info.node = new EmberModel.NumberedTreeNodeImpl(4, matrix)
+		info.connectionsLoaded = connections
+		info.labels.targets.set(1, ' Studio A ')
+		return state
+	}
+	const all = { targetNames: true, sourceNames: true, connections: true }
+
+	it("defines each loaded matrix's signal names and target connections, for the kinds chosen", () => {
+		expect(GetMatrixVariablesList(matrixState(), all)).toEqual({
+			'matrix_1.4_target_1_name': { name: 'Matrix 1.4: Target 1 Name' },
+			'matrix_1.4_target_1_sources': { name: 'Matrix 1.4: Target 1 Sources' },
+			'matrix_1.4_target_2_name': { name: 'Matrix 1.4: Target 2 Name' },
+			'matrix_1.4_target_2_sources': { name: 'Matrix 1.4: Target 2 Sources' },
+			'matrix_1.4_source_3_name': { name: 'Matrix 1.4: Source 3 Name' },
+		})
+		expect(
+			Object.keys(GetMatrixVariablesList(matrixState(), { ...all, targetNames: false, connections: false })),
+		).toEqual(['matrix_1.4_source_3_name'])
+		expect(
+			GetMatrixVariablesList(matrixState(), { targetNames: false, sourceNames: false, connections: false }),
+		).toEqual({})
+	})
+
+	it('gives names as reported, and connected sources lowest first', () => {
+		expect(matrixVariableValues(matrixState().matrices.get('1.4')!, all)).toEqual({
+			'matrix_1.4_target_1_name': ' Studio A ',
+			'matrix_1.4_target_1_sources': [1, 3],
+			'matrix_1.4_target_2_name': 'Out 2',
+			'matrix_1.4_target_2_sources': [],
+			'matrix_1.4_source_3_name': '',
+		})
+	})
+
+	it('gives no connections until they are loaded', () => {
+		const values = matrixVariableValues(matrixState(false).matrices.get('1.4')!, all)
+		expect(values['matrix_1.4_target_1_sources']).toBeNull()
 	})
 })

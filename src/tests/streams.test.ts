@@ -18,6 +18,7 @@ vi.mock('@companion-module/base', async (importOriginal) => ({
 		setVariableDefinitions = vi.fn()
 		setVariableValues = vi.fn()
 		setPresetDefinitions = vi.fn()
+		setCompositeElementDefinitions = vi.fn()
 		checkFeedbacksById = vi.fn()
 		checkAllFeedbacks = vi.fn()
 		subscribeActions = vi.fn()
@@ -130,5 +131,22 @@ describe('streams from a provider', () => {
 		const { subscribers } = await connect({ monitoredParametersString: '1.1' })
 		await new Promise((resolve) => setTimeout(resolve, 200))
 		expect(subscribers('1.1')).toBe(0)
+	})
+})
+
+describe('presets from a provider', () => {
+	// The identifiers come from the library's own tree, by each element's parent
+	it("meters a registered stream, named by its path's identifiers, and gives no rotary to a number without a range", async () => {
+		const { instance } = await connect({ monitoredParametersString: '1.1, 1.2' })
+		await vi.waitFor(
+			() => {
+				const [structure, presets] = (instance as any).setPresetDefinitions.mock.calls.at(-1)
+				expect(presets['meter_1.1']).toMatchObject({ name: 'meters.meter' })
+				expect(structure.map((section: { id: string }) => section.id)).toEqual(['meters', 'matrix'])
+			},
+			{ timeout: 3000 },
+		)
+		const [, presets] = (instance as any).setPresetDefinitions.mock.calls.at(-1)
+		expect(presets).not.toHaveProperty('rotary_1.2')
 	})
 })
