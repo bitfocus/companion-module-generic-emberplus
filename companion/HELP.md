@@ -31,7 +31,9 @@ What the connection makes variables for:
 - **Parameter - Values**: a variable for each parameter in use, whether configured above or used by an action or feedback, holding its value (an enumeration also gets an `_ENUM` variable holding its entry). Selected by default. Without it no parameter variables are made: the **Parameter Property** feedback gives a parameter's value to a button's local variable instead. This replaces the actions' **Auto Create Variable** option of earlier versions.
 - **Parameter - Streams**: the same for stream parameters, such as audio meters, whose values the device sends many times a second. Off by default: a meter's values are only streamed while something uses them, and with this on every meter in use streams for its variable.
 - **Matrix - Target Names** and **Matrix - Source Names**: a variable for each target or source of each configured matrix, holding its name (see [Matrices](#matrices)), eg `matrix_1.4_target_1001_name`.
-- **Matrix - Connections**: a variable for each target of each configured matrix, holding the numbers of the sources connected to it, as an array, eg `matrix_1.4_target_1001_sources`.
+- **Matrix - Connections**: a variable for each target of each configured matrix, holding the sources connected to it, eg `matrix_1.4_target_1001_sources`: for an N:N matrix their numbers, as an array (empty for none); for any other, where a target takes one source, its number, or nothing for none.
+
+Whatever is chosen here, each matrix found on the device has variables of its own: `matrix_<path>_name`, its description, or else its path by identifiers; `matrix_<path>_targets` and `matrix_<path>_sources`, the numbers of all its targets and sources, as arrays; and `matrix_<path>_type`, its type: `oneToN`, `oneToOne` or `nToN`. An N:N matrix also has `matrix_<path>_max_connects_per_target` and `matrix_<path>_max_total_connects`, its connection limits: as the device gives them, or else its source count, and its target count times its source count, as the specification has it.
 
 ### Apply Formula and Factor to Parameter Variables
 
@@ -83,7 +85,7 @@ Ember+ devices may expose executable functions (such as triggering snapshots, fi
 
 ## Matrices
 
-The matrix actions and feedbacks choose a matrix from those in the module config, by path. The chosen matrix's targets and sources are then chosen from dropdowns listing each by number and name, eg `1001: Studio A`. A signal's name is its first label: from the first of the matrix's label sets that has one, or else the first in its own labels node, as the device provides them. A signal without a label is named by its identifier, or else listed by number alone. The dropdowns list a matrix's signals once it is loaded from the device; until then, or for a number not listed, switch the field to expression mode and give the number.
+The matrix actions and feedbacks choose a matrix from those in the module config, listed by path and, once loaded, by its path's identifiers, eg `1.4: Audio.Matrix`. They are only offered while there is a matrix: none are without matrices in the config, or once the device has shown none of those configured to be one. The chosen matrix's targets and sources are then chosen from dropdowns listing each by number and name, eg `1001: Studio A`. A signal's name is its first label: from the first of the matrix's label sets that has one, or else the first in its own labels node, as the device provides them. A signal without a label is named by its identifier, or else listed by number alone. The dropdowns list a matrix's signals once it is loaded from the device; until then, or for a number not listed, switch the field to expression mode and give the number.
 
 Labels are read when the module connects, reconnects, or its config is saved. Changes the device reports to a matrix's connections, and to its signals' identifiers, are followed as they happen, updating the dropdowns and variables.
 
@@ -136,6 +138,8 @@ Returns a property of a parameter to a button's local variable, chosen from:
 - **Value with Units**: the value by its formula or factor, formatted by the parameter's format, with its unit, eg `-12.5 dB`.
 - **Value by Formula**: the value computed by the parameter's formula. A parameter without a formula returns its plain value.
 - **Value as Displayed**: the value as a number, by the parameter's formula, or else divided by its factor: what Set Value Integer and Set Value Real take, and what the parameter variables hold with Apply Formula and Factor on.
+- **Minimum as Displayed**, **Maximum as Displayed** and **Step as Displayed**: the same for its range, lower end first, and its step. An enumeration stating no range takes its entries'; an integer stating no step takes 1. A real without a step has none.
+- **Identifier Path**: the parameter's path by the identifiers of it and the nodes above it, eg `Device.Inputs.Gain`.
 - **Value as Enumeration Entry**: the name of the value's entry, from the parameter's enumeration map or enumeration. A parameter with neither returns its plain value. This replaces the Return ENUM checkbox of earlier versions.
 - The parameter's own properties, as the provider reports them: Identifier, Description, Type, Access, Minimum, Maximum, Default Value, Factor, Format, Step, Online, Stream Identifier, Stream Descriptor, Schema Identifiers and Template Reference. A property the provider doesn't report returns nothing.
 
@@ -147,7 +151,7 @@ Returns a property of a matrix's target or source to a button's local variable. 
 
 - **Name**: its first label, or else its identifier, as for the dropdowns (see [Matrices](#matrices)).
 - **Identifier**, **Online** and **Labels Location**, as the device reports them. Online is true unless the device says otherwise.
-- A target's **Connected Sources**: the numbers of the sources connected to it, as an array.
+- A target's **Connected Sources**: for an N:N matrix the numbers of the sources connected to it, as an array; for any other, the source's number, or nothing for none.
 - A target's **Connection Disposition**: the device's last report on its connection: `tally`, `modified`, `pending` (a change is queued) or `locked` (the target refused a change).
 
 The feedback returns nothing for a matrix not yet loaded, or a signal it doesn't have.
@@ -176,13 +180,13 @@ The module offers presets for the parameters it has registered: those in Paths t
 - **Meters**, for a stream parameter such as an audio meter: a meter along the bottom, its level by formula or factor, the path in the middle and the level with its units at the top. Its range is the parameter's, or -100 to 0 where the parameter gives none.
 - **Take** and **Clear**, for XY matrix control.
 
-Each button has local variables to fine tune it:
+Each kind of button is one template preset, made for each parameter by its path, which it reads its name, range and step by through Parameter Property. A button that stays linked to its preset lets these be changed, under Preset variables, as well as its `path`:
 
 - `font_size_value` and `font_size_name`: the size of the value and of the path.
-- On a rotary, `min` and `max`: its range, as displayed. Narrow them to limit what the dial sets.
-- On a number rotary, `step_size` and `step_size_fine`: the step a turn takes, and while pressed, as displayed.
+- On a rotary, `min` and `max`: the range a turn is held to, and the dial drawn across, as displayed. `auto` takes the parameter's own; set one to narrow it.
+- On a number rotary, `step_size` and `step_size_fine`: the step a turn takes, and while pressed, as displayed. `auto` works it out from the parameter: a 50th of its range, in whole steps of its own, and its own step while pressed (a 500th of the range for a real without one, or with one no smaller than its range).
 - On a number rotary, `logarithmic`: set it to `true` for a parameter read on a log scale, such as a frequency. A turn then multiplies the value, by a fraction of a doubling (`step_divisions`, 3 by default: a third of an octave; `step_divisions_fine`, 24, while pressed), and the dial is drawn on a log scale.
-- On a meter, `meter_min` and `meter_max`: its range.
+- On a meter, `meter_min` and `meter_max`: its range. `auto` takes the parameter's, or -100 to 0 where it gives none.
 
 ## Action Recorder
 

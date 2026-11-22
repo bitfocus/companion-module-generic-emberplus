@@ -141,12 +141,31 @@ describe('presets from a provider', () => {
 		await vi.waitFor(
 			() => {
 				const [structure, presets] = (instance as any).setPresetDefinitions.mock.calls.at(-1)
-				expect(presets['meter_1.1']).toMatchObject({ name: 'meters.meter' })
-				expect(structure.map((section: { id: string }) => section.id)).toEqual(['meters', 'matrix'])
+				// No matrix configured: no XY buttons
+				expect(structure.map((section: { id: string }) => section.id)).toEqual(['meters'])
+				expect(structure[0].definitions).toEqual([
+					expect.objectContaining({
+						type: 'template',
+						presetId: 'meter',
+						templateValues: [{ name: 'meters.meter', value: '1.1' }],
+					}),
+				])
+				expect(Object.keys(presets)).toEqual(['meter'])
 			},
 			{ timeout: 3000 },
 		)
-		const [, presets] = (instance as any).setPresetDefinitions.mock.calls.at(-1)
-		expect(presets).not.toHaveProperty('rotary_1.2')
+	})
+
+	// What a placed meter reads its name and range by
+	it("gives a stream's path by identifiers through Parameter Property, from the library's tree", async () => {
+		const { instance } = await connect({ monitoredParametersString: '1.1' })
+		await vi.waitFor(() => expect((instance as any).state.parameters.has('1.1')).toBe(true), { timeout: 3000 })
+		const property = (instance as any).setFeedbackDefinitions.mock.calls.at(-1)[0].parameter_property
+		const read = async (name: string) =>
+			property.callback(
+				{ id: name, options: { path: '1.1', property: name } },
+				{ signal: new AbortController().signal },
+			)
+		expect(await read('identifierPath')).toBe('meters.meter')
 	})
 })

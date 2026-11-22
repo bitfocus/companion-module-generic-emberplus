@@ -1,6 +1,7 @@
 import { createModuleLogger, type DropdownChoice } from '@companion-module/base'
 import { Model as EmberModel, type Types as EmberTypes } from '@phillipivan/emberplus-connection'
-import { enumEntryName } from '../enums.js'
+import { enumEntries, enumEntryName } from '../enums.js'
+import { identifierPath } from '../identifiers.js'
 import { describe } from '../logging.js'
 
 const logger = createModuleLogger('Feedbacks/Parameter Property')
@@ -13,15 +14,19 @@ export const ParameterProperty = [
 	'displayed',
 	'enumeration',
 	'identifier',
+	'identifierPath',
 	'description',
 	'parameterType',
 	'access',
 	'minimum',
 	'maximum',
+	'displayedMinimum',
+	'displayedMaximum',
 	'defaultValue',
 	'factor',
 	'format',
 	'step',
+	'displayedStep',
 	'isOnline',
 	'streamIdentifier',
 	'streamDescriptor',
@@ -37,21 +42,43 @@ export const parameterPropertyChoices = [
 	{ id: 'displayed', label: 'Value as Displayed' },
 	{ id: 'enumeration', label: 'Value as Enumeration Entry' },
 	{ id: 'identifier', label: 'Identifier' },
+	{ id: 'identifierPath', label: 'Identifier Path' },
 	{ id: 'description', label: 'Description' },
 	{ id: 'parameterType', label: 'Type' },
 	{ id: 'access', label: 'Access' },
 	{ id: 'minimum', label: 'Minimum' },
 	{ id: 'maximum', label: 'Maximum' },
+	{ id: 'displayedMinimum', label: 'Minimum as Displayed' },
+	{ id: 'displayedMaximum', label: 'Maximum as Displayed' },
 	{ id: 'defaultValue', label: 'Default Value' },
 	{ id: 'factor', label: 'Factor' },
 	{ id: 'format', label: 'Format' },
 	{ id: 'step', label: 'Step' },
+	{ id: 'displayedStep', label: 'Step as Displayed' },
 	{ id: 'isOnline', label: 'Online' },
 	{ id: 'streamIdentifier', label: 'Stream Identifier' },
 	{ id: 'streamDescriptor', label: 'Stream Descriptor' },
 	{ id: 'schemaIdentifiers', label: 'Schema Identifiers' },
 	{ id: 'templateReference', label: 'Template Reference' },
 ] as const satisfies DropdownChoice<ParameterProperty>[]
+
+/** The properties that read the parameter's value, so change with it: the rest only with what the provider says of it */
+const VALUE_PROPERTIES: ReadonlySet<ParameterProperty> = new Set([
+	'value',
+	'units',
+	'formula',
+	'displayed',
+	'enumeration',
+])
+
+/** Whether a property changes with the parameter's value (any not known to this version counts as one that does) */
+export function readsValue(property: ParameterProperty | undefined): boolean {
+	return (
+		property === undefined ||
+		VALUE_PROPERTIES.has(property) ||
+		!(ParameterProperty as readonly string[]).includes(property)
+	)
+}
 
 /** What the Parameter Property feedback returns: a property of a parameter, null for one it doesn't have */
 export type ParameterPropertyValue =
@@ -134,10 +161,70 @@ function enumerationValue(parameter: EmberModel.Parameter): ParameterPropertyVal
 	return enumEntryName(parameter) ?? plainValue(parameter)
 }
 
-/** A property of a parameter, as the Parameter Property feedback returns it */
+/**
+ * A number in the parameter's displayed units: by its formula, or else its factor, as the Set Value actions take it.
+ * Undefined for one the formula can't compute.
+ */
+export function displayedNumberOf(parameter: EmberModel.Parameter, value: number): number | undefined {
+	try {
+		const shown = EmberModel.displayValue(parameter, value).value
+		return typeof shown === 'number' && Number.isFinite(shown) ? shown : undefined
+	} catch {
+		return undefined
+	}
+}
+
+/**
+ * A parameter's range as displayed, lower first. An integer's or real's limits by its formula, or else factor (a
+ * formula may turn them round); an enumeration's minimum and maximum, or else its first and last entry's value (its
+ * entries give its range where it states none). Undefined for a parameter without both, a formula that can't compute
+ * them, or a range of nothing.
+ */
+export function displayedRange(parameter: EmberModel.Parameter): [number, number] | undefined {
+	if (parameter.parameterType === EmberModel.ParameterType.Enum) {
+		const values = enumEntries(parameter).map((entry) => entry.value)
+		const low =
+			typeof parameter.minimum === 'number' ? parameter.minimum : values.length ? Math.min(...values) : undefined
+		const high =
+			typeof parameter.maximum === 'number' ? parameter.maximum : values.length ? Math.max(...values) : undefined
+		return low === undefined || high === undefined || low >= high ? undefined : [low, high]
+	}
+	if (
+		parameter.parameterType !== EmberModel.ParameterType.Integer &&
+		parameter.parameterType !== EmberModel.ParameterType.Real
+	) {
+		return undefined
+	}
+	const { minimum, maximum } = parameter
+	if (typeof minimum !== 'number' || typeof maximum !== 'number') return undefined
+	const [low, high] = [displayedNumberOf(parameter, minimum), displayedNumberOf(parameter, maximum)]
+	if (low === undefined || high === undefined || low === high) return undefined
+	return [Math.min(low, high), Math.max(low, high)]
+}
+
+/**
+ * An integer's or real's step as displayed: its own step, an integer's being 1 unless it says otherwise, by formula or
+ * factor, as the difference it makes from its minimum. Undefined for a real without one, or anything else.
+ */
+export function displayedStep(parameter: EmberModel.Parameter): number | undefined {
+	const integer = parameter.parameterType === EmberModel.ParameterType.Integer
+	if (!integer && parameter.parameterType !== EmberModel.ParameterType.Real) return undefined
+	const own = parameter.step ?? (integer ? 1 : undefined)
+	if (own === undefined) return undefined
+	const origin = typeof parameter.minimum === 'number' ? parameter.minimum : 0
+	const [from, to] = [displayedNumberOf(parameter, origin), displayedNumberOf(parameter, origin + own)]
+	if (from === undefined || to === undefined || from === to) return undefined
+	return Number(Math.abs(to - from).toPrecision(12))
+}
+
+/**
+ * A property of a parameter, as the Parameter Property feedback returns it. Its path by identifiers needs its element
+ * in the library's tree, for the nodes above it; without one, it is the parameter's own identifier.
+ */
 export function parameterProperty(
 	parameter: EmberModel.Parameter,
 	property: ParameterProperty | undefined,
+	element?: EmberModel.TreeElement<EmberModel.EmberElement>,
 ): ParameterPropertyValue {
 	switch (property) {
 		case undefined:
@@ -151,6 +238,14 @@ export function parameterProperty(
 			return displayedValue(parameter)
 		case 'enumeration':
 			return enumerationValue(parameter)
+		case 'identifierPath':
+			return element ? identifierPath(element, parameter.identifier ?? '') : (parameter.identifier ?? null)
+		case 'displayedMinimum':
+			return displayedRange(parameter)?.[0] ?? null
+		case 'displayedMaximum':
+			return displayedRange(parameter)?.[1] ?? null
+		case 'displayedStep':
+			return displayedStep(parameter) ?? null
 		case 'defaultValue':
 			return jsonOf(parameter.defaultValue)
 		case 'streamDescriptor': {

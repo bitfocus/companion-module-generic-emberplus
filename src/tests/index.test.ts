@@ -475,6 +475,21 @@ describe('handleChangedValue', () => {
 		expect(instance.setPresetDefinitions).toHaveBeenCalledTimes(1)
 	})
 
+	// A meter's name and range are rechecked on every stream value otherwise
+	it('rechecks a feedback not reading the value only when more than the value changes', async () => {
+		const instance = makeInstance() as any
+		instance.throttledFeedbackChecksVariableUpdates = vi.fn()
+		await instance.handleChangedValue('0.1', makeNode({ value: 1, minimum: 0 }))
+		instance.state.addIdToPathMap('level', '0.1')
+		instance.state.addIdToPathMap('name', '0.1', false)
+		instance.feedbacksToCheck.clear()
+		await instance.handleChangedValue('0.1', makeNode({ value: 2, minimum: 0 }))
+		expect([...instance.feedbacksToCheck]).toEqual(['level'])
+		instance.feedbacksToCheck.clear()
+		await instance.handleChangedValue('0.1', makeNode({ value: 2, minimum: -10 }))
+		expect([...instance.feedbacksToCheck].sort()).toEqual(['level', 'name'])
+	})
+
 	it('queues feedback check for registered feedback ids', async () => {
 		const instance = makeInstance()
 		;(instance as any).state.addIdToPathMap('fb1', '0.1')

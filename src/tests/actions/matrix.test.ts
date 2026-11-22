@@ -114,6 +114,30 @@ describe('matrix actions', () => {
 		expect(sentAnything(client)).toBe(false)
 	})
 
+	// The provider showed it isn't a matrix, so it was left out: the config does list it
+	it('says why a configured matrix is left out', async () => {
+		const state = makeState()
+		state.dropMatrix('1.4', 'was not found')
+		const done = run('connect', action.options, state)
+		await expect(done).rejects.toThrow(
+			'Matrix 1.4 was not found on the provider, so it is left out until the next connection or config change',
+		)
+	})
+
+	// The action's abort signal, so a cancelled action's lookup isn't sent (the shared CLAUDE.md)
+	it("looks up a matrix with the action's abort signal", async () => {
+		const client = makeClient()
+		client.getElementByPath.mockResolvedValue(
+			new EmberModel.NumberedTreeNodeImpl(4, new EmberModel.MatrixImpl('router')),
+		)
+		const queue = makeQueue()
+		await doMatrixAction(makeSelf(), client as any, 'absolute', queue, makeState(undefined, false))(action, ctx)
+		expect(queue.add.mock.calls.map((call: unknown[]) => call[1])).toEqual([
+			{ signal: ctx.signal },
+			{ signal: ctx.signal },
+		])
+	})
+
 	// Not loaded on connecting (the provider didn't answer then): looked up now, through the queue
 	it("looks up a matrix that couldn't be loaded", async () => {
 		const node = new EmberModel.NumberedTreeNodeImpl(4, new EmberModel.MatrixImpl('router'))
@@ -323,6 +347,35 @@ describe('XY selection', () => {
 			expect(state.selected).toEqual({ matrix: '', target: -1, source: -1 })
 		},
 	)
+
+	// The action's abort signal, so a cancelled Take's lookup and request aren't sent (the shared CLAUDE.md)
+	it.each([
+		['Take', async (client: any, queue: any, state: any) => doTake(makeSelf(), client, state, queue)({} as any, ctx)],
+		[
+			'Auto-Take',
+			async (client: any, queue: any, state: any) =>
+				setSelectedSource(
+					makeSelf(),
+					client,
+					{ take: true } as any,
+					state,
+					queue,
+				)({ options: { matrix: '1.4', source_1_4: 3 } } as any, ctx),
+		],
+	])("sends %s with the action's abort signal", async (_name, run) => {
+		const state = makeState(undefined, false)
+		state.selected = { matrix: '1.4', target: 7, source: 3 }
+		const client = makeClient()
+		client.getElementByPath.mockResolvedValue(
+			new EmberModel.NumberedTreeNodeImpl(4, new EmberModel.MatrixImpl('router')),
+		)
+		const queue = makeQueue()
+		await run(client, queue, state)
+		expect(queue.add.mock.calls.map((call: unknown[]) => call[1])).toEqual([
+			{ signal: ctx.signal },
+			{ signal: ctx.signal },
+		])
+	})
 
 	it.each([
 		['source', setSelectedSource({} as any, {} as any, {} as any, makeState(), makeQueue())],

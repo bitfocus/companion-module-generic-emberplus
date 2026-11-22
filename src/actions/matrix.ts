@@ -94,12 +94,13 @@ async function resolveMatrixNode(
 	state: EmberPlusState,
 	queue: PQueue,
 	info: MatrixInfo,
+	signal?: AbortSignal,
 ): Promise<MatrixNode | undefined> {
 	if (info.node) return info.node
 	const cached = state.emberElement.get(info.path)
 	if (isMatrixNode(cached)) return cached
 
-	const node = await queue.add(async () => emberClient.getElementByPath(resolvePath(info.path)))
+	const node = await queue.add(async () => emberClient.getElementByPath(resolvePath(info.path)), { signal })
 	if (isMatrixNode(node)) {
 		// Not cached when a host change has replaced the client it came from
 		if (self.isCurrentClient(emberClient)) state.emberElement.set(info.path, node)
@@ -148,7 +149,7 @@ export const doMatrixAction =
 		const target = targetOf(action.options, info)
 		const sources = sourcesOf(action.options, info)
 
-		const node = await resolveMatrixNode(self, emberClient, state, queue, info)
+		const node = await resolveMatrixNode(self, emberClient, state, queue, info, context.signal)
 		if (!node) {
 			logger.warn(`Matrix ${info.path} not found or not a matrix`)
 			return
@@ -168,22 +169,26 @@ export const doMatrixActionFunction = async function (
 	emberClient: EmberClient,
 	state: EmberPlusState,
 	queue: PQueue,
+	signal?: AbortSignal,
 ): Promise<void> {
 	const { matrix, target, source } = state.selected
 	const info = state.matrices.get(matrix)
 	if (source === -1 || target === -1 || !info) return
 
 	try {
-		const node = await resolveMatrixNode(self, emberClient, state, queue, info)
+		const node = await resolveMatrixNode(self, emberClient, state, queue, info, signal)
 		if (!node) {
 			logger.warn(`Matrix ${matrix} not found or not a matrix`)
 			return
 		}
 
-		await queue.add(async () => {
-			logger.debug(`Take on matrix ${matrix}: target ${target}, source ${source}`)
-			await sendMatrixRequest(emberClient, info, node, 'connect', target, [source])
-		})
+		await queue.add(
+			async () => {
+				logger.debug(`Take on matrix ${matrix}: target ${target}, source ${source}`)
+				await sendMatrixRequest(emberClient, info, node, 'connect', target, [source])
+			},
+			{ signal },
+		)
 	} catch (e) {
 		logger.debug('Failed to doMatrixActionFunction: ' + e)
 	} finally {
@@ -198,11 +203,11 @@ export const doMatrixActionFunction = async function (
  */
 export const doTake =
 	(self: EmberPlusInstance, emberClient: EmberClient, state: EmberPlusState, queue: PQueue) =>
-	async (_action: CompanionActionEvent): Promise<void> => {
+	async (_action: CompanionActionEvent, context?: CompanionActionCallbackContext): Promise<void> => {
 		const { matrix, target, source } = state.selected
 		if (target !== -1 && source !== -1 && state.matrices.has(matrix)) {
 			logger.debug(`TAKE: selected target ${target}, selected source ${source} on matrix ${matrix}`)
-			await doMatrixActionFunction(self, emberClient, state, queue)
+			await doMatrixActionFunction(self, emberClient, state, queue, context?.signal)
 		} else {
 			logger.debug('TAKE went wrong.')
 		}
@@ -228,13 +233,16 @@ export const doClear = (self: EmberPlusInstance, state: EmberPlusState) => (): v
  */
 export const setSelectedSource =
 	(self: EmberPlusInstance, emberClient: EmberClient, config: EmberPlusConfig, state: EmberPlusState, queue: PQueue) =>
-	async (action: CompanionActionEvent<SetSelectedSourceOptions>): Promise<void> => {
+	async (
+		action: CompanionActionEvent<SetSelectedSourceOptions>,
+		context?: CompanionActionCallbackContext,
+	): Promise<void> => {
 		const info = chosenMatrix(state, action.options.matrix)
 		const source = sourceOf(action.options, info)
 		if (info.path === state.selected.matrix) {
 			state.selected.source = source
 			logger.debug('Take is: ' + config.take)
-			if (config.take) await doMatrixActionFunction(self, emberClient, state, queue)
+			if (config.take) await doMatrixActionFunction(self, emberClient, state, queue, context?.signal)
 			self.checkFeedbacks(FeedbackId.SourceBackgroundSelected, FeedbackId.Clear, FeedbackId.Take)
 			logger.debug(`setSelectedSource: ${source} on Matrix: ${info.path}`)
 		} else {

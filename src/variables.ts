@@ -3,7 +3,17 @@ import type {
 	CompanionVariableValue,
 	CompanionVariableValues,
 } from '@companion-module/base'
-import { connectedSources, signalLabel, signalNumbers, type MatrixInfo, type SignalKind } from './matrices.js'
+import {
+	connectionValue,
+	connectLimits,
+	isNToN,
+	matrixName,
+	matrixTypeName,
+	signalLabel,
+	signalNumbers,
+	type MatrixInfo,
+	type SignalKind,
+} from './matrices.js'
 import type { EmberPlusState } from './state.js'
 import { displayedNumber, isStreamParameter, sanitiseVariableId, substituteEscapeCharacters } from './util.js'
 import { Model as EmberModel } from '@phillipivan/emberplus-connection'
@@ -92,15 +102,40 @@ export function matrixVariableId(path: string, kind: SignalKind, signal: number,
 }
 
 /**
- * The variables of the loaded matrices, for those of the kinds chosen: each target's and source's name, and each target's
- * connected sources. A matrix gets them once it is loaded from the provider, which gives its targets and sources.
+ * A matrix's own variables, whatever the Connection Variables: its name, its targets' numbers, its sources' and its
+ * type; and an N:N matrix's connection limits
+ */
+const MATRIX_VARIABLES = {
+	name: 'Name',
+	targets: 'Targets',
+	sources: 'Sources',
+	type: 'Type',
+} as const satisfies Record<string, string>
+const N_TO_N_VARIABLES = {
+	max_connects_per_target: 'Maximum Connects per Target',
+	max_total_connects: 'Maximum Total Connects',
+} as const satisfies Record<string, string>
+type MatrixVariable = keyof typeof MATRIX_VARIABLES | keyof typeof N_TO_N_VARIABLES
+
+/** A matrix's own variable's id */
+export function matrixOwnVariableId(path: string, what: MatrixVariable): string {
+	return `matrix_${sanitiseVariableId(path)}_${what}`
+}
+
+/**
+ * The variables of the loaded matrices: each one's own (its targets' and sources' numbers, and its type), whatever the
+ * Connection Variables; and for the kinds chosen, each target's and source's name, and each target's connected sources.
+ * A matrix gets them once it is loaded from the provider, which gives its targets and sources.
  */
 export function GetMatrixVariablesList(state: EmberPlusState, kinds: MatrixVariables): CompanionVariableDefinitions {
 	const variables: CompanionVariableDefinitions = {}
-	if (!kinds.targetNames && !kinds.sourceNames && !kinds.connections) return variables
 	for (const info of state.matrices.values()) {
 		const matrix = info.node?.contents
 		if (!matrix) continue
+		const own = { ...MATRIX_VARIABLES, ...(isNToN(matrix) ? N_TO_N_VARIABLES : {}) }
+		for (const [what, name] of Object.entries(own) as [MatrixVariable, string][]) {
+			variables[matrixOwnVariableId(info.path, what)] = { name: `Matrix ${info.path}: ${name}` }
+		}
 		for (const target of signalNumbers(matrix, 'target')) {
 			if (kinds.targetNames) {
 				variables[matrixVariableId(info.path, 'target', target, 'name')] = {
@@ -125,20 +160,30 @@ export function GetMatrixVariablesList(state: EmberPlusState, kinds: MatrixVaria
 }
 
 /**
- * A loaded matrix's variable values, for the kinds chosen: a signal's name (its first label, or else its identifier, as
- * reported; empty for neither), and a target's connected sources, their numbers lowest first (empty for none, and null
- * until the provider gives the connections)
+ * A loaded matrix's variable values: its own, its name (matrixName), its targets' and sources' numbers, lowest first,
+ * its type (matrixTypeName), and an N:N matrix's connection limits (connectLimits); and for the kinds chosen, a signal's
+ * name (its first label, or else its identifier, as reported; empty for neither), and a target's connected sources
+ * (connectionValue: an N:N matrix's numbers, any other's one number or null; null until the connections are loaded)
  */
 export function matrixVariableValues(info: MatrixInfo, kinds: MatrixVariables): CompanionVariableValues {
 	const values: CompanionVariableValues = {}
 	const matrix = info.node?.contents
 	if (!matrix) return values
+	values[matrixOwnVariableId(info.path, 'name')] = matrixName(info)
+	values[matrixOwnVariableId(info.path, 'targets')] = signalNumbers(matrix, 'target')
+	values[matrixOwnVariableId(info.path, 'sources')] = signalNumbers(matrix, 'source')
+	values[matrixOwnVariableId(info.path, 'type')] = matrixTypeName(matrix)
+	if (isNToN(matrix)) {
+		const limits = connectLimits(matrix)
+		values[matrixOwnVariableId(info.path, 'max_connects_per_target')] = limits.perTarget
+		values[matrixOwnVariableId(info.path, 'max_total_connects')] = limits.total
+	}
 	for (const target of signalNumbers(matrix, 'target')) {
 		if (kinds.targetNames) {
 			values[matrixVariableId(info.path, 'target', target, 'name')] = signalLabel(info, 'target', target) ?? ''
 		}
 		if (kinds.connections) {
-			values[matrixVariableId(info.path, 'target', target, 'sources')] = connectedSources(info, target) ?? null
+			values[matrixVariableId(info.path, 'target', target, 'sources')] = connectionValue(info, target)
 		}
 	}
 	if (kinds.sourceNames) {

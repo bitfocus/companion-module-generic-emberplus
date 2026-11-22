@@ -503,9 +503,9 @@ describe('matrices by path, from a 3.0 pre-release connection', () => {
 		)
 		expect(actions[0].options).toEqual({
 			matrix: { isExpression: false, value: 'router[1.4]' },
-			target_router_1_4_: { isExpression: false, value: 7 },
+			target_router__00005b1_4__00005d: { isExpression: false, value: 7 },
 			// A list, which the field shows as a multi-select (N:N) or a dropdown of one: an upgrade can't tell which
-			sources_router_1_4_: { isExpression: false, value: [1, 2] },
+			sources_router__00005b1_4__00005d: { isExpression: false, value: [1, 2] },
 		})
 		expect(actions[1].options.matrix).toEqual({ isExpression: false, value: '2.1' })
 		expect(actions[1].options.sources_2_1).toEqual({ isExpression: false, value: [3] })
@@ -592,7 +592,7 @@ describe('matrices by path, from a 3.0 pre-release connection', () => {
 		})
 	})
 
-	it('tells apart the fields of two paths that would share a key', () => {
+	it('tells apart the fields of two paths alike but for their punctuation', () => {
 		const { actions } = upgrade(
 			{
 				config: withMatrices('1.4, 1_4'),
@@ -604,7 +604,7 @@ describe('matrices by path, from a 3.0 pre-release connection', () => {
 			MATRICES,
 		)
 		expect(actions[0].options.target_1_4).toEqual({ isExpression: false, value: 1 })
-		expect(actions[1].options.target_1_005f4).toEqual({ isExpression: false, value: 2 })
+		expect(actions[1].options.target_1__00005f4).toEqual({ isExpression: false, value: 2 })
 	})
 
 	it('changes nothing when run on its own output', () => {

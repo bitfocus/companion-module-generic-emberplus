@@ -118,11 +118,15 @@ describe('parameterVariableValue', () => {
 })
 
 describe('matrix variables', () => {
-	/** Matrix 1.4, loaded: targets 1 and 2, target 1 labelled and connected to sources 3 and 1; and 1.5, not loaded */
-	function matrixState(connections = true): EmberPlusState {
+	/**
+	 * Matrix 1.4, loaded, N:N unless said otherwise: targets 1 and 2, target 1 labelled and connected to sources 3 and 1;
+	 * and 1.5, not loaded
+	 */
+	function matrixState(connections = true, nToN = true): EmberPlusState {
 		const state = new EmberPlusState()
 		state.setMatrixPaths(['1.4', '1.5'])
 		const matrix = new EmberModel.MatrixImpl('router')
+		if (nToN) matrix.matrixType = EmberModel.MatrixType.NToN
 		matrix.addressingMode = EmberModel.MatrixAddressingMode.NonLinear
 		matrix.targets = new Map([
 			[1, {}],
@@ -137,9 +141,21 @@ describe('matrix variables', () => {
 		return state
 	}
 	const all = { targetNames: true, sourceNames: true, connections: true }
+	const own = {
+		'matrix_1.4_name': { name: 'Matrix 1.4: Name' },
+		'matrix_1.4_targets': { name: 'Matrix 1.4: Targets' },
+		'matrix_1.4_sources': { name: 'Matrix 1.4: Sources' },
+		'matrix_1.4_type': { name: 'Matrix 1.4: Type' },
+	}
+	const limits = {
+		'matrix_1.4_max_connects_per_target': { name: 'Matrix 1.4: Maximum Connects per Target' },
+		'matrix_1.4_max_total_connects': { name: 'Matrix 1.4: Maximum Total Connects' },
+	}
 
-	it("defines each loaded matrix's signal names and target connections, for the kinds chosen", () => {
+	it("defines each loaded matrix's own variables, and its signal names and target connections for the kinds chosen", () => {
 		expect(GetMatrixVariablesList(matrixState(), all)).toEqual({
+			...own,
+			...limits,
 			'matrix_1.4_target_1_name': { name: 'Matrix 1.4: Target 1 Name' },
 			'matrix_1.4_target_1_sources': { name: 'Matrix 1.4: Target 1 Sources' },
 			'matrix_1.4_target_2_name': { name: 'Matrix 1.4: Target 2 Name' },
@@ -148,20 +164,44 @@ describe('matrix variables', () => {
 		})
 		expect(
 			Object.keys(GetMatrixVariablesList(matrixState(), { ...all, targetNames: false, connections: false })),
-		).toEqual(['matrix_1.4_source_3_name'])
+		).toEqual([...Object.keys(own), ...Object.keys(limits), 'matrix_1.4_source_3_name'])
+		// Its own, whatever the Connection Variables
 		expect(
 			GetMatrixVariablesList(matrixState(), { targetNames: false, sourceNames: false, connections: false }),
-		).toEqual({})
+		).toEqual({ ...own, ...limits })
 	})
 
-	it('gives names as reported, and connected sources lowest first', () => {
+	// The connection limits are for an N:N matrix only
+	it('defines no connection limits for a matrix that is not N:N', () => {
+		expect(
+			GetMatrixVariablesList(matrixState(true, false), { targetNames: false, sourceNames: false, connections: false }),
+		).toEqual(own)
+	})
+
+	it("gives an N:N matrix's own values, names as reported, and connected sources lowest first", () => {
 		expect(matrixVariableValues(matrixState().matrices.get('1.4')!, all)).toEqual({
+			// Its identifier, as it has no description and no node above it
+			'matrix_1.4_name': 'router',
+			'matrix_1.4_targets': [1, 2],
+			'matrix_1.4_sources': [3],
+			'matrix_1.4_type': 'nToN',
+			// The specification's defaults: its source count, and its target count times that
+			'matrix_1.4_max_connects_per_target': 1,
+			'matrix_1.4_max_total_connects': 2,
 			'matrix_1.4_target_1_name': ' Studio A ',
 			'matrix_1.4_target_1_sources': [1, 3],
 			'matrix_1.4_target_2_name': 'Out 2',
 			'matrix_1.4_target_2_sources': [],
 			'matrix_1.4_source_3_name': '',
 		})
+	})
+
+	// A target there holds one source at most
+	it("gives a 1:N matrix's connected source as a number, or null for none", () => {
+		const values = matrixVariableValues(matrixState(true, false).matrices.get('1.4')!, all)
+		expect(values['matrix_1.4_type']).toBe('oneToN')
+		expect(values['matrix_1.4_target_1_sources']).toBe(1)
+		expect(values['matrix_1.4_target_2_sources']).toBeNull()
 	})
 
 	it('gives no connections until they are loaded', () => {

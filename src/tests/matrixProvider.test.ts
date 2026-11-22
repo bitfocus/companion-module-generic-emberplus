@@ -165,8 +165,8 @@ describe('matrices from a provider', () => {
 				'matrix_1.1_source_1_name': 'Mic 1',
 				'matrix_1.1_source_2_name': 'In 2',
 				'matrix_1.1_source_3_name': 'Mic 3',
-				'matrix_1.1_target_1_sources': [1],
-				'matrix_1.1_target_2_sources': [],
+				'matrix_1.1_target_1_sources': 1,
+				'matrix_1.1_target_2_sources': null,
 			}),
 		)
 		expect(Object.keys(latest(instance.setVariableDefinitions))).toEqual(
@@ -177,7 +177,10 @@ describe('matrices from a provider', () => {
 		await vi.waitFor(
 			() => {
 				const options = latest(instance.setActionDefinitions).matrixConnect.options
-				expect(options.find((o: any) => o.id === 'matrix').choices).toEqual([{ id: '1.1', label: '1.1: Router' }])
+				// By its path's identifiers, the node's above it too
+				expect(options.find((o: any) => o.id === 'matrix').choices).toEqual([
+					{ id: '1.1', label: '1.1: device.router' },
+				])
 				expect(options.find((o: any) => o.id === 'target_1_1').choices).toEqual([
 					{ id: 1, label: '1: Studio A' },
 					{ id: 2, label: '2: Out 2' },
@@ -187,25 +190,40 @@ describe('matrices from a provider', () => {
 		)
 	})
 
+	// Offered while configured, then dropped once the provider shows none to be a matrix
+	it('stops offering the matrix actions and feedbacks once none of the configured matrices is one', async () => {
+		const { tree } = providerTree()
+		const { instance } = await connect(tree, { matricesString: '1.3, 9.9' })
+		expect(instance.setActionDefinitions.mock.calls[0][0].matrixConnect).toBeDefined()
+		await vi.waitFor(() => expect(instance.state.matrices.size).toBe(0), { timeout: 3000 })
+		await vi.waitFor(
+			() => {
+				expect(latest(instance.setActionDefinitions).matrixConnect).toBeUndefined()
+				expect(latest(instance.setFeedbackDefinitions).matrix_property).toBeUndefined()
+			},
+			{ timeout: 2000 },
+		)
+	})
+
 	it("follows the provider's connections, rechecking the Matrix Property feedbacks reading the matrix", async () => {
 		const { tree, matrix } = providerTree()
 		const { instance, server } = await connect(tree, { matricesString: '1.1' })
-		await vi.waitFor(() => expect(variables(instance)['matrix_1.1_target_2_sources']).toEqual([]), { timeout: 3000 })
+		await vi.waitFor(() => expect(variables(instance)['matrix_1.1_target_2_sources']).toBeNull(), { timeout: 3000 })
 
 		const property = latest(instance.setFeedbackDefinitions).matrix_property
 		const feedback = {
 			id: 'fb1',
 			options: { matrix: '1.1', signal: 'target', target_1_1: 2, targetProperty: 'connections' },
 		}
-		expect(property.callback(feedback)).toEqual([])
+		expect(property.callback(feedback)).toBeNull()
 
 		instance.setVariableValues.mockClear()
 		server.updateMatrixConnection(matrix, { target: 2, sources: [3] })
-		await vi.waitFor(() => expect(variables(instance)['matrix_1.1_target_2_sources']).toEqual([3]))
+		await vi.waitFor(() => expect(variables(instance)['matrix_1.1_target_2_sources']).toBe(3))
 		// Only the variable the report changed: a large matrix has thousands
-		expect(variables(instance)).toEqual({ 'matrix_1.1_target_2_sources': [3] })
+		expect(variables(instance)).toEqual({ 'matrix_1.1_target_2_sources': 3 })
 		await vi.waitFor(() => expect(instance.checkFeedbacksById).toHaveBeenCalledWith('fb1'))
-		expect(property.callback(feedback)).toEqual([3])
+		expect(property.callback(feedback)).toBe(3)
 		expect(property.callback({ ...feedback, options: { ...feedback.options, targetProperty: 'disposition' } })).toBe(
 			'modified',
 		)
@@ -237,28 +255,28 @@ describe('matrices from a provider', () => {
 	it("connects a source with Matrix Connect, from the chosen matrix's fields, as absolute on a 1:N matrix", async () => {
 		const { tree } = providerTree()
 		const { instance, operations } = await connect(tree, { matricesString: '1.1' })
-		await vi.waitFor(() => expect(variables(instance)['matrix_1.1_target_1_sources']).toEqual([1]), { timeout: 3000 })
+		await vi.waitFor(() => expect(variables(instance)['matrix_1.1_target_1_sources']).toBe(1), { timeout: 3000 })
 
 		const action = latest(instance.setActionDefinitions).matrixConnect
 		await action.callback(
 			{ options: { matrix: '1.1', target_1_1: 1, sources_1_1: 2 } },
 			{ signal: new AbortController().signal },
 		)
-		await vi.waitFor(() => expect(variables(instance)['matrix_1.1_target_1_sources']).toEqual([2]))
+		await vi.waitFor(() => expect(variables(instance)['matrix_1.1_target_1_sources']).toBe(2))
 		expect(operations).toEqual([EmberModel.ConnectionOperation.Absolute])
 	})
 
 	it('disconnects the connected source with Matrix Disconnect, as absolute without it on a 1:N matrix', async () => {
 		const { tree } = providerTree()
 		const { instance, operations } = await connect(tree, { matricesString: '1.1' })
-		await vi.waitFor(() => expect(variables(instance)['matrix_1.1_target_1_sources']).toEqual([1]), { timeout: 3000 })
+		await vi.waitFor(() => expect(variables(instance)['matrix_1.1_target_1_sources']).toBe(1), { timeout: 3000 })
 
 		const action = latest(instance.setActionDefinitions).matrixDisconnect
 		await action.callback(
 			{ options: { matrix: '1.1', target_1_1: 1, sources_1_1: 1 } },
 			{ signal: new AbortController().signal },
 		)
-		await vi.waitFor(() => expect(variables(instance)['matrix_1.1_target_1_sources']).toEqual([]))
+		await vi.waitFor(() => expect(variables(instance)['matrix_1.1_target_1_sources']).toBeNull())
 		expect(operations).toEqual([EmberModel.ConnectionOperation.Absolute])
 	})
 
@@ -303,8 +321,9 @@ describe('matrices from a provider', () => {
 })
 
 describe('matrix variables, as the Connection Variables choose them', () => {
+	/** The ids of the signals' variables, which the Connection Variables choose (not the matrix's own) */
 	const matrixIds = (values: Record<string, unknown> | undefined) =>
-		Object.keys(values ?? {}).filter((id) => id.startsWith('matrix_'))
+		Object.keys(values ?? {}).filter((id) => /^matrix_.+_(target|source)_\d+_/.test(id))
 
 	/** Connected, with matrix 1.1 loaded, labels and all */
 	async function loaded(variables: EmberPlusConfig['variables']) {
@@ -325,10 +344,23 @@ describe('matrix variables, as the Connection Variables choose them', () => {
 		expect(matrixIds(variables(instance))).toEqual(ids)
 	})
 
-	it('defines and sets none with no Matrix choice', async () => {
+	it("defines and sets no signal's with no Matrix choice, but the matrix's own", async () => {
 		const { instance } = await loaded(['parameterValues'])
 		expect(matrixIds(latest(instance.setVariableDefinitions))).toEqual([])
 		expect(matrixIds(variables(instance))).toEqual([])
+		expect(latest(instance.setVariableDefinitions)).toMatchObject({
+			'matrix_1.1_name': { name: 'Matrix 1.1: Name' },
+			'matrix_1.1_targets': { name: 'Matrix 1.1: Targets' },
+			'matrix_1.1_sources': { name: 'Matrix 1.1: Sources' },
+			'matrix_1.1_type': { name: 'Matrix 1.1: Type' },
+		})
+		expect(variables(instance)).toMatchObject({
+			// Its description
+			'matrix_1.1_name': 'Router',
+			'matrix_1.1_targets': [1, 2],
+			'matrix_1.1_sources': [1, 2, 3],
+			'matrix_1.1_type': 'oneToN',
+		})
 	})
 
 	it('defines and sets them once chosen in the config', async () => {
@@ -365,8 +397,8 @@ describe('matrix variables, as the Connection Variables choose them', () => {
 		await instance.configUpdated({ ...config, variables: ['matrixConnections'] })
 		await vi.waitFor(() =>
 			expect(variables(instance)).toMatchObject({
-				'matrix_1.1_target_1_sources': [1],
-				'matrix_1.1_target_2_sources': [],
+				'matrix_1.1_target_1_sources': 1,
+				'matrix_1.1_target_2_sources': null,
 			}),
 		)
 	})
@@ -380,7 +412,7 @@ describe('matrix variables, as the Connection Variables choose them', () => {
 		await Promise.all(clients.map(async (client) => client.disconnect()))
 		await vi.waitFor(() => expect(instance.emberClient.connected).toBe(false))
 		await instance.configUpdated({ ...config, variables: ['matrixConnections'] })
-		await vi.waitFor(() => expect(variables(instance)).toMatchObject({ 'matrix_1.1_target_1_sources': [1] }), {
+		await vi.waitFor(() => expect(variables(instance)).toMatchObject({ 'matrix_1.1_target_1_sources': 1 }), {
 			timeout: 3000,
 		})
 		expect(matrixIds(latest(instance.setVariableDefinitions))).toEqual([

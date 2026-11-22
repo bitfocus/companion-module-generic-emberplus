@@ -29,6 +29,13 @@ function alike(before: unknown, after: unknown): boolean {
 	return JSON.stringify(before) === JSON.stringify(after)
 }
 
+/** Whether a report changed only a parameter's value, as a stream's do, and nothing else of it */
+export function onlyValueChanged(previous: EmberModel.Parameter, current: EmberModel.Parameter): boolean {
+	const fields = new Set([...Object.keys(previous), ...Object.keys(current)] as (keyof EmberModel.Parameter)[])
+	fields.delete('value')
+	return [...fields].every((field) => alike(previous[field], current[field]))
+}
+
 /** Whether a report changed what a parameter's presets are built from, so that they are built again */
 export function presetFieldsChanged(previous: EmberModel.Parameter, current: EmberModel.Parameter): boolean {
 	return PRESET_FIELDS.some((field) => !alike(previous[field], current[field]))

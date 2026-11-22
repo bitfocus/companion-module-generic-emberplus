@@ -6,7 +6,7 @@ import {
 	resolveBooleanFeedback,
 } from '../../feedbacks/parameter.js'
 import { FeedbackId } from '../../feedback.js'
-import { parameterProperty, parameterPropertyChoices } from '../../feedbacks/property.js'
+import { parameterProperty, parameterPropertyChoices, readsValue } from '../../feedbacks/property.js'
 import { EmberPlusState } from '../../state.js'
 import { captureLogs } from '../logs.js'
 
@@ -95,6 +95,64 @@ describe('parameterProperty', () => {
 				true,
 			)
 			expect(parameterProperty(parameter({ value: null }), 'displayed')).toBeNull()
+		})
+	})
+
+	// What a placed preset reads its range and step by, as the Set Value actions take values
+	describe('range and step as displayed', () => {
+		it("gives an integer's range and step by its factor", () => {
+			const gain = parameter({ value: 0, minimum: -128, maximum: 127, factor: 10 })
+			expect(parameterProperty(gain, 'displayedMinimum')).toBe(-12.8)
+			expect(parameterProperty(gain, 'displayedMaximum')).toBe(12.7)
+			// An integer's step is 1 unless it says otherwise
+			expect(parameterProperty(gain, 'displayedStep')).toBe(0.1)
+			expect(parameterProperty({ ...gain, step: 5 }, 'displayedStep')).toBe(0.5)
+		})
+
+		it('gives a range by its formula, lower first', () => {
+			const inverted = parameter({
+				parameterType: ParameterType.Real,
+				minimum: 0,
+				maximum: 100,
+				formula: '0 - $\n0 - $',
+			})
+			expect(parameterProperty(inverted, 'displayedMinimum')).toBe(-100)
+			expect(parameterProperty(inverted, 'displayedMaximum')).toBe(0)
+		})
+
+		it('gives a real without a step of its own no step', () => {
+			const trim = parameter({ parameterType: ParameterType.Real, minimum: 0, maximum: 1 })
+			expect(parameterProperty(trim, 'displayedStep')).toBeNull()
+			expect(parameterProperty({ ...trim, step: 0.25 }, 'displayedStep')).toBe(0.25)
+		})
+
+		it("gives an enumeration's entries as its range where it states none", () => {
+			const mode = parameter({ parameterType: ParameterType.Enum, enumeration: 'Off\nOn\nAuto' })
+			expect(parameterProperty(mode, 'displayedMinimum')).toBe(0)
+			expect(parameterProperty(mode, 'displayedMaximum')).toBe(2)
+			expect(parameterProperty({ ...mode, maximum: 1 }, 'displayedMaximum')).toBe(1)
+		})
+
+		it('gives nothing without both limits, or for a type without a range', () => {
+			expect(parameterProperty(parameter({ minimum: 0 }), 'displayedMaximum')).toBeNull()
+			expect(
+				parameterProperty(parameter({ parameterType: ParameterType.String, value: 'x' }), 'displayedMinimum'),
+			).toBeNull()
+		})
+	})
+
+	describe('identifier path', () => {
+		it('names the parameter by the identifiers of it and the nodes above it', () => {
+			const gain = new EmberModel.NumberedTreeNodeImpl(2, parameter({ identifier: 'Gain', value: 0 }))
+			const inputs = new EmberModel.NumberedTreeNodeImpl(
+				1,
+				new EmberModel.EmberNodeImpl('Inputs'),
+				EmberModel.childrenOf([gain]),
+			)
+			gain.parent = inputs
+			expect(parameterProperty(gain.contents, 'identifierPath', gain)).toBe('Inputs.Gain')
+			// Without its element, only its own identifier is known
+			expect(parameterProperty(gain.contents, 'identifierPath')).toBe('Gain')
 		})
 	})
 
@@ -211,6 +269,18 @@ describe('parameterProperty', () => {
 		})
 	})
 
+	it('tells the properties that change with the value from those that change only with the parameter', () => {
+		for (const property of ['value', 'units', 'formula', 'displayed', 'enumeration'] as const) {
+			expect(readsValue(property), property).toBe(true)
+		}
+		for (const property of ['identifierPath', 'displayedMinimum', 'displayedStep', 'access'] as const) {
+			expect(readsValue(property), property).toBe(false)
+		}
+		// A saved feedback without one reads Value; one this version doesn't know is taken to read the value
+		expect(readsValue(undefined)).toBe(true)
+		expect(readsValue('somethingNew' as never)).toBe(true)
+	})
+
 	it('has a choice for every property, and returns each without throwing', () => {
 		for (const { id } of parameterPropertyChoices) {
 			expect(() => parameterProperty(parameter({ value: 1 }), id)).not.toThrow()
@@ -243,7 +313,8 @@ describe('parameterPropertyFeedbackCallback', () => {
 	it('registers the path, and follows it for rechecks', async () => {
 		const { state, self } = setup()
 		await parameterPropertyFeedbackCallback(self, state)({ id: 'fb1', options: { path: '1.2' } } as any, ctx)
-		expect(self.useParameterForFeedback).toHaveBeenCalledWith('fb1', '1.2', ctx.signal)
+		// Value, the default, reads the value
+		expect(self.useParameterForFeedback).toHaveBeenCalledWith('fb1', '1.2', ctx.signal, true)
 		expect(state.getFeedbacksByPath('1.2').has('fb1')).toBe(true)
 	})
 

@@ -13,7 +13,7 @@ import {
 import { ActionId } from './actions.js'
 import type { EmberPlusConfig } from './config.js'
 import { FeedbackId } from './feedback.js'
-import { matrixOptionKeys, matrixPaths } from './matrices.js'
+import { matrixOptionKey, matrixPaths } from './matrices.js'
 import { comparitorOptions, resolvePath } from './util.js'
 
 // Companion hands every script its options wrapped as { isExpression, value }, the scripts written before API 2
@@ -594,7 +594,8 @@ function v300(context: Context, props: Props): Result {
 }
 
 // 3.0, matrices: each is chosen from a dropdown of the configured matrices, by path, and its targets and sources from
-// dropdowns of their own (`target_<key>`, and `source_<key>` or, N:N, `sources_<key>`; see matrixOptionKeys). A
+// dropdowns of their own (`target_<key>`, and `source_<key>` or, for a connection action, `sources_<key>`; see
+// matrixOptionKey). A
 // separate script from v300, so that a connection already upgraded by a 3.0 pre-release gets it too.
 
 /** The actions that held a matrix's path as text, with variables replaced */
@@ -652,16 +653,12 @@ function moveSignal(options: CompanionMigrationOptionValues, from: string, to: s
  * The target and sources move onto that matrix's fields. A path built from variables can't be a configured matrix: it is
  * kept as the matrix's value, which names no configured matrix, so the action fails until one is chosen.
  */
-function matrixConnectionOf(
-	action: CompanionMigrationAction,
-	path: string | undefined,
-	keys: Map<string, string>,
-): void {
+function matrixConnectionOf(action: CompanionMigrationAction, path: string | undefined): void {
 	const { options } = action
 	options.matrix = plain(path ?? textOf(options.path).trim())
 	delete options.path
-	const key = path === undefined ? undefined : keys.get(path)
-	if (key === undefined) return
+	if (path === undefined) return
+	const key = matrixOptionKey(path)
 	moveSignal(options, 'target', `target_${key}`)
 	options[`sources_${key}`] = matrixSourcesOf(options.sources)
 	delete options.sources
@@ -676,7 +673,6 @@ function matrixSelectionOf(
 	options: CompanionMigrationOptionValues,
 	kind: 'source' | 'target',
 	configured: readonly string[],
-	keys: Map<string, string>,
 ): boolean {
 	// Already upgraded: the matrix by path, and the signal moved
 	if (!(kind in options) && typeof options.matrix?.value === 'string') return false
@@ -685,8 +681,7 @@ function matrixSelectionOf(
 	const index = options.matrix?.isExpression ? NaN : Number(text)
 	const path = Number.isInteger(index) && index >= 0 ? configured[index] : undefined
 	options.matrix = plain(path ?? text)
-	const key = path === undefined ? undefined : keys.get(path)
-	if (key !== undefined) moveSignal(options, kind, `${kind}_${key}`)
+	if (path !== undefined) moveSignal(options, kind, `${kind}_${matrixOptionKey(path)}`)
 	return true
 }
 
@@ -706,23 +701,18 @@ function matricesByPath(context: Context, props: Props): Result {
 		return path
 	}
 
-	// The paths first: the keys of the matrices' fields are chosen across them all
-	const connections = props.actions
-		.filter((action) => matrixConnectionActions.includes(action.actionId) && 'path' in action.options)
-		.map((action) => ({ action, path: matrixOfText(textOf(action.options.path)) }))
-	const keys = matrixOptionKeys(paths)
-
-	for (const { action, path } of connections) {
-		matrixConnectionOf(action, path, keys)
+	for (const action of props.actions) {
+		if (!matrixConnectionActions.includes(action.actionId) || !('path' in action.options)) continue
+		matrixConnectionOf(action, matrixOfText(textOf(action.options.path)))
 		result.updatedActions.push(action)
 	}
 	for (const action of props.actions) {
 		const kind = matrixSelections.actions[action.actionId]
-		if (kind && matrixSelectionOf(action.options, kind, configured, keys)) result.updatedActions.push(action)
+		if (kind && matrixSelectionOf(action.options, kind, configured)) result.updatedActions.push(action)
 	}
 	for (const feedback of props.feedbacks) {
 		const kind = matrixSelections.feedbacks[feedback.feedbackId]
-		if (kind && matrixSelectionOf(feedback.options, kind, configured, keys)) result.updatedFeedbacks.push(feedback)
+		if (kind && matrixSelectionOf(feedback.options, kind, configured)) result.updatedFeedbacks.push(feedback)
 	}
 
 	// Only while the config is upgraded with them: buttons imported into a connection already upgraded can't add to it

@@ -4,7 +4,7 @@ import { isSignalNumber } from './ranges.js'
 import type { EmberPlusState } from './state.js'
 
 /**
- * Each configured matrix's target and source fields, by its key (matrixOptionKeys): its target; the source of an action
+ * Each configured matrix's target and source fields, by its key (matrixOptionKey): its target; the source of an action
  * or feedback that takes one (`source_<key>`); and the sources of a connection action (`sources_<key>`), a multi-select
  * for an N:N matrix and a dropdown of one for any other, under the one id, so a choice survives the matrix loading. Only
  * the chosen matrix's fields show. The values are as Companion gives them: a field in expression mode may hand over
@@ -128,12 +128,20 @@ export function sourceFields(
 	})
 }
 
-/** The configured matrix an action or feedback names; throws for one not in the module config */
+/**
+ * The configured matrix an action or feedback names; throws for one not in the module config, or one the provider
+ * showed not to be a matrix, saying which
+ */
 export function chosenMatrix(state: EmberPlusState, matrix: unknown): MatrixInfo {
 	const info = typeof matrix === 'string' ? state.matrices.get(matrix) : undefined
 	if (!info) {
 		const named = typeof matrix === 'string' ? matrix : (JSON.stringify(matrix) ?? '')
-		throw new Error(`Matrix ${named} is not one of the matrices in the module config`)
+		const dropped = typeof matrix === 'string' ? state.droppedMatrices.get(matrix) : undefined
+		throw new Error(
+			dropped
+				? `Matrix ${named} ${dropped} on the provider, so it is left out until the next connection or config change`
+				: `Matrix ${named} is not one of the matrices in the module config`,
+		)
 	}
 	return info
 }

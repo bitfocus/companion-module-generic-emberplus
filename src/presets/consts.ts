@@ -7,6 +7,7 @@ import {
 	type CompanionPresetFeedbackStyleOverride,
 	type CompanionPresetGroup,
 	type CompanionPresetLocalVariable,
+	type CompanionVariableValues,
 	type HorizontalAlignment,
 	type SomeButtonGraphicsElement,
 	type SomePresetActionEntry,
@@ -17,11 +18,18 @@ import type { CompositeElementSchema } from '../composites.js'
 import { FeedbackId } from '../feedback.js'
 import type { ParameterProperty } from '../feedbacks/property.js'
 import type { ModuleTypes } from '../index.js'
+import { identifiersOf } from '../identifiers.js'
 import type { EmberPlusState } from '../state.js'
 
 /*
  * What the preset sections share, as in companion-module-generic-oca's and companion-module-stagetec-nexus-udp's
  * presets/consts.ts, so their buttons look alike.
+ *
+ * Each kind of button is one template preset, whose `path` local variable Companion fills in for each parameter from
+ * the template group (templateGroups), as companion-module-stagetec-nexus-udp's presets fill in an input. A button that
+ * stays linked to its preset then still lets its template variables be changed: its path, and the group's common
+ * values, the button's other simple variables (font sizes, steps). Whatever else it shows of the parameter (its path by
+ * identifiers, its range, its step) it reads through Parameter Property, from the path.
  */
 
 export const logger = createModuleLogger('Presets')
@@ -41,9 +49,17 @@ const BACKGROUND_ID = 'background'
 export const VALUE_ID = 'value'
 export const NAME_ID = 'name'
 
-/** The local variables the buttons share: the parameter's value, and its value as text, from Parameter Property */
+/**
+ * The local variables the buttons share: the parameter's path, the template variable; its path by identifiers, its
+ * value, and its value as text, from Parameter Property
+ */
+export const PATH_VARIABLE = 'path'
+export const NAME_VARIABLE = 'name'
 export const VALUE_VARIABLE = 'value'
 export const TEXT_VARIABLE = 'text'
+
+/** The parameter's path, as the actions' and feedbacks' path takes it: an expression reading the template variable */
+export const PATH = expression(local(PATH_VARIABLE))
 
 /** The font sizes of the value, and of the parameter's path, each a local variable to fine tune */
 export const VALUE_FONT_SIZE_VARIABLE = 'font_size_value'
@@ -74,19 +90,24 @@ export function known(value: string): string {
 	return `${value} != null && isNumber(${value})`
 }
 
-/** A local variable holding a property of the parameter at `path`, from the Parameter Property feedback */
-export function propertyVariable(variableName: string, path: string, property: ParameterProperty): LocalVariable {
+/** A local variable holding a property of the button's parameter, from the Parameter Property feedback */
+export function propertyVariable(variableName: string, property: ParameterProperty): LocalVariable {
 	return {
 		variableType: 'feedback',
 		variableName,
 		feedbackId: FeedbackId.ParameterProperty,
-		options: { path, property },
+		options: { path: PATH, property },
 	}
 }
 
-/** A local variable the button starts with, there to change on the button */
-export function simpleVariable(variableName: string, startupValue: number | boolean): LocalVariable {
+/** A local variable the button starts with, there to change on the button: one of the template group's common values */
+export function simpleVariable(variableName: string, startupValue: number | boolean | string): LocalVariable {
 	return { variableType: 'simple', variableName, startupValue }
+}
+
+/** The button's parameter: its path, which the template group fills in, and its path by identifiers, to show */
+export function parameterVariables(): LocalVariable[] {
+	return [simpleVariable(PATH_VARIABLE, ''), propertyVariable(NAME_VARIABLE, 'identifierPath')]
 }
 
 /** The font sizes of the value and of the parameter's path */
@@ -116,8 +137,15 @@ export function valueText(text: string, valign: VerticalAlignment = 'center'): E
 }
 
 /** The parameter's path by its identifiers, its size the name font size variable */
-export function nameText(name: string, valign: VerticalAlignment = 'bottom'): Element {
-	return alignedText(NAME_ID, 'Name', name, expression(local(NAME_FONT_SIZE_VARIABLE)), 'center', valign)
+export function nameText(valign: VerticalAlignment = 'bottom'): Element {
+	return alignedText(
+		NAME_ID,
+		'Name',
+		expression(`${local(NAME_VARIABLE)} ?? ''`),
+		expression(local(NAME_FONT_SIZE_VARIABLE)),
+		'center',
+		valign,
+	)
 }
 
 /**
@@ -151,35 +179,6 @@ export interface PresetParameter {
 }
 
 /**
- * An element's path by identifiers, from the library's tree: each element's identifier, or its number for one without,
- * and whether the element and every node above it are online. A node going offline takes what is below it with it:
- * the specification has a provider report a sub-tree's removal by its parent node's isOnline.
- */
-function identifiersOf(
-	node: EmberModel.TreeElement<EmberModel.EmberElement> | undefined,
-	path: string,
-): { names: string[]; online: boolean } | undefined {
-	if (!node) return undefined
-	const names: string[] = []
-	let online = true
-	let element: EmberModel.TreeElement<EmberModel.EmberElement> | undefined = node
-	while (element) {
-		const { contents } = element
-		if ('isOnline' in contents && contents.isOnline === false) online = false
-		const identifier = 'identifier' in contents ? contents.identifier : undefined
-		if (EmberModel.isQualified(element)) {
-			// Reported by its path, which the tree had no place for: its path's numbers are all that is known above it
-			names.unshift(identifier ?? element.path)
-			if (identifier !== undefined) names.unshift(...element.path.split('.').slice(0, -1))
-			break
-		}
-		names.unshift(identifier ?? (EmberModel.isNumbered(element) ? String(element.number) : path))
-		element = element.parent
-	}
-	return names.length ? { names, online } : { names: [path], online }
-}
-
-/**
  * The registered parameters, by their path's identifiers, sorted by them, each element once: a parameter registered
  * by two spellings of its path (1.2.3 and Device.Inputs.Gain) gets one preset. Left out: a parameter offline, or
  * below a node offline. Named by the tree element the state keeps for its presets (parameterElements), which a stream's
@@ -208,53 +207,82 @@ export function isReadable(parameter: EmberModel.Parameter): boolean {
 	return access === EmberModel.ParameterAccess.Read || access === EmberModel.ParameterAccess.ReadWrite
 }
 
-/** A preset's id: its kind and the parameter's path, as stable as the path */
-export function presetId(kind: string, path: string): string {
-	return `${kind}_${path.replaceAll(/[^A-Za-z0-9_.-]/g, '_')}`
+/** A group's id: the preset's and its parent node's path, as stable as the path */
+function groupId(presetId: string, parent: string): string {
+	return parent ? `${presetId}_${parent.replaceAll(/[^A-Za-z0-9_.-]/g, '_')}` : presetId
 }
 
 /**
- * The presets built for the parameters given, each added to `presets`, in one group per parent node, named by its
- * path's identifiers. A parameter `build` gives nothing for is left out.
+ * `id`, or, where `taken` has it (two paths that differ only in characters an id leaves out, `In 1` and `In_1`), it
+ * with the first number from 2 that makes it unique; added to `taken`
  */
-export function parameterGroups(
-	kind: string,
+function uniqueId(id: string, taken: Set<string>): string {
+	let unique = id
+	for (let n = 2; taken.has(unique); n++) unique = `${id}_${n}`
+	taken.add(unique)
+	return unique
+}
+
+/** A kind of button: its template preset, by id, and the parameters it is for */
+export interface PresetTemplate {
+	readonly id: string
+	readonly preset: Preset
+	readonly accepts: (entry: PresetParameter) => boolean
+}
+
+/**
+ * The template's simple variables but its path, as the group's common values: what a button linked to its preset may
+ * still change, with its path
+ */
+function commonValuesOf(preset: Preset): CompanionVariableValues {
+	return Object.fromEntries(
+		(preset.localVariables ?? []).flatMap((variable) =>
+			variable.variableType === 'simple' && variable.variableName !== PATH_VARIABLE
+				? [[variable.variableName, variable.startupValue]]
+				: [],
+		),
+	)
+}
+
+/**
+ * Template groups for the parameters given: for each parent node, by its path's identifiers, one per template with
+ * parameters, each parameter a button named by its path's identifiers, its path the template variable. The parent's
+ * name heads the first; Companion draws each group as a block of its own. Each template used is added to `presets`.
+ */
+export function templateGroups(
+	templates: readonly PresetTemplate[],
 	parameters: readonly PresetParameter[],
-	build: (entry: PresetParameter) => Preset | undefined,
 	presets: Presets,
 ): PresetGroup[] {
-	const groups = new Map<string, string[]>()
+	const byParent = new Map<string, Map<PresetTemplate, PresetParameter[]>>()
 	for (const entry of parameters) {
-		const preset = build(entry)
-		if (!preset) continue
-		const id = presetId(kind, entry.path)
-		presets[id] = preset
-		const ids = groups.get(entry.group) ?? []
-		ids.push(id)
-		groups.set(entry.group, ids)
+		const template = templates.find((candidate) => candidate.accepts(entry))
+		if (!template) continue
+		const perTemplate = byParent.get(entry.group) ?? new Map<PresetTemplate, PresetParameter[]>()
+		const entries = perTemplate.get(template) ?? []
+		entries.push(entry)
+		perTemplate.set(template, entries)
+		byParent.set(entry.group, perTemplate)
 	}
-	return [...groups].map(([group, ids]) => ({
-		id: presetId(kind, group || 'top'),
-		type: 'simple',
-		name: group || 'Top level',
-		presets: ids,
-	}))
-}
-
-/**
- * A number in the parameter's displayed units: by its formula, or else its factor, as the Set Value actions take it.
- * Undefined for one the formula can't compute.
- */
-export function displayed(parameter: EmberModel.Parameter, value: number): number | undefined {
-	try {
-		const shown = EmberModel.displayValue(parameter, value).value
-		return typeof shown === 'number' && Number.isFinite(shown) ? shown : undefined
-	} catch {
-		return undefined
+	const groupIds = new Set<string>()
+	const groups: PresetGroup[] = []
+	for (const [parent, perTemplate] of byParent) {
+		let first = true
+		for (const template of templates) {
+			const entries = perTemplate.get(template)
+			if (!entries) continue
+			presets[template.id] = template.preset
+			groups.push({
+				id: uniqueId(groupId(template.id, parent), groupIds),
+				type: 'template',
+				name: first ? parent || 'Top level' : '',
+				presetId: template.id,
+				templateVariableName: PATH_VARIABLE,
+				templateValues: entries.map(({ name, path }) => ({ name, value: path })),
+				commonVariableValues: commonValuesOf(template.preset),
+			})
+			first = false
+		}
 	}
-}
-
-/** A number without float noise, to six significant digits, as a step or a limit a user reads on the button */
-export function tidy(value: number): number {
-	return Number(value.toPrecision(6))
+	return groups
 }

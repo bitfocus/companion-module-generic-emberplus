@@ -315,7 +315,7 @@ describe('matrix fields', () => {
 		for (const values of extra) {
 			for (const [matrix, key] of [
 				['1.4', '1_4'],
-				["Video's Router", 'Video_s_Router'],
+				["Video's Router", 'Video__000027s__000020Router'],
 			]) {
 				const shown = definition.options
 					.filter((option) => signalField(option) && isVisible(definition, option, { matrix, ...values }))
@@ -337,7 +337,7 @@ describe('matrix fields', () => {
 			{ id: 1, label: '1: Mic' },
 			{ id: 2, label: '2' },
 		])
-		expect(field(definition, 'target_Video_s_Router')?.choices).toEqual([{ id: 3, label: '3: Out 3' }])
+		expect(field(definition, 'target_Video__000027s__000020Router')?.choices).toEqual([{ id: 3, label: '3: Out 3' }])
 	})
 
 	// One id for both, so a source chosen before the matrix loads isn't lost when it turns out to be N:N
@@ -345,9 +345,12 @@ describe('matrix fields', () => {
 		'%s takes several sources of an N:N matrix, and one of any other, in the one field',
 		(id) => {
 			const definition = all.actions[id]
-			expect(field(definition, 'sources_Video_s_Router')).toMatchObject({ type: 'multidropdown', default: [] })
+			expect(field(definition, 'sources_Video__000027s__000020Router')).toMatchObject({
+				type: 'multidropdown',
+				default: [],
+			})
 			expect(field(definition, 'sources_1_4')).toMatchObject({ type: 'dropdown' })
-			expect(field(definition, 'source_Video_s_Router')).toBeUndefined()
+			expect(field(definition, 'source_Video__000027s__000020Router')).toBeUndefined()
 			expect(field(definition, 'source_1_4')).toBeUndefined()
 		},
 	)
@@ -365,8 +368,8 @@ describe('matrix fields', () => {
 		['feedbacks', 'sourceBackgroundSelected'],
 		['feedbacks', 'matrix_property'],
 	] as const)('%s %s takes one source, of an N:N matrix too', (kind, id) => {
-		expect(field(all[kind][id], 'source_Video_s_Router')).toMatchObject({ type: 'dropdown' })
-		expect(field(all[kind][id], 'sources_Video_s_Router')).toBeUndefined()
+		expect(field(all[kind][id], 'source_Video__000027s__000020Router')).toMatchObject({ type: 'dropdown' })
+		expect(field(all[kind][id], 'sources_Video__000027s__000020Router')).toBeUndefined()
 	})
 
 	it("shows Matrix Property's properties of a target or a source, as chosen", () => {
@@ -399,6 +402,36 @@ describe('matrix fields', () => {
 		state.matrices.get('1.4')!.node = new EmberModel.NumberedTreeNodeImpl(4, matrix)
 		const after = field(definitions(state).actions[ActionId.MatrixSetConnection], 'sources_1_4')
 		expect([before?.type, after?.type]).toEqual(['dropdown', 'multidropdown'])
+	})
+})
+
+describe('matrix actions and feedbacks', () => {
+	const matrixActions = [
+		ActionId.MatrixConnect,
+		ActionId.MatrixDisconnect,
+		ActionId.MatrixSetConnection,
+		ActionId.Take,
+		ActionId.Clear,
+		ActionId.SetSelectedSource,
+		ActionId.SetSelectedTarget,
+	]
+	const matrixFeedbacks = ['take', 'clear', 'sourceBackgroundSelected', 'targetBackgroundSelected', 'matrix_property']
+
+	it('are not offered without a matrix: none configured, or none the provider has', () => {
+		const { actions, feedbacks } = definitions(new EmberPlusState())
+		for (const id of matrixActions) expect(actions[id], id).toBeUndefined()
+		for (const id of matrixFeedbacks) expect(feedbacks[id], id).toBeUndefined()
+		expect(actions[ActionId.SetValueInt]).toBeDefined()
+		expect(feedbacks['parameter_property']).toBeDefined()
+	})
+
+	// Configured, and not yet shown not to be a matrix
+	it('are offered for a configured matrix not yet loaded', () => {
+		const state = new EmberPlusState()
+		state.setMatrixPaths(['1.4'])
+		const { actions, feedbacks } = definitions(state)
+		for (const id of matrixActions) expect(actions[id], id).toBeDefined()
+		for (const id of matrixFeedbacks) expect(feedbacks[id], id).toBeDefined()
 	})
 })
 

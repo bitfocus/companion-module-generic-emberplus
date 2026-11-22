@@ -1,4 +1,9 @@
-import { combineRgb, type CompanionPresetDefinitions, type CompanionPresetSection } from '@companion-module/base'
+import {
+	combineRgb,
+	type CompanionPresetDefinitions,
+	type CompanionPresetGroup,
+	type CompanionPresetSection,
+} from '@companion-module/base'
 import { ActionId } from './actions.js'
 import { FeedbackId } from './feedback.js'
 import type { ModuleTypes } from './index.js'
@@ -29,9 +34,14 @@ export function GetPresetsList(state: EmberPlusState): {
 		{ id: 'rotaries', name: 'Rotaries', definitions: getRotaryGroups(parameters, presets) },
 		{ id: 'meters', name: 'Meters', definitions: getMeterGroups(parameters, presets) },
 	]
-	logger.debug(`${Object.keys(presets).length} parameter presets, from ${parameters.length} parameters`)
+	// The buttons the template groups make, a parameter each
+	const buttons = parameterSections
+		.flatMap((section) => section.definitions as CompanionPresetGroup<ModuleTypes>[])
+		.reduce((count, group) => count + (group.type === 'template' ? group.templateValues.length : 0), 0)
+	logger.debug(`${buttons} parameter presets, from ${parameters.length} parameters`)
 
-	Object.assign(presets, {
+	// The XY buttons, while there is a matrix: their actions and feedbacks are only offered then
+	const matrixPresets: CompanionPresetDefinitions<ModuleTypes> = {
 		[PresetId.Take]: {
 			type: 'simple',
 			name: 'Take',
@@ -94,15 +104,15 @@ export function GetPresetsList(state: EmberPlusState): {
 				},
 			],
 		},
-	} satisfies CompanionPresetDefinitions<ModuleTypes>)
+	}
+	if (state.matrices.size > 0) Object.assign(presets, matrixPresets)
 
 	const structure: CompanionPresetSection<ModuleTypes>[] = [
 		...parameterSections.filter((section) => section.definitions.length > 0),
-		{
-			id: 'matrix',
-			name: 'Actions (XY only)',
-			definitions: [PresetId.Take, PresetId.Clear],
-		},
+		// Their actions and feedbacks are only offered while there is a matrix
+		...(state.matrices.size > 0
+			? [{ id: 'matrix', name: 'Actions (XY only)', definitions: [PresetId.Take, PresetId.Clear] }]
+			: []),
 	]
 
 	return { structure, presets }

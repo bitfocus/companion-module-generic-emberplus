@@ -88,6 +88,15 @@ export type ParameterFeedbackOptions = {
 	property?: ParameterProperty
 }
 
+/** The feedbacks that work on a matrix, offered only while there is one */
+export const MatrixFeedbackIds = [
+	FeedbackId.Take,
+	FeedbackId.Clear,
+	FeedbackId.SourceBackgroundSelected,
+	FeedbackId.TargetBackgroundSelected,
+	FeedbackId.MatrixProperty,
+] as const
+
 /** The matrix, by its configured path, and its source */
 export type SourceSelectedOptions = MatrixOptions
 
@@ -204,7 +213,7 @@ const propertyDropdown = {
 	choices: parameterPropertyChoices,
 	default: parameterPropertyChoices[0].id,
 	tooltip:
-		'Value: integers divided by their factor. Value with Units: by formula or factor, formatted, then the unit. Value by Formula and Value as Enumeration Entry: the plain value for a parameter without a formula, or without an enumeration. The rest as the provider reports them, or nothing for one it leaves out',
+		"Value: integers divided by their factor. Value with Units: by formula or factor, formatted, then the unit. Value by Formula and Value as Enumeration Entry: the plain value for a parameter without a formula, or without an enumeration. Value as Displayed: a number, by formula or else factor, as Set Value Integer and Real take it; so too Minimum, Maximum and Step as Displayed (an enumeration's range its entries' where it states none, an integer's step 1 where it states none). Identifier Path: the identifiers of it and the nodes above it. The rest as the provider reports them, or nothing for one it leaves out",
 } as const satisfies CompanionInputFieldDropdown<'property', ParameterProperty>
 
 // Named in the visibility of the signal and property fields, so it must not be an expression itself
@@ -228,7 +237,7 @@ const targetPropertyDropdown = {
 	default: targetPropertyChoices[0].id,
 	isVisibleExpression: forTargets,
 	tooltip:
-		"Name: the target's first label, or else its identifier. Connected Sources: their numbers. Connection Disposition: tally, modified, pending or locked, as the provider last reported the target's connection",
+		"Name: the target's first label, or else its identifier. Connected Sources: their numbers for an N:N matrix; for any other, the source's number, or nothing for none. Connection Disposition: tally, modified, pending or locked, as the provider last reported the target's connection",
 } as const satisfies CompanionInputFieldDropdown<'targetProperty', TargetProperty>
 
 const sourcePropertyDropdown = {
@@ -268,7 +277,7 @@ export function GetFeedbacksList(
 	state: EmberPlusState,
 ): CompanionFeedbackDefinitions<FeedbackSchema> {
 	// No subscribe hook in API 2: each parameter callback registers its path when it runs
-	return {
+	const feedbacks: CompanionFeedbackDefinitions<FeedbackSchema> = {
 		[FeedbackId.Parameter]: {
 			name: 'Parameter Compare Number (Deprecated)',
 			description: `Checks the current value of a parameter. ${deprecated}`,
@@ -380,4 +389,7 @@ export function GetFeedbacksList(
 			unsubscribe: unsubscribeMatrixFeedback(state),
 		},
 	}
+	// Without a matrix to work on (none configured, or none the provider has), the matrix feedbacks aren't offered
+	if (state.matrices.size === 0) for (const id of MatrixFeedbackIds) feedbacks[id] = undefined
+	return feedbacks
 }

@@ -1,6 +1,6 @@
 import { Model as EmberModel } from '@phillipivan/emberplus-connection'
 import { enumEntryName, enumEntryValue } from './enums.js'
-import { emptyLabels, matrixOptionKeys, type MatrixInfo } from './matrices.js'
+import { emptyLabels, matrixOptionKey, type MatrixInfo } from './matrices.js'
 
 const { ElementType } = EmberModel
 type TreeElement<T extends EmberModel.EmberElement> = EmberModel.TreeElement<T>
@@ -37,10 +37,14 @@ export class EmberPlusState {
 	public monitoredParameters: Set<string> = new Set()
 	/** The matrices in the module config, by path, in the order given, less any the provider showed not to be one */
 	public matrices: Map<string, MatrixInfo> = new Map()
+	/** The configured matrices left out as the provider showed them not to be one, and why, until they are looked for again */
+	public droppedMatrices: Map<string, string> = new Map()
 	private feedbacks: Feedbacks = {
 		byId: new Map(),
 		byPath: new Map(),
 	}
+	/** The parameter feedbacks that don't read their parameter's value, which a new value alone doesn't recheck */
+	private notReadingValue: Set<string> = new Set()
 	/** The Matrix Property feedbacks, by the matrix they read, so that a change to a matrix rechecks only its own */
 	private matrixFeedbacks: Feedbacks = {
 		byId: new Map(),
@@ -56,14 +60,20 @@ export class EmberPlusState {
 	 * again, so its fields keep their choices meanwhile.
 	 */
 	public setMatrixPaths(paths: readonly string[]): void {
-		const keys = matrixOptionKeys(paths)
 		const previous = this.matrices
+		this.droppedMatrices.clear()
 		this.matrices = new Map(
 			paths.map((path) => [
 				path,
-				{ ...(previous.get(path) ?? { labels: emptyLabels() }), path, key: keys.get(path) ?? path },
+				{ ...(previous.get(path) ?? { labels: emptyLabels() }), path, key: matrixOptionKey(path) },
 			]),
 		)
+	}
+
+	/** Leave out a configured matrix the provider showed not to be one, saying why, until it is looked for again */
+	public dropMatrix(path: string, reason: string): void {
+		this.matrices.delete(path)
+		this.droppedMatrices.set(path, reason)
 	}
 
 	/** A feedback reads a matrix: recheck it when the matrix changes. A feedback edited onto another leaves the one it read */
@@ -95,8 +105,10 @@ export class EmberPlusState {
 	 * @param id Feedback ID
 	 * @param path Ember Path
 	 */
-	public addIdToPathMap(id: string, path: string): void {
+	public addIdToPathMap(id: string, path: string, readsValue = true): void {
 		this.updatePathOnIdMap(id, path)
+		if (readsValue) this.notReadingValue.delete(id)
+		else this.notReadingValue.add(id)
 
 		if (path === '') return
 
@@ -147,6 +159,11 @@ export class EmberPlusState {
 		return [...this.feedbacks.byPath.keys()]
 	}
 
+	/** Whether a feedback reads its parameter's value, so that a new value rechecks it (see addIdToPathMap) */
+	public feedbackReadsValue(id: string): boolean {
+		return !this.notReadingValue.has(id)
+	}
+
 	/**
 	 * Get IDs of Feedbacks using Ember path
 	 * @param path Ember Path
@@ -172,6 +189,7 @@ export class EmberPlusState {
 			}
 		}
 		this.feedbacks.byId.delete(id)
+		this.notReadingValue.delete(id)
 	}
 
 	/**
@@ -279,8 +297,10 @@ export class EmberPlusState {
 		this.functions.clear()
 		this.emberElement.clear()
 		this.parameterElements.clear()
+		this.droppedMatrices.clear()
 		this.feedbacks.byId.clear()
 		this.feedbacks.byPath.clear()
+		this.notReadingValue.clear()
 		for (const info of this.matrices.values()) {
 			info.node = undefined
 			info.connectionsLoaded = false

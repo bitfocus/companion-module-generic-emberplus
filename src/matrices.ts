@@ -1,5 +1,6 @@
 import type { DropdownChoice } from '@companion-module/base'
 import { type EmberClient, Model as EmberModel, type Types as EmberTypes } from '@phillipivan/emberplus-connection'
+import { identifierPath } from './identifiers.js'
 
 /** A matrix in the library's tree, numbered or qualified, which the library can send requests about */
 export type MatrixNode = EmberTypes.ElementOf<EmberModel.Matrix>
@@ -17,7 +18,7 @@ export interface SignalLabels {
 export interface MatrixInfo {
 	/** The path as configured: the value the matrix dropdowns store */
 	path: string
-	/** What the option ids of its target and source fields are built on (matrixOptionKeys) */
+	/** What the option ids of its target and source fields are built on (matrixOptionKey) */
 	key: string
 	/** The matrix, once loaded: the library's tree element, which the provider's reports keep up to date */
 	node?: MatrixNode
@@ -43,7 +44,10 @@ export function isMatrixNode(node: EmberModel.TreeElement<EmberModel.EmberElemen
 	)
 }
 
-/** The matrix paths in the module config, comma separated, each once, in the order given */
+/**
+ * The matrix paths in the module config, comma separated, each once, in the order given. One with an empty segment
+ * (`1..4`, `.1`) is left out: no element has such a path, and its fields' key would be another's (matrixOptionKey).
+ */
 export function matrixPaths(matricesString: string | undefined): string[] {
 	return [
 		...new Set(
@@ -51,35 +55,49 @@ export function matrixPaths(matricesString: string | undefined): string[] {
 				.replaceAll('/', '.')
 				.split(',')
 				.map((path) => path.trim())
-				.filter((path) => path !== ''),
+				.filter((path) => path !== '' && !path.split('.').includes('')),
 		),
 	]
 }
 
 /**
- * The key each matrix's target and source fields are named by (`target_<key>` and so on): its path with each character
- * other than a letter or digit as `_`, so `1.4` is `1_4`. Two paths that would share a key (`1.4` and `1_4`) are told
- * apart by writing the later one's other characters as their code (`1_005f4`). The keys are saved in actions and
- * feedbacks, and upgrade scripts write them: a change here needs an upgrade script.
+ * The key a matrix's target and source fields are named by (`target_<key>` and so on), from its path alone, so it
+ * stays the same whatever else the config holds: letters and digits as they are, each `.` as `_`, and any other
+ * character as `__` and its code in six hex digits (enough for any), so `1.4` is `1_4` and `Audio Router` is
+ * `Audio__000020Router`. Two paths never share one: an escape is the only `__`, as a configured path has no empty
+ * segment (matrixPaths leaves out one that does), so no `..`. The keys are saved in actions and feedbacks, and upgrade
+ * scripts write them: a change here needs an upgrade script.
  */
-export function matrixOptionKeys(paths: readonly string[]): Map<string, string> {
-	const keys = new Map<string, string>()
-	const taken = new Set<string>()
-	for (const path of paths) {
-		let key = path.replaceAll(/[^A-Za-z0-9]/g, '_')
-		if (taken.has(key)) {
-			key = [...path]
-				.map((char) =>
-					/[A-Za-z0-9]/.test(char) ? char : `_${(char.codePointAt(0) ?? 0).toString(16).padStart(4, '0')}`,
-				)
-				.join('')
-		}
-		let unique = key
-		for (let n = 2; taken.has(unique); n++) unique = `${key}_${n}`
-		taken.add(unique)
-		keys.set(path, unique)
+export function matrixOptionKey(path: string): string {
+	return [...path]
+		.map((char) => {
+			if (/[A-Za-z0-9]/.test(char)) return char
+			if (char === '.') return '_'
+			return `__${(char.codePointAt(0) ?? 0).toString(16).padStart(6, '0')}`
+		})
+		.join('')
+}
+
+/** A matrix's type, by the specification's names: oneToN, the default for a matrix that states none, oneToOne or nToN */
+export type MatrixTypeName = 'oneToN' | 'oneToOne' | 'nToN'
+
+export function matrixTypeName(matrix: EmberModel.Matrix): MatrixTypeName {
+	switch (matrix.matrixType) {
+		case undefined:
+		case EmberModel.MatrixType.OneToN:
+			return 'oneToN'
+		case EmberModel.MatrixType.OneToOne:
+			return 'oneToOne'
+		case EmberModel.MatrixType.NToN:
+			return 'nToN'
+		default:
+			return unhandledMatrixType(matrix.matrixType)
 	}
-	return keys
+}
+
+/** A type this version doesn't know, from a newer library: the specification's default */
+function unhandledMatrixType(_type: never): MatrixTypeName {
+	return 'oneToN'
 }
 
 /** Whether a matrix connects any number of sources to a target. Otherwise one at most: 1:N, the default, or 1:1 */
@@ -130,10 +148,34 @@ export function signalChoices(info: MatrixInfo, kind: SignalKind): DropdownChoic
 	})
 }
 
-/** The matrix as its dropdown names it: the path, and the matrix's description or identifier once it is loaded */
+/**
+ * The matrix as its dropdown names it: the path, and once it is loaded its path by identifiers, the matrix's and every
+ * node's above it, `1.4: Audio.Matrix` (the path alone where it is that already)
+ */
 export function matrixLabel(info: MatrixInfo): string {
-	const name = info.node?.contents.description || info.node?.contents.identifier
-	return name ? `${info.path}: ${name}` : info.path
+	if (!info.node) return info.path
+	const name = identifierPath(info.node, info.path)
+	return name === info.path ? info.path : `${info.path}: ${name}`
+}
+
+/**
+ * Whether a failed lookup of a path says the path holds no element, rather than that it couldn't be looked up just
+ * now (the connection dropped, or the provider didn't answer): the library's words for a segment it didn't find
+ */
+export function isNotFound(error: unknown): boolean {
+	return error instanceof Error && error.message.startsWith('Could not find node')
+}
+
+/**
+ * Ask the provider for a matrix's targets, sources and connections, with a GetDirectory on the matrix, which also asks
+ * it to report their changes. Resolves with whether it answered: false for a request that wasn't sent (the connection
+ * is down), which loads nothing; rejects for one it didn't answer in time.
+ */
+export async function loadMatrixContents(client: EmberClient, node: MatrixNode): Promise<boolean> {
+	const request = await client.getDirectory(node)
+	if (!request.response) return false
+	await request.response
+	return true
 }
 
 /** How many label requests go out at once, for labels given by each signal's labelsLocation */
@@ -239,8 +281,40 @@ export const sourcePropertyChoices = [
 	{ id: 'labelsLocation', label: 'Labels Location' },
 ] as const satisfies DropdownChoice<SourceProperty>[]
 
-/** What the Matrix Property feedback returns: text, a flag, source numbers, or nothing */
-export type MatrixPropertyValue = string | boolean | number[] | null
+/** What the Matrix Property feedback returns: text, a flag, a source number or numbers, or nothing */
+export type MatrixPropertyValue = string | boolean | number | number[] | null
+
+/**
+ * A target's connected sources, as the variables and Matrix Property give them: for an N:N matrix their numbers, lowest
+ * first (empty for none); for any other, where a target holds one source at most, its number, or null for none (the
+ * first, should a provider report more). Null until the matrix's connections are loaded.
+ */
+export function connectionValue(info: MatrixInfo, target: number): number | number[] | null {
+	const sources = connectedSources(info, target)
+	if (sources === undefined) return null
+	return isNToN(info.node?.contents) ? sources : (sources[0] ?? null)
+}
+
+/**
+ * The matrix's own name, for its variable: its description, or else its path by identifiers (the matrix's and every
+ * node's above it)
+ */
+export function matrixName(info: MatrixInfo): string {
+	return info.node?.contents.description || identifierPath(info.node, info.path)
+}
+
+/**
+ * An N:N matrix's connection limits, as the specification has them where the matrix states none: the most sources a
+ * target takes (its source count), and the most connections in all (its target count times its source count)
+ */
+export function connectLimits(matrix: EmberModel.Matrix): { perTarget: number; total: number } {
+	const sources = matrix.sourceCount ?? signalNumbers(matrix, 'source').length
+	const targets = matrix.targetCount ?? signalNumbers(matrix, 'target').length
+	return {
+		perTarget: matrix.maximumConnectsPerTarget ?? sources,
+		total: matrix.maximumTotalConnects ?? targets * sources,
+	}
+}
 
 /**
  * The matrix's connections, once they are loaded (see MatrixInfo.connectionsLoaded); undefined until then, so a target
@@ -284,7 +358,7 @@ export function signalProperty(
 		case 'labelsLocation':
 			return contents?.labelsLocation ?? null
 		case 'connections':
-			return kind === 'target' ? (connectedSources(info, signal) ?? null) : null
+			return kind === 'target' ? connectionValue(info, signal) : null
 		case 'disposition': {
 			const connections = loadedConnections(info)
 			if (kind !== 'target' || !connections) return null

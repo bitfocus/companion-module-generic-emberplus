@@ -94,6 +94,17 @@ export type SetValueOptions = {
 /** The matrix, by its configured path, its target, and its source or (an N:N matrix) sources */
 export type MatrixActionOptions = MatrixOptions
 
+/** The actions that work on a matrix, offered only while there is one */
+export const MatrixActionIds = [
+	ActionId.MatrixConnect,
+	ActionId.MatrixDisconnect,
+	ActionId.MatrixSetConnection,
+	ActionId.Take,
+	ActionId.Clear,
+	ActionId.SetSelectedSource,
+	ActionId.SetSelectedTarget,
+] as const
+
 /** The matrix, by its configured path, and its source */
 export type SetSelectedSourceOptions = MatrixOptions
 
@@ -267,7 +278,7 @@ export function GetActionsList(
 ): CompanionActionDefinitions<ActionSchema> {
 	const functionChoices = filterFunctionPathChoices(state)
 
-	return {
+	const actions: CompanionActionDefinitions<ActionSchema> = {
 		[ActionId.SetValueInt]: {
 			name: 'Set Value Integer',
 			options: [
@@ -475,4 +486,7 @@ export function GetActionsList(
 			learn: learnSetHostActionOptions(config),
 		},
 	}
+	// Without a matrix to work on (none configured, or none the provider has), the matrix actions aren't offered
+	if (state.matrices.size === 0) for (const id of MatrixActionIds) actions[id] = undefined
+	return actions
 }

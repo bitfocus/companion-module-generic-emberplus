@@ -8,7 +8,7 @@ import { Model as EmberModel } from '@phillipivan/emberplus-connection'
 import type { ParameterFeedbackOptions } from '../feedback.js'
 import type EmberPlusInstance from '../index.js'
 import { EmberPlusState } from '../state.js'
-import { parameterProperty, type ParameterPropertyValue } from './property.js'
+import { parameterProperty, readsValue, type ParameterPropertyValue } from './property.js'
 import {
 	compareNumber,
 	NumberComparitor,
@@ -162,7 +162,7 @@ export const parameterPropertyFeedbackCallback =
 		context: CompanionFeedbackCallbackContext,
 	): Promise<ParameterPropertyValue> => {
 		const path = resolveEventPath(feedback)
-		await self.useParameterForFeedback(feedback.id, path, context.signal)
+		await self.useParameterForFeedback(feedback.id, path, context.signal, readsValue(feedback.options.property))
 		const parameter = state.parameters.get(path)
-		return parameter ? parameterProperty(parameter, feedback.options.property) : null
+		return parameter ? parameterProperty(parameter, feedback.options.property, state.parameterElements.get(path)) : null
 	}

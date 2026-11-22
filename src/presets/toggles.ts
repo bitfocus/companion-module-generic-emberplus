@@ -9,8 +9,10 @@ import {
 	local,
 	NAME_ID,
 	nameText,
-	parameterGroups,
+	parameterVariables,
+	PATH,
 	propertyVariable,
+	templateGroups,
 	VALUE_ID,
 	VALUE_VARIABLE,
 	valueText,
@@ -18,6 +20,7 @@ import {
 	type Preset,
 	type PresetGroup,
 	type PresetParameter,
+	type PresetTemplate,
 	type Presets,
 } from './consts.js'
 
@@ -31,30 +34,35 @@ const VALUE = local(VALUE_VARIABLE)
  * on, its path by identifiers along the bottom. The Set Value Boolean action's toggle sets the opposite of the value
  * the module has, so a press before it is known sets true.
  */
-function togglePreset({ path, parameter, name }: PresetParameter): Preset | undefined {
-	if (parameter.parameterType !== EmberModel.ParameterType.Boolean || !isReadWrite(parameter)) return undefined
-	return {
-		type: 'layered',
-		name,
-		elements: [background(), valueText(`${VALUE} == true ? 'ON' : (${VALUE} == false ? 'OFF' : '')`), nameText(name)],
-		steps: [
-			{
-				down: [{ actionId: ActionId.SetValueBoolean, options: { path, toggle: true, value: false } }],
-				up: [],
-			},
-		],
-		feedbacks: [
-			{
-				feedbackId: 'internal:checkExpression',
-				options: { expression: `${VALUE} == true` },
-				styleOverrides: activeOverrides(TOGGLE_ACTIVE_COLORS, [VALUE_ID, NAME_ID]),
-			},
-		],
-		localVariables: [propertyVariable(VALUE_VARIABLE, path, 'value'), ...fontSizeVariables()],
-	}
+const togglePreset: Preset = {
+	type: 'layered',
+	name: 'Toggle',
+	elements: [background(), valueText(`${VALUE} == true ? 'ON' : (${VALUE} == false ? 'OFF' : '')`), nameText()],
+	steps: [
+		{
+			down: [{ actionId: ActionId.SetValueBoolean, options: { path: PATH, toggle: true, value: false } }],
+			up: [],
+		},
+	],
+	feedbacks: [
+		{
+			feedbackId: 'internal:checkExpression',
+			options: { expression: `${VALUE} == true` },
+			styleOverrides: activeOverrides(TOGGLE_ACTIVE_COLORS, [VALUE_ID, NAME_ID]),
+		},
+	],
+	localVariables: [...parameterVariables(), propertyVariable(VALUE_VARIABLE, 'value'), ...fontSizeVariables()],
 }
+
+export const TOGGLE_TEMPLATES: readonly PresetTemplate[] = [
+	{
+		id: 'toggle',
+		preset: togglePreset,
+		accepts: ({ parameter }) => parameter.parameterType === EmberModel.ParameterType.Boolean && isReadWrite(parameter),
+	},
+]
 
 /** A toggle for each boolean parameter that can be set, grouped by its parent node */
 export function getToggleGroups(parameters: readonly PresetParameter[], presets: Presets): PresetGroup[] {
-	return parameterGroups('toggle', parameters, togglePreset, presets)
+	return templateGroups(TOGGLE_TEMPLATES, parameters, presets)
 }

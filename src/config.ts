@@ -32,7 +32,7 @@ export type EmberPlusConfig = {
 	matricesString?: string
 	monitoredParametersString?: string
 	factor: boolean
-	/** What the connection makes variables for. The matrix choices aren't acted on yet */
+	/** What the connection makes variables for: parameters' values (or streams), and matrices' names and connections */
 	variables: ConnectionVariable[]
 	/** Turns on the Ember+ library's debug output, and fuller detail in the module's own debug messages */
 	verbose: boolean
@@ -113,7 +113,7 @@ export function GetConfigFields(): SomeCompanionConfigField[] {
 			choices: connectionVariableChoices,
 			default: connectionVariablesDefault,
 			tooltip:
-				'Parameter - Values: a variable for each parameter in use, by the configured paths, actions and feedbacks. Parameter - Streams: the same for stream parameters, such as meters, which update many times a second. Without them, use the Parameter Property feedback',
+				"Parameter - Values: a variable for each parameter in use, by the configured paths, actions and feedbacks. Parameter - Streams: the same for stream parameters, such as meters, which update many times a second. Without them, use the Parameter Property feedback. Matrix - Target Names and Source Names: each configured matrix's signal names. Matrix - Connections: each target's connected sources. Without them, use the Matrix Property feedback",
 		},
 		{
 			type: 'checkbox',

@@ -10,7 +10,7 @@ import { type ActionSchema, GetActionsList } from './actions.js'
 import { type CompositeElementSchema, UpdateCompositeElements } from './composites.js'
 import { connectionVariablesDefault, type EmberPlusConfig, GetConfigFields, portDefault } from './config.js'
 import { GetPresetsList } from './presets.js'
-import { presetFieldsChanged } from './presets/fields.js'
+import { onlyValueChanged, presetFieldsChanged } from './presets/fields.js'
 import { type FeedbackSchema, GetFeedbacksList } from './feedback.js'
 import { EmberPlusState } from './state.js'
 import {
@@ -22,7 +22,9 @@ import {
 import { describe } from './logging.js'
 import {
 	isMatrixNode,
+	isNotFound,
 	isNToN,
+	loadMatrixContents,
 	matrixLabel,
 	matrixPaths,
 	readSignalLabels,
@@ -422,10 +424,16 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 
 	/**
 	 * A parameter feedback reads a path: register it, recheck the feedback when it changes, and keep its stream while
-	 * the feedback reads it. A feedback edited onto another path leaves the one it read. Returns whether the path holds
-	 * an element.
+	 * the feedback reads it. A feedback edited onto another path leaves the one it read. One that doesn't read the value
+	 * (`readsValue` false: a Parameter Property of its name, range and the like) isn't rechecked for a report of only a
+	 * new value, as a stream sends many times a second. Returns whether the path holds an element.
 	 */
-	public async useParameterForFeedback(feedbackId: string, path: string, signal?: AbortSignal): Promise<boolean> {
+	public async useParameterForFeedback(
+		feedbackId: string,
+		path: string,
+		signal?: AbortSignal,
+		readsValue = true,
+	): Promise<boolean> {
 		// Registering waits in the queue. Meanwhile the feedback may be released, or checked again on another path: then
 		// this check's outcome is stale, and applying it would put back a feedback Companion has removed, its stream with it
 		const generation = ++this.feedbackGenerationCounter
@@ -434,7 +442,7 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 		signal?.throwIfAborted()
 		if (this.feedbackGenerations.get(feedbackId) !== generation) return found
 		const previous = this.state.feedbackPath(feedbackId)
-		if (found) this.state.addIdToPathMap(feedbackId, path)
+		if (found) this.state.addIdToPathMap(feedbackId, path, readsValue)
 		else this.state.removeFeedbackId(feedbackId)
 		if (previous !== undefined && previous !== path) this.updateStreamSubscription(previous)
 		if (found) this.updateStreamSubscription(path)
@@ -637,7 +645,7 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 			node = await this.emberQueue.add(async () => this.getElementByPath(path, resolvePath(path)))
 		} catch (e) {
 			if (!this.isCurrentClient(client)) return
-			if (describe(e).includes('Could not find node')) {
+			if (isNotFound(e)) {
 				this.dropMatrix(path, 'was not found')
 			} else {
 				this.log('warn', `Matrix ${path} could not be loaded, and is looked for again on reconnecting: ${describe(e)}`)
@@ -655,13 +663,7 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 		this.matrixChanged(path)
 
 		try {
-			// A GetDirectory that wasn't sent (the connection is down) has no response, and loads nothing
-			const answered = await this.emberQueue.add(async () => {
-				const request = await client.getDirectory(node)
-				if (!request.response) return false
-				await request.response
-				return true
-			})
+			const answered = await this.emberQueue.add(async () => loadMatrixContents(client, node))
 			if (answered && this.isCurrentClient(client) && info.node === node) info.connectionsLoaded = true
 		} catch (e) {
 			if (!this.isCurrentClient(client)) return
@@ -692,7 +694,7 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 	/** Leave out a configured matrix the provider showed not to be one, until the next connection or config change */
 	private dropMatrix(path: string, reason: string): void {
 		this.log('warn', `Matrix ${path} ${reason}, so it is left out until the next connection or config change`)
-		this.state.matrices.delete(path)
+		this.state.dropMatrix(path, reason)
 		this.matrixVariableDefinitions = undefined
 		this.state.getMatrixFeedbacks(path).forEach((id) => this.feedbacksToCheck.add(id))
 		this.throttledFeedbackChecksVariableUpdates()
@@ -915,10 +917,12 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 		const parameter = this.state.parameters.get(path) ?? node.contents
 		// Its presets follow its type, access, range and online state, not its value
 		if (previous && presetFieldsChanged(previous, parameter)) this.debouncedUpdateActionFeedbackDefs()
+		// Only a new value, as a stream's: the feedbacks that don't read the value have nothing to recheck
+		const valueOnly = previous !== undefined && onlyValueChanged(previous, parameter)
 
 		// A stream identifier may come only with a later report
 		this.updateStreamSubscription(path)
-		this.updateFeedbacksAndVariables(path, parameter)
+		this.updateFeedbacksAndVariables(path, parameter, valueOnly)
 
 		// A meter's values aren't actions to record
 		if (!this.isRecordingActions || isStreamParameter(parameter)) return
@@ -933,8 +937,10 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 	 * Recheck the feedbacks reading a parameter, and set its variables if it has them, for any type of parameter: the
 	 * Parameter Property feedback reads octet strings and the rest too
 	 */
-	private updateFeedbacksAndVariables(path: string, parameter: EmberModel.Parameter): void {
-		this.state.getFeedbacksByPath(path).forEach((fbId) => this.feedbacksToCheck.add(fbId))
+	private updateFeedbacksAndVariables(path: string, parameter: EmberModel.Parameter, valueOnly = false): void {
+		for (const fbId of this.state.getFeedbacksByPath(path)) {
+			if (!valueOnly || this.state.feedbackReadsValue(fbId)) this.feedbacksToCheck.add(fbId)
+		}
 
 		if (hasParameterVariables(parameter, this.parameterVariables)) {
 			const varId = sanitiseVariableId(path)

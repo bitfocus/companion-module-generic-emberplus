@@ -37,7 +37,8 @@ describe('Matrix Property', () => {
 	it("gives the chosen matrix's target's or source's property", () => {
 		const state = makeState()
 		const callback = matrixPropertyFeedbackCallback(state)
-		expect(callback(property({}))).toEqual([2])
+		// A 1:N target's one source, a number
+		expect(callback(property({}))).toBe(2)
 		expect(callback(property({ signal: 'source', source_1_4: 2, sourceProperty: 'label' }))).toBe('In 2')
 	})
 

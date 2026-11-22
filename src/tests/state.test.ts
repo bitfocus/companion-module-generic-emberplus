@@ -485,6 +485,17 @@ describe('matrices', () => {
 		expect(state.matrices.has('1.5')).toBe(false)
 	})
 
+	it('remember why one was left out, until they are set again', () => {
+		const state = new EmberPlusState()
+		state.setMatrixPaths(['1.4', '1.5'])
+		state.dropMatrix('1.5', 'is not a matrix')
+		expect([...state.matrices.keys()]).toEqual(['1.4'])
+		expect(state.droppedMatrices.get('1.5')).toBe('is not a matrix')
+		state.setMatrixPaths(['1.4', '1.5'])
+		expect(state.droppedMatrices.size).toBe(0)
+		expect(state.matrices.has('1.5')).toBe(true)
+	})
+
 	it('register a feedback against the matrix it reads, moving it when edited onto another', () => {
 		const state = new EmberPlusState()
 		state.addMatrixFeedback('fb1', '1.4')
