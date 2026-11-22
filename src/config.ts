@@ -1,4 +1,3 @@
-import { Regex } from '@companion-module/base'
 import type { DropdownChoice, SomeCompanionConfigField } from '@companion-module/base'
 
 export const portDefault = 9000
@@ -53,7 +52,7 @@ export function GetConfigFields(): SomeCompanionConfigField[] {
 			label: 'Target Host',
 			tooltip: 'The Hostname/IP of the Ember+ provider',
 			width: 6,
-			regex: Regex.HOSTNAME,
+			minLength: 1,
 			isVisibleExpression: `!$(options:bonjourHost)`,
 		},
 		{
