@@ -21,6 +21,8 @@ import {
 } from '@phillipivan/emberplus-connection'
 import { describe } from './logging.js'
 import {
+	changedTargets,
+	connectionSnapshot,
 	isMatrixNode,
 	isNotFound,
 	isNToN,
@@ -29,6 +31,7 @@ import {
 	matrixPaths,
 	readSignalLabels,
 	signalChoices,
+	type ConnectionSnapshot,
 	type MatrixInfo,
 } from './matrices.js'
 import { StatusManager } from './status.js'
@@ -37,6 +40,7 @@ import {
 	sanitiseVariableId,
 	parseBonjourHost,
 	hasConnectionChanged,
+	recordMatrixConnectAction,
 	recordParameterAction,
 	parseParameterValue,
 	discoverFunctionsFromTree,
@@ -126,6 +130,11 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 	private matrixChoiceSignatures: Map<string, string> = new Map()
 	/** Each matrix variable's value as last set, serialised, so that only the ones a report changed are set */
 	private matrixValuesSet: Map<string, string> = new Map()
+	/**
+	 * While actions are recorded, each loaded matrix's connections as last seen, so that the targets a report changed are
+	 * recorded, and not every target's connection as it loads
+	 */
+	private recordedConnections: Map<string, ConnectionSnapshot> = new Map()
 	/** The matrix variables' definitions, built once for each change to the matrices or the kinds chosen */
 	private matrixVariableDefinitions:
 		{ kinds: string; definitions: CompanionVariableDefinitions; serialised: string } | undefined
@@ -229,6 +238,7 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 		this.state.clear()
 		this.matricesToUpdate.clear()
 		this.forgetMatrixUpdates()
+		this.recordedConnections.clear()
 	}
 
 	/** Forget what was sent for the matrices, so that it is all sent again: the matrices are being loaded afresh */
@@ -612,6 +622,10 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 		this.state.setMatrixPaths(matrixPaths(this.config.matricesString))
 		// A matrix no longer configured takes its variables with it
 		this.matrixVariableDefinitions = undefined
+		// And what the recorder last saw of it, so that it starts afresh if configured again
+		for (const path of this.recordedConnections.keys()) {
+			if (!this.state.matrices.has(path)) this.recordedConnections.delete(path)
+		}
 		this.state.clearSelection()
 	}
 
@@ -734,6 +748,7 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 			this.variableValueUpdates[id] = value
 		}
 		this.state.getMatrixFeedbacks(path).forEach((id) => this.feedbacksToCheck.add(id))
+		if (this.isRecordingActions) this.recordMatrixConnections(info)
 	}
 
 	private setupMonitoredParams(): void {
@@ -881,6 +896,32 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 	// Track whether actions are being recorded
 	public handleStartStopRecordActions(isRecording: boolean): void {
 		this.isRecordingActions = isRecording
+		// The matrices' connections as they are now, so that only later changes are recorded
+		this.recordedConnections.clear()
+		if (!isRecording) return
+		for (const info of this.state.matrices.values()) {
+			const snapshot = connectionSnapshot(info)
+			if (snapshot) this.recordedConnections.set(info.path, snapshot)
+		}
+	}
+
+	/**
+	 * Record a Matrix Connect for each target of a matrix whose sources changed since last seen. A matrix whose
+	 * connections aren't loaded (yet, or again after a reconnect) is seen afresh once they are, so loading them records
+	 * nothing.
+	 */
+	private recordMatrixConnections(info: MatrixInfo): void {
+		const snapshot = connectionSnapshot(info)
+		const previous = this.recordedConnections.get(info.path)
+		if (!snapshot) {
+			this.recordedConnections.delete(info.path)
+			return
+		}
+		this.recordedConnections.set(info.path, snapshot)
+		if (!previous) return
+		for (const target of changedTargets(previous, snapshot)) {
+			recordMatrixConnectAction(this, info, target, snapshot.get(target) ?? [])
+		}
 	}
 
 	// Throttled feedback checks and variable updates for better efficiency in busy systems

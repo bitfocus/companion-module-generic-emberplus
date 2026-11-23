@@ -191,3 +191,5 @@ Each kind of button is one template preset, made for each parameter by its path,
 ## Action Recorder
 
 The Action Recorder can record Set Value actions for ember parameters you are currently subscribed to.
+
+It also records a **Matrix Connect** action for each target of a configured matrix whose connection changes while recording, once the matrix's connections have loaded. Each target is recorded once, with its latest sources: a list on an N:N matrix, one source on any other. A target left with no source isn't recorded, as Matrix Connect has nothing to connect. Connections loading on connecting aren't recorded. Note that on an N:N matrix, Matrix Connect adds its sources to those already connected, and doesn't disconnect the others.

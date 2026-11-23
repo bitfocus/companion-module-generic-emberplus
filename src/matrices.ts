@@ -331,6 +331,36 @@ export function connectedSources(info: MatrixInfo, target: number): number[] | u
 	return [...(connections.get(target)?.sources ?? [])].sort((a, b) => a - b)
 }
 
+/** Each target's connected sources, lowest first, by target */
+export type ConnectionSnapshot = Map<number, number[]>
+
+/**
+ * Each target's connected sources, lowest first, for the action recorder to tell which targets a report changed.
+ * Undefined until the matrix's connections are loaded, as the library's may then hold only some targets'.
+ */
+export function connectionSnapshot(info: MatrixInfo): ConnectionSnapshot | undefined {
+	const connections = loadedConnections(info)
+	if (!connections) return undefined
+	const snapshot: ConnectionSnapshot = new Map()
+	for (const [target, connection] of connections) {
+		snapshot.set(
+			target,
+			[...(connection.sources ?? [])].sort((a, b) => a - b),
+		)
+	}
+	return snapshot
+}
+
+/** The targets whose sources differ from one snapshot to the next, lowest first: those the next has */
+export function changedTargets(previous: ConnectionSnapshot, next: ConnectionSnapshot): number[] {
+	const changed: number[] = []
+	for (const [target, sources] of next) {
+		const before = previous.get(target) ?? []
+		if (before.length !== sources.length || before.some((source, i) => source !== sources[i])) changed.push(target)
+	}
+	return changed.sort((a, b) => a - b)
+}
+
 /**
  * A property of a matrix's target or source. The name is the signal's first label, or else its identifier; Online is
  * true unless the provider says otherwise (the DTD's default); Connected Sources are the target's source numbers, and

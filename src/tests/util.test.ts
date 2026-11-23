@@ -19,6 +19,7 @@ import {
 	hasConnectionChanged,
 	isValidHostname,
 	isValidPort,
+	recordMatrixConnectAction,
 	recordParameterAction,
 	parseParameterValue,
 	parseFunctionArguments,
@@ -39,6 +40,7 @@ vi.mock('../actions', () => ({
 		SetValueReal: 'setValueReal',
 		SetValueEnum: 'setValueEnum',
 		SetValueString: 'setValueString',
+		MatrixConnect: 'matrixConnect',
 	},
 }))
 
@@ -495,6 +497,49 @@ describe('isValidPort', () => {
 	})
 	it('rejects non integers', () => {
 		expect(isValidPort(9000.5)).toBe(false)
+	})
+})
+
+// ---------------------------------------------------------------------------
+// recordMatrixConnectAction
+// ---------------------------------------------------------------------------
+
+describe('recordMatrixConnectAction', () => {
+	function matrixInfo(type: EmberModel.MatrixType) {
+		const matrix = new EmberModel.MatrixImpl('router')
+		matrix.matrixType = type
+		return {
+			path: '1.4',
+			key: '1_4',
+			node: new EmberModel.NumberedTreeNodeImpl(4, matrix),
+			connectionsLoaded: true,
+			labels: { targets: new Map(), sources: new Map() },
+		}
+	}
+
+	it("records a 1:N matrix's target's source, once per target", () => {
+		const instance = makeInstance()
+		recordMatrixConnectAction(instance, matrixInfo(EmberModel.MatrixType.OneToN), 2, [5])
+		expect(instance.recordAction).toHaveBeenCalledWith(
+			{ actionId: 'matrixConnect', options: { matrix: '1.4', target_1_4: 2, sources_1_4: 5 } },
+			'1.4:2',
+		)
+	})
+
+	it("records an N:N matrix's target's sources as a list", () => {
+		const instance = makeInstance()
+		recordMatrixConnectAction(instance, matrixInfo(EmberModel.MatrixType.NToN), 2, [3, 7])
+		expect(instance.recordAction).toHaveBeenCalledWith(
+			{ actionId: 'matrixConnect', options: { matrix: '1.4', target_1_4: 2, sources_1_4: [3, 7] } },
+			'1.4:2',
+		)
+	})
+
+	// Matrix Connect has no source to connect
+	it('records nothing for a target left with no source', () => {
+		const instance = makeInstance()
+		recordMatrixConnectAction(instance, matrixInfo(EmberModel.MatrixType.NToN), 2, [])
+		expect(instance.recordAction).not.toHaveBeenCalled()
 	})
 })
 

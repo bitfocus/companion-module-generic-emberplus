@@ -280,6 +280,67 @@ describe('matrices from a provider', () => {
 		expect(operations).toEqual([EmberModel.ConnectionOperation.Absolute])
 	})
 
+	// As a parameter's reported value is recorded as a Set Value action
+	it("records the provider's connection changes as Matrix Connect actions, once per target, while recording", async () => {
+		const { tree, matrix } = providerTree()
+		const { instance, server } = await connect(tree, { matricesString: '1.1' })
+		await vi.waitFor(() => expect(variables(instance)['matrix_1.1_target_1_sources']).toBe(1), { timeout: 3000 })
+
+		// Not recording: nothing
+		server.updateMatrixConnection(matrix, { target: 2, sources: [2] })
+		await vi.waitFor(() => expect(variables(instance)['matrix_1.1_target_2_sources']).toBe(2))
+		expect(instance.recordAction).not.toHaveBeenCalled()
+
+		instance.handleStartStopRecordActions(true)
+		server.updateMatrixConnection(matrix, { target: 2, sources: [3] })
+		await vi.waitFor(() =>
+			expect(instance.recordAction).toHaveBeenCalledWith(
+				{ actionId: 'matrixConnect', options: { matrix: '1.1', target_1_1: 2, sources_1_1: 3 } },
+				'1.1:2',
+			),
+		)
+		// Only the target that changed, not target 1
+		expect(instance.recordAction).toHaveBeenCalledTimes(1)
+
+		// A target left with no source has nothing for Matrix Connect to connect
+		instance.recordAction.mockClear()
+		server.updateMatrixConnection(matrix, { target: 1, sources: [] })
+		await vi.waitFor(() => expect(variables(instance)['matrix_1.1_target_1_sources']).toBeNull())
+		await new Promise((resolve) => setTimeout(resolve, 200))
+		expect(instance.recordAction).not.toHaveBeenCalled()
+
+		instance.handleStartStopRecordActions(false)
+		server.updateMatrixConnection(matrix, { target: 2, sources: [1] })
+		await vi.waitFor(() => expect(variables(instance)['matrix_1.1_target_2_sources']).toBe(1))
+		await new Promise((resolve) => setTimeout(resolve, 200))
+		expect(instance.recordAction).not.toHaveBeenCalled()
+	})
+
+	// Loading every target's connection isn't a change to record
+	it('records nothing as the matrix loads, while recording', async () => {
+		const { tree, matrix } = providerTree()
+		const port = await freePort()
+		server = new EmberServer(port)
+		await server.init(tree)
+		instance = new EmberPlusInstance('test')
+		const recording = instance as any
+		recording.handleStartStopRecordActions(true)
+		await instance.init({
+			host: '127.0.0.1',
+			port,
+			factor: true,
+			verbose: false,
+			variables: ['matrixConnections'],
+			matricesString: '1.1',
+		})
+		await vi.waitFor(() => expect(variables(recording)['matrix_1.1_target_1_sources']).toBe(1), { timeout: 3000 })
+		await new Promise((resolve) => setTimeout(resolve, 200))
+		expect(recording.recordAction).not.toHaveBeenCalled()
+
+		server.updateMatrixConnection(matrix, { target: 2, sources: [3] })
+		await vi.waitFor(() => expect(recording.recordAction).toHaveBeenCalledTimes(1))
+	})
+
 	it("reads labels given by each signal's labels node", async () => {
 		const sources = new MatrixImpl('router')
 		sources.addressingMode = MatrixAddressingMode.NonLinear

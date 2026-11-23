@@ -17,7 +17,7 @@ import {
 	renamedFeedbacksApi2,
 	UpgradeScripts,
 } from '../upgrades.js'
-import { recordParameterAction } from '../util.js'
+import { recordMatrixConnectAction, recordParameterAction } from '../util.js'
 
 const { ElementType, ParameterType, ParameterAccess } = EmberModel
 
@@ -362,6 +362,26 @@ describe('matrix fields', () => {
 			label: 'None',
 		})
 		expect(field(all.actions[ActionId.MatrixConnect], 'sources_1_4')?.choices?.[0]).toEqual({ id: 1, label: '1: Mic' })
+	})
+
+	it.each([
+		['1.4', [1]],
+		["Video's Router", [5]],
+	])('a recorded Matrix Connect on %s has only options the action has, shown together', (path, sources) => {
+		const state = matrixState()
+		const recorded: CompanionRecordedAction[] = []
+		const self = { recordAction: vi.fn((a: CompanionRecordedAction) => recorded.push(a)) }
+		recordMatrixConnectAction(self as unknown as EmberPlusInstance, state.matrices.get(path)!, 3, sources)
+		const definition = all.actions[ActionId.MatrixConnect]
+		expect(recorded).toHaveLength(1)
+		const values = recorded[0].options as Record<string, JsonValue>
+		for (const key of Object.keys(values)) {
+			expect(field(definition, key), key).toBeDefined()
+			expect(isVisible(definition, field(definition, key)!, values), key).toBe(true)
+		}
+		// The multi-select of an N:N matrix takes a list, the dropdown of any other one source
+		const sourcesField = Object.keys(values).find((key) => key.startsWith('sources_'))!
+		expect(Array.isArray(values[sourcesField])).toBe(field(definition, sourcesField)?.type === 'multidropdown')
 	})
 
 	it('lets Matrix Connect learn its sources, and not Disconnect or Set Connection', () => {

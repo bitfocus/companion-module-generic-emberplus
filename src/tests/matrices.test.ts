@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
 import { Model as EmberModel } from '@phillipivan/emberplus-connection'
 import {
+	changedTargets,
+	connectionSnapshot,
 	emptyLabels,
 	matrixLabel,
 	isNotFound,
@@ -34,6 +36,53 @@ function info(fill: (matrix: EmberModel.MatrixImpl) => void = () => undefined): 
 		labels: emptyLabels(),
 	}
 }
+
+describe('connectionSnapshot', () => {
+	it("gives each target's sources, lowest first", () => {
+		const loaded = info(
+			(m) => (m.connections = EmberModel.connectionsOf([{ target: 2, sources: [7, 3] }, { target: 4 }])),
+		)
+		expect(connectionSnapshot(loaded)).toEqual(
+			new Map([
+				[2, [3, 7]],
+				[4, []],
+			]),
+		)
+	})
+
+	// The library's connections may hold only the targets a report covered
+	it("gives none until the matrix's connections are loaded", () => {
+		const partial = info((m) => (m.connections = EmberModel.connectionsOf([{ target: 2, sources: [1] }])))
+		partial.connectionsLoaded = false
+		expect(connectionSnapshot(partial)).toBeUndefined()
+		expect(connectionSnapshot(info())).toBeUndefined()
+	})
+})
+
+describe('changedTargets', () => {
+	it('gives the targets whose sources differ, lowest first', () => {
+		const before = new Map([
+			[1, [1]],
+			[2, [1, 2]],
+			[3, [4]],
+			[5, []],
+		])
+		const after = new Map([
+			[1, [1]],
+			[2, [1, 3]],
+			[3, []],
+			[5, [2]],
+			[4, [6]],
+		])
+		expect(changedTargets(before, after)).toEqual([2, 3, 4, 5])
+		expect(changedTargets(after, after)).toEqual([])
+	})
+
+	it('counts a source added to the end, or one fewer, as a change', () => {
+		expect(changedTargets(new Map([[1, [1]]]), new Map([[1, [1, 2]]]))).toEqual([1])
+		expect(changedTargets(new Map([[1, [1, 2]]]), new Map([[1, [1]]]))).toEqual([1])
+	})
+})
 
 describe('matrixPaths', () => {
 	it("reads the config's comma separated paths, each once, slashes as dots", () => {
