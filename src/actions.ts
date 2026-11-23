@@ -9,7 +9,14 @@ import { EmberClient, Model as EmberModel } from '@phillipivan/emberplus-connect
 import type PQueue from 'p-queue'
 import { type EmberPlusConfig, portDefault } from './config.js'
 import type EmberPlusInstance from './index.js'
-import { doMatrixAction, doTake, doClear, setSelectedSource, setSelectedTarget } from './actions/matrix.js'
+import {
+	doMatrixAction,
+	doTake,
+	doClear,
+	learnMatrixConnectSources,
+	setSelectedSource,
+	setSelectedTarget,
+} from './actions/matrix.js'
 import { learnSetValueActionOptions, setValue, subscribeParameterAction } from './actions/parameter.js'
 import { invokeFunctionAction } from './actions/function.js'
 import { setHostAction, learnSetHostActionOptions } from './actions/host.js'
@@ -393,6 +400,7 @@ export function GetActionsList(
 			description: 'Connect sources to a target, as well as those connected to it (for an N:N matrix)',
 			options: [matrixDropdown(state), ...targetFields(state), ...sourceFields(state, { several: true })],
 			callback: doMatrixAction(self, emberClient, 'connect', queue, state),
+			learn: learnMatrixConnectSources(state),
 		},
 		[ActionId.MatrixDisconnect]: {
 			name: 'Matrix Disconnect',

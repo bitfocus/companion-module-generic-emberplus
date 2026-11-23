@@ -3,6 +3,7 @@ import { Model as EmberModel } from '@phillipivan/emberplus-connection'
 import {
 	doMatrixAction,
 	doTake,
+	learnMatrixConnectSources,
 	setSelectedSource,
 	setSelectedTarget,
 	type MatrixOperation,
@@ -291,6 +292,61 @@ describe('the operation sent, by the matrix type', () => {
 		state.matrices.get('1.4')!.node!.contents.connections = EmberModel.connectionsOf([{ target: 2, sources: [7] }])
 		await queued[0]()
 		expect(sentAnything(client)).toBe(false)
+	})
+})
+
+describe("learning Matrix Connect's sources", () => {
+	const learn = (options: Record<string, unknown>, state: EmberPlusState) =>
+		learnMatrixConnectSources(state)({ options } as any, {} as any)
+	const connectedTo2 =
+		(...sources: number[]) =>
+		(matrix: EmberModel.MatrixImpl) =>
+			(matrix.connections = EmberModel.connectionsOf([
+				{ target: 2, sources },
+				{ target: 3, sources: [9] },
+			]))
+
+	it("learns a 1:N matrix's target's source, for its dropdown of one", () => {
+		expect(learn({ matrix: '1.4', target_1_4: 2, sources_1_4: 1 }, makeState(connectedTo2(5)))).toEqual({
+			sources_1_4: 5,
+		})
+	})
+
+	it("learns an N:N matrix's target's sources, lowest first, for its multi-select", () => {
+		const state = makeState((matrix) => {
+			nToN(matrix)
+			connectedTo2(7, 3)(matrix)
+		})
+		expect(learn({ matrix: '1.4', target_1_4: 2, sources_1_4: [] }, state)).toEqual({ sources_1_4: [3, 7] })
+	})
+
+	// Only the sources: the target, which may be an expression, is kept
+	it('returns nothing but the sources', () => {
+		const learned = learn({ matrix: '1.4', target_1_4: 3, sources_1_4: 1 }, makeState(connectedTo2(5)))
+		expect(Object.keys(learned ?? {})).toEqual(['sources_1_4'])
+		expect(learned).toEqual({ sources_1_4: 9 })
+	})
+
+	// A report on another target, or a connect's reply, creates the library's connections before the GetDirectory on the
+	// matrix has loaded them all
+	it("learns nothing while the matrix's connections aren't loaded", () => {
+		const state = makeState(connectedTo2(5))
+		state.matrices.get('1.4')!.connectionsLoaded = false
+		expect(learn({ matrix: '1.4', target_1_4: 2 }, state)).toBeUndefined()
+		expect(logs).toHaveBeenCalledWith('Actions/Matrix', 'debug', expect.stringContaining("aren't loaded"))
+		expect(learn({ matrix: '1.4', target_1_4: 2 }, makeState(undefined, false))).toBeUndefined()
+	})
+
+	it('learns nothing for a target with no source connected', () => {
+		expect(learn({ matrix: '1.4', target_1_4: 4, sources_1_4: 1 }, makeState(connectedTo2(5)))).toBeUndefined()
+		expect(learn({ matrix: '1.4', target_1_4: 2 }, makeState(connectedTo2()))).toBeUndefined()
+	})
+
+	it('learns nothing for a matrix not configured, or an invalid target', () => {
+		const state = makeState(connectedTo2(5))
+		expect(learn({ matrix: '1.5', target_1_4: 2 }, state)).toBeUndefined()
+		expect(learn({ matrix: '1.4', target_1_4: 2 ** 31 }, state)).toBeUndefined()
+		expect(learn({ matrix: '1.4' }, state)).toBeUndefined()
 	})
 })
 

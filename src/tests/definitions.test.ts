@@ -37,6 +37,7 @@ interface Field {
 interface Definition {
 	options: Field[]
 	optionsToMonitorForSubscribe?: string[]
+	learn?: unknown
 }
 
 const config: EmberPlusConfig = {
@@ -361,6 +362,12 @@ describe('matrix fields', () => {
 			label: 'None',
 		})
 		expect(field(all.actions[ActionId.MatrixConnect], 'sources_1_4')?.choices?.[0]).toEqual({ id: 1, label: '1: Mic' })
+	})
+
+	it('lets Matrix Connect learn its sources, and not Disconnect or Set Connection', () => {
+		expect(all.actions[ActionId.MatrixConnect]?.learn).toBeTypeOf('function')
+		expect(all.actions[ActionId.MatrixDisconnect]?.learn).toBeUndefined()
+		expect(all.actions[ActionId.MatrixSetConnection]?.learn).toBeUndefined()
 	})
 
 	it.each([
