@@ -19,7 +19,7 @@ import {
 	hasConnectionChanged,
 	isValidHostname,
 	isValidPort,
-	recordMatrixConnectAction,
+	recordMatrixSetConnectionAction,
 	recordParameterAction,
 	parseParameterValue,
 	parseFunctionArguments,
@@ -40,7 +40,7 @@ vi.mock('../actions', () => ({
 		SetValueReal: 'setValueReal',
 		SetValueEnum: 'setValueEnum',
 		SetValueString: 'setValueString',
-		MatrixConnect: 'matrixConnect',
+		MatrixSetConnection: 'matrixSetConnection',
 	},
 }))
 
@@ -501,10 +501,10 @@ describe('isValidPort', () => {
 })
 
 // ---------------------------------------------------------------------------
-// recordMatrixConnectAction
+// recordMatrixSetConnectionAction
 // ---------------------------------------------------------------------------
 
-describe('recordMatrixConnectAction', () => {
+describe('recordMatrixSetConnectionAction', () => {
 	function matrixInfo(type: EmberModel.MatrixType) {
 		const matrix = new EmberModel.MatrixImpl('router')
 		matrix.matrixType = type
@@ -519,27 +519,34 @@ describe('recordMatrixConnectAction', () => {
 
 	it("records a 1:N matrix's target's source, once per target", () => {
 		const instance = makeInstance()
-		recordMatrixConnectAction(instance, matrixInfo(EmberModel.MatrixType.OneToN), 2, [5])
+		recordMatrixSetConnectionAction(instance, matrixInfo(EmberModel.MatrixType.OneToN), 2, [5])
 		expect(instance.recordAction).toHaveBeenCalledWith(
-			{ actionId: 'matrixConnect', options: { matrix: '1.4', target_1_4: 2, sources_1_4: 5 } },
+			{ actionId: 'matrixSetConnection', options: { matrix: '1.4', target_1_4: 2, sources_1_4: 5 } },
 			'1.4:2',
 		)
 	})
 
 	it("records an N:N matrix's target's sources as a list", () => {
 		const instance = makeInstance()
-		recordMatrixConnectAction(instance, matrixInfo(EmberModel.MatrixType.NToN), 2, [3, 7])
+		recordMatrixSetConnectionAction(instance, matrixInfo(EmberModel.MatrixType.NToN), 2, [3, 7])
 		expect(instance.recordAction).toHaveBeenCalledWith(
-			{ actionId: 'matrixConnect', options: { matrix: '1.4', target_1_4: 2, sources_1_4: [3, 7] } },
+			{ actionId: 'matrixSetConnection', options: { matrix: '1.4', target_1_4: 2, sources_1_4: [3, 7] } },
 			'1.4:2',
 		)
 	})
 
-	// Matrix Connect has no source to connect
-	it('records nothing for a target left with no source', () => {
+	// Played back, Set Connection disconnects the target's sources
+	it.each([
+		['an N:N', EmberModel.MatrixType.NToN, []],
+		['a 1:N', EmberModel.MatrixType.OneToN, -1],
+		['a 1:1', EmberModel.MatrixType.OneToOne, -1],
+	])("records %s matrix's target left with no source as none", (_name, type, none) => {
 		const instance = makeInstance()
-		recordMatrixConnectAction(instance, matrixInfo(EmberModel.MatrixType.NToN), 2, [])
-		expect(instance.recordAction).not.toHaveBeenCalled()
+		recordMatrixSetConnectionAction(instance, matrixInfo(type), 2, [])
+		expect(instance.recordAction).toHaveBeenCalledWith(
+			{ actionId: 'matrixSetConnection', options: { matrix: '1.4', target_1_4: 2, sources_1_4: none } },
+			'1.4:2',
+		)
 	})
 })
 

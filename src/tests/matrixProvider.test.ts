@@ -281,7 +281,7 @@ describe('matrices from a provider', () => {
 	})
 
 	// As a parameter's reported value is recorded as a Set Value action
-	it("records the provider's connection changes as Matrix Connect actions, once per target, while recording", async () => {
+	it("records the provider's connection changes as Matrix Set Connection actions, once per target, while recording", async () => {
 		const { tree, matrix } = providerTree()
 		const { instance, server } = await connect(tree, { matricesString: '1.1' })
 		await vi.waitFor(() => expect(variables(instance)['matrix_1.1_target_1_sources']).toBe(1), { timeout: 3000 })
@@ -295,20 +295,24 @@ describe('matrices from a provider', () => {
 		server.updateMatrixConnection(matrix, { target: 2, sources: [3] })
 		await vi.waitFor(() =>
 			expect(instance.recordAction).toHaveBeenCalledWith(
-				{ actionId: 'matrixConnect', options: { matrix: '1.1', target_1_1: 2, sources_1_1: 3 } },
+				{ actionId: 'matrixSetConnection', options: { matrix: '1.1', target_1_1: 2, sources_1_1: 3 } },
 				'1.1:2',
 			),
 		)
 		// Only the target that changed, not target 1
 		expect(instance.recordAction).toHaveBeenCalledTimes(1)
 
-		// A target left with no source has nothing for Matrix Connect to connect
+		// A target left with no source is recorded with None, which disconnects it
 		instance.recordAction.mockClear()
 		server.updateMatrixConnection(matrix, { target: 1, sources: [] })
-		await vi.waitFor(() => expect(variables(instance)['matrix_1.1_target_1_sources']).toBeNull())
-		await new Promise((resolve) => setTimeout(resolve, 200))
-		expect(instance.recordAction).not.toHaveBeenCalled()
+		await vi.waitFor(() =>
+			expect(instance.recordAction).toHaveBeenCalledWith(
+				{ actionId: 'matrixSetConnection', options: { matrix: '1.1', target_1_1: 1, sources_1_1: -1 } },
+				'1.1:1',
+			),
+		)
 
+		instance.recordAction.mockClear()
 		instance.handleStartStopRecordActions(false)
 		server.updateMatrixConnection(matrix, { target: 2, sources: [1] })
 		await vi.waitFor(() => expect(variables(instance)['matrix_1.1_target_2_sources']).toBe(1))

@@ -13,7 +13,7 @@ import {
 	doMatrixAction,
 	doTake,
 	doClear,
-	learnMatrixConnectSources,
+	learnMatrixSources,
 	setSelectedSource,
 	setSelectedTarget,
 } from './actions/matrix.js'
@@ -400,7 +400,7 @@ export function GetActionsList(
 			description: 'Connect sources to a target, as well as those connected to it (for an N:N matrix)',
 			options: [matrixDropdown(state), ...targetFields(state), ...sourceFields(state, { several: true })],
 			callback: doMatrixAction(self, emberClient, 'connect', queue, state),
-			learn: learnMatrixConnectSources(state),
+			learn: learnMatrixSources(state, { none: false }),
 		},
 		[ActionId.MatrixDisconnect]: {
 			name: 'Matrix Disconnect',
@@ -414,6 +414,7 @@ export function GetActionsList(
 				"Connect exactly these sources to a target, replacing those connected to it. None disconnects the target's sources",
 			options: [matrixDropdown(state), ...targetFields(state), ...sourceFields(state, { several: true, none: true })],
 			callback: doMatrixAction(self, emberClient, 'absolute', queue, state),
+			learn: learnMatrixSources(state, { none: true }),
 		},
 		[ActionId.Take]: {
 			name: 'Take',

@@ -40,7 +40,7 @@ import {
 	sanitiseVariableId,
 	parseBonjourHost,
 	hasConnectionChanged,
-	recordMatrixConnectAction,
+	recordMatrixSetConnectionAction,
 	recordParameterAction,
 	parseParameterValue,
 	discoverFunctionsFromTree,
@@ -906,7 +906,7 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 	}
 
 	/**
-	 * Record a Matrix Connect for each target of a matrix whose sources changed since last seen. A matrix whose
+	 * Record a Matrix Set Connection for each target of a matrix whose sources changed since last seen. A matrix whose
 	 * connections aren't loaded (yet, or again after a reconnect) is seen afresh once they are, so loading them records
 	 * nothing.
 	 */
@@ -920,7 +920,7 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 		this.recordedConnections.set(info.path, snapshot)
 		if (!previous) return
 		for (const target of changedTargets(previous, snapshot)) {
-			recordMatrixConnectAction(this, info, target, snapshot.get(target) ?? [])
+			recordMatrixSetConnectionAction(this, info, target, snapshot.get(target) ?? [])
 		}
 	}
 

@@ -3,7 +3,7 @@ import { Model as EmberModel } from '@phillipivan/emberplus-connection'
 import {
 	doMatrixAction,
 	doTake,
-	learnMatrixConnectSources,
+	learnMatrixSources,
 	setSelectedSource,
 	setSelectedTarget,
 	type MatrixOperation,
@@ -297,7 +297,7 @@ describe('the operation sent, by the matrix type', () => {
 
 describe("learning Matrix Connect's sources", () => {
 	const learn = (options: Record<string, unknown>, state: EmberPlusState) =>
-		learnMatrixConnectSources(state)({ options } as any, {} as any)
+		learnMatrixSources(state, { none: false })({ options } as any, {} as any)
 	const connectedTo2 =
 		(...sources: number[]) =>
 		(matrix: EmberModel.MatrixImpl) =>
@@ -347,6 +347,38 @@ describe("learning Matrix Connect's sources", () => {
 		expect(learn({ matrix: '1.5', target_1_4: 2 }, state)).toBeUndefined()
 		expect(learn({ matrix: '1.4', target_1_4: 2 ** 31 }, state)).toBeUndefined()
 		expect(learn({ matrix: '1.4' }, state)).toBeUndefined()
+	})
+})
+
+describe("learning Matrix Set Connection's sources", () => {
+	const learn = (options: Record<string, unknown>, state: EmberPlusState) =>
+		learnMatrixSources(state, { none: true })({ options } as any, {} as any)
+	const connected = (matrix: EmberModel.MatrixImpl) =>
+		(matrix.connections = EmberModel.connectionsOf([{ target: 2, sources: [7, 3] }, { target: 4 }]))
+
+	it("learns a target's sources, as Matrix Connect does", () => {
+		expect(learn({ matrix: '1.4', target_1_4: 2 }, makeState(connected))).toEqual({ sources_1_4: 3 })
+		const state = makeState((matrix) => {
+			nToN(matrix)
+			connected(matrix)
+		})
+		expect(learn({ matrix: '1.4', target_1_4: 2 }, state)).toEqual({ sources_1_4: [3, 7] })
+	})
+
+	// Played back, Set Connection disconnects the target's sources
+	it('learns a target with no source as None, or an empty list on an N:N matrix', () => {
+		expect(learn({ matrix: '1.4', target_1_4: 4, sources_1_4: 3 }, makeState(connected))).toEqual({ sources_1_4: -1 })
+		expect(learn({ matrix: '1.4', target_1_4: 9, sources_1_4: 3 }, makeState(connected))).toEqual({ sources_1_4: -1 })
+		const state = makeState((matrix) => {
+			nToN(matrix)
+			connected(matrix)
+		})
+		expect(learn({ matrix: '1.4', target_1_4: 4, sources_1_4: [3] }, state)).toEqual({ sources_1_4: [] })
+	})
+
+	it("learns nothing while the matrix's connections aren't loaded, or for an invalid target", () => {
+		expect(learn({ matrix: '1.4', target_1_4: 4 }, makeState(undefined, false))).toBeUndefined()
+		expect(learn({ matrix: '1.4', target_1_4: -2 }, makeState(connected))).toBeUndefined()
 	})
 })
 

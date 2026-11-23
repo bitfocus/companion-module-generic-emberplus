@@ -18,7 +18,7 @@ import {
 	type MatrixInfo,
 	type MatrixNode,
 } from '../matrices.js'
-import { chosenMatrix, sourceOf, sourcesOf, targetOf } from '../matrixOptions.js'
+import { chosenMatrix, NoSource, sourceOf, sourcesOf, targetOf } from '../matrixOptions.js'
 import { EmberPlusState } from '../state.js'
 import { resolvePath } from '../util.js'
 
@@ -169,14 +169,15 @@ export const doMatrixAction =
 	}
 
 /**
- * Learn Matrix Connect's sources: those connected to the chosen target, as the matrix's connections were loaded from the
- * provider (see MatrixInfo.connectionsLoaded). A list for an N:N matrix's multi-select, the one source for any other
- * matrix's dropdown. Nothing is learned (undefined) for a matrix that isn't configured or whose connections aren't
- * loaded, an invalid target, or a target with no source connected, which there would be nothing to connect. Returns
- * only the sources, so the target, and an expression in it, are kept.
+ * Learn a connection action's sources: those connected to the chosen target, as the matrix's connections were loaded
+ * from the provider (see MatrixInfo.connectionsLoaded). A list for an N:N matrix's multi-select, the one source for any
+ * other matrix's dropdown. A target with no source connected learns none, with `none` (Set Connection: an empty list,
+ * or None), and otherwise nothing (Matrix Connect, which would have nothing to connect). Nothing is learned (undefined)
+ * for a matrix that isn't configured or whose connections aren't loaded, or an invalid target. Returns only the
+ * sources, so the target, and an expression in it, are kept.
  */
-export const learnMatrixConnectSources =
-	(state: EmberPlusState) =>
+export const learnMatrixSources =
+	(state: EmberPlusState, { none }: { none: boolean }) =>
 	(
 		action: CompanionActionEvent<MatrixActionOptions>,
 		_context: CompanionActionLearnContext,
@@ -195,12 +196,12 @@ export const learnMatrixConnectSources =
 			logger.debug(`Learn: matrix ${info.path}'s connections aren't loaded, so nothing was learned`)
 			return undefined
 		}
-		if (sources.length === 0) {
+		if (sources.length === 0 && !none) {
 			logger.debug(`Learn: matrix ${info.path} has no source connected to target ${target}, so nothing was learned`)
 			return undefined
 		}
 		const learned: Partial<MatrixActionOptions> = {}
-		learned[`sources_${info.key}`] = isNToN(info.node?.contents) ? sources : sources[0]
+		learned[`sources_${info.key}`] = isNToN(info.node?.contents) ? sources : (sources[0] ?? NoSource)
 		return learned
 	}
 

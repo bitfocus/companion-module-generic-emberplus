@@ -17,7 +17,7 @@ import {
 	renamedFeedbacksApi2,
 	UpgradeScripts,
 } from '../upgrades.js'
-import { recordMatrixConnectAction, recordParameterAction } from '../util.js'
+import { recordMatrixSetConnectionAction, recordParameterAction } from '../util.js'
 
 const { ElementType, ParameterType, ParameterAccess } = EmberModel
 
@@ -366,28 +366,35 @@ describe('matrix fields', () => {
 
 	it.each([
 		['1.4', [1]],
+		['1.4', []],
 		["Video's Router", [5]],
-	])('a recorded Matrix Connect on %s has only options the action has, shown together', (path, sources) => {
-		const state = matrixState()
-		const recorded: CompanionRecordedAction[] = []
-		const self = { recordAction: vi.fn((a: CompanionRecordedAction) => recorded.push(a)) }
-		recordMatrixConnectAction(self as unknown as EmberPlusInstance, state.matrices.get(path)!, 3, sources)
-		const definition = all.actions[ActionId.MatrixConnect]
-		expect(recorded).toHaveLength(1)
-		const values = recorded[0].options as Record<string, JsonValue>
-		for (const key of Object.keys(values)) {
-			expect(field(definition, key), key).toBeDefined()
-			expect(isVisible(definition, field(definition, key)!, values), key).toBe(true)
-		}
-		// The multi-select of an N:N matrix takes a list, the dropdown of any other one source
-		const sourcesField = Object.keys(values).find((key) => key.startsWith('sources_'))!
-		expect(Array.isArray(values[sourcesField])).toBe(field(definition, sourcesField)?.type === 'multidropdown')
-	})
+		["Video's Router", []],
+	])(
+		'a recorded Matrix Set Connection on %s, with sources %j, has only options the action has, shown together',
+		(path, sources) => {
+			const state = matrixState()
+			const recorded: CompanionRecordedAction[] = []
+			const self = { recordAction: vi.fn((a: CompanionRecordedAction) => recorded.push(a)) }
+			recordMatrixSetConnectionAction(self as unknown as EmberPlusInstance, state.matrices.get(path)!, 3, sources)
+			const definition = all.actions[ActionId.MatrixSetConnection]
+			expect(recorded).toHaveLength(1)
+			const values = recorded[0].options as Record<string, JsonValue>
+			for (const key of Object.keys(values)) {
+				expect(field(definition, key), key).toBeDefined()
+				expect(isVisible(definition, field(definition, key)!, values), key).toBe(true)
+			}
+			// The multi-select of an N:N matrix takes a list, the dropdown of any other one of its choices (None for none)
+			const sourcesField = Object.keys(values).find((key) => key.startsWith('sources_'))!
+			const sourcesOption = field(definition, sourcesField)!
+			if (sourcesOption.type === 'multidropdown') expect(values[sourcesField]).toEqual(sources)
+			else expect(sourcesOption.choices?.map((c) => c.id)).toContain(values[sourcesField])
+		},
+	)
 
-	it('lets Matrix Connect learn its sources, and not Disconnect or Set Connection', () => {
+	it('lets Matrix Connect and Set Connection learn their sources, and not Disconnect', () => {
 		expect(all.actions[ActionId.MatrixConnect]?.learn).toBeTypeOf('function')
+		expect(all.actions[ActionId.MatrixSetConnection]?.learn).toBeTypeOf('function')
 		expect(all.actions[ActionId.MatrixDisconnect]?.learn).toBeUndefined()
-		expect(all.actions[ActionId.MatrixSetConnection]?.learn).toBeUndefined()
 	})
 
 	it.each([

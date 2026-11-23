@@ -23,6 +23,7 @@ import { ActionId, type MatrixActionOptions, type SetValueOptions } from './acti
 import type { EmberPlusConfig } from './config.js'
 import type EmberPlusInstance from './index.js'
 import { isNToN, type MatrixInfo } from './matrices.js'
+import { NoSource } from './matrixOptions.js'
 import { EmberNumberRange, type NumericParameterType } from './ranges.js'
 import { EmberPlusState } from './state.js'
 import { Model as EmberModel, type Types as EmberTypes } from '@phillipivan/emberplus-connection'
@@ -326,22 +327,22 @@ export function recordParameterAction(
 }
 
 /**
- * Record a Matrix Connect of a target's sources, as the provider reported them: the matrix by its path, the target, and
- * its sources, a list for an N:N matrix's multi-select or the one for any other's dropdown. A target left with no
- * source isn't recorded, as Matrix Connect has nothing to connect. Recorded once per target (`<path>:<target>`), so
- * the latest change to a target replaces an earlier one, as a parameter's latest value does.
+ * Record a Matrix Set Connection of a target's sources, as the provider reported them, which played back makes the
+ * target's connection just that, on any type of matrix: the matrix by its path, the target, and its sources, a list for
+ * an N:N matrix's multi-select (empty for none) or the one for any other's dropdown (None for none). Recorded once per
+ * target (`<path>:<target>`), so the latest change to a target replaces an earlier one, as a parameter's latest value
+ * does.
  */
-export function recordMatrixConnectAction(
+export function recordMatrixSetConnectionAction(
 	self: EmberPlusInstance,
 	info: MatrixInfo,
 	target: number,
 	sources: number[],
 ): void {
-	if (sources.length === 0) return
 	const options: MatrixActionOptions = { matrix: info.path }
 	options[`target_${info.key}`] = target
-	options[`sources_${info.key}`] = isNToN(info.node?.contents) ? sources : sources[0]
-	self.recordAction({ actionId: ActionId.MatrixConnect, options }, `${info.path}:${target}`)
+	options[`sources_${info.key}`] = isNToN(info.node?.contents) ? sources : (sources[0] ?? NoSource)
+	self.recordAction({ actionId: ActionId.MatrixSetConnection, options }, `${info.path}:${target}`)
 }
 
 /**
