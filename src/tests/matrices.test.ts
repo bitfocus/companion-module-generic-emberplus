@@ -1,9 +1,18 @@
 import { describe, it, expect, vi } from 'vitest'
-import { Model as EmberModel } from '@phillipivan/emberplus-connection'
+import {
+	type ContentsProperty,
+	Model as EmberModel,
+	type SignalLabel,
+	type TreeChange,
+	TreeChangeKind,
+	type Types as EmberTypes,
+} from '@phillipivan/emberplus-connection'
 import {
 	changedTargets,
 	connectionSnapshot,
+	applyLabelChanges,
 	emptyLabels,
+	firstLabels,
 	matrixLabel,
 	isNotFound,
 	loadMatrixContents,
@@ -14,6 +23,7 @@ import {
 	readSignalLabels,
 	signalChoices,
 	signalNumbers,
+	signalLabel,
 	signalProperty,
 	type MatrixInfo,
 } from '../matrices.js'
@@ -181,7 +191,7 @@ describe('signalChoices', () => {
 				[3, {}],
 			])
 		})
-		matrix.labels.sources.set(2, '  Mic 2  ')
+		matrix.labels.sources.set(2, new Map([[0, '  Mic 2  ']]))
 		expect(signalChoices(matrix, 'source')).toEqual([
 			{ id: 1, label: '1: In 1' },
 			{ id: 2, label: '2: Mic 2' },
@@ -254,13 +264,20 @@ describe('readSignalLabels', () => {
 			]),
 		}
 		const labels = await readSignalLabels(client as never, matrix.node!)
-		expect(labels.targets).toEqual(
+		expect(firstLabels(labels, 'target')).toEqual(
 			new Map([
 				[1, 'Studio A'],
 				[2, 'B'],
 			]),
 		)
-		expect(labels.sources).toEqual(new Map([[5, 'Five']]))
+		expect(firstLabels(labels, 'source')).toEqual(new Map([[5, 'Five']]))
+		// Every set's label is kept, by the set's place, for a change to any of them
+		expect(labels.targets.get(1)).toEqual(
+			new Map([
+				[0, 'Studio A'],
+				[1, 'A'],
+			]),
+		)
 	})
 
 	it("takes the lowest numbered label in each signal's labels node, going on past one that fails", async () => {
@@ -289,7 +306,9 @@ describe('readSignalLabels', () => {
 		}
 		const onError = vi.fn()
 		const labels = await readSignalLabels(client as never, matrix.node!, onError)
-		expect(labels.targets).toEqual(new Map([[1, 'Third']]))
+		expect(firstLabels(labels, 'target')).toEqual(new Map([[1, 'Third']]))
+		// By the parameter's number
+		expect(labels.targets.get(1)).toEqual(new Map([[3, 'Third']]))
 		expect(labels.sources.size).toBe(0)
 		expect(onError).toHaveBeenCalledWith('1.2.4', expect.objectContaining({ message: 'Request timed out' }))
 		// Nothing asked for a signal without a labels node
@@ -308,9 +327,49 @@ describe('readSignalLabels', () => {
 			getDirectory: vi.fn(async () => ({ sentOk: false, response: undefined })),
 		}
 		const previous = emptyLabels()
-		previous.targets.set(1, 'Studio A')
+		previous.targets.set(1, new Map([[0, 'Studio A']]))
 		const labels = await readSignalLabels(client as never, matrix.node!, () => undefined, previous)
-		expect(labels.targets).toEqual(new Map([[1, 'Studio A']]))
+		expect(firstLabels(labels, 'target')).toEqual(new Map([[1, 'Studio A']]))
+	})
+
+	// The provider reports the change to a label node once asked for it, before the other signals' replies are in
+	it('keeps a change reported while the labels are read, which goes into what they are read into', async () => {
+		const matrix = info((m) => {
+			m.targets = new Map([
+				[1, { labelsLocation: '1.2.1' }],
+				[2, { labelsLocation: '1.2.2' }],
+			])
+		})
+		let release!: () => void
+		const held = new Promise<void>((resolve) => (release = resolve))
+		const reply = (value: string) =>
+			new NumberedTreeNodeImpl(
+				1,
+				new EmberNodeImpl('labels'),
+				EmberModel.childrenOf([
+					new NumberedTreeNodeImpl(1, new ParameterImpl(ParameterType.String, 'a', undefined, value)),
+				]),
+			)
+		const client = {
+			getDirectory: vi.fn(async (node: { path: string }) => ({
+				sentOk: true,
+				// Target 2's reply is held until target 1's label has changed again
+				response: node.path === '1.2.1' ? Promise.resolve(reply('Mon')) : held.then(() => reply('Booth')),
+			})),
+		}
+		const into = emptyLabels()
+		const reading = readSignalLabels(client as never, matrix.node!, () => undefined, undefined, into)
+		await vi.waitFor(() => expect(into.targets.get(1)).toBeDefined())
+		into.targets.set(1, new Map([[1, 'Studio A']]))
+		release()
+		const labels = await reading
+		expect(labels).toBe(into)
+		expect(firstLabels(labels, 'target')).toEqual(
+			new Map([
+				[1, 'Studio A'],
+				[2, 'Booth'],
+			]),
+		)
 	})
 
 	it('reads nothing for a matrix without labels', async () => {
@@ -319,6 +378,159 @@ describe('readSignalLabels', () => {
 		expect(labels).toEqual(emptyLabels())
 		expect(client.getMatrixLabels).not.toHaveBeenCalled()
 		expect(client.getDirectory).not.toHaveBeenCalled()
+	})
+})
+
+describe('applyLabelChanges', () => {
+	const { Added, Updated, OutsideTree } = TreeChangeKind
+	const primary = new EmberModel.LabelImpl('1.9', 'Primary')
+	const short = new EmberModel.LabelImpl('1.8', 'Short')
+
+	/** A loaded matrix with two label sets, each signal's labels as read */
+	function withSets() {
+		const loaded = info((m) => (m.labels = [primary, short]))
+		loaded.labels.targets.set(
+			1,
+			new Map([
+				[0, 'Studio A'],
+				[1, 'A'],
+			]),
+		)
+		loaded.labels.targets.set(2, new Map([[1, 'B']]))
+		return loaded
+	}
+
+	/** A change to a label, as the library reports it: the parameter, and whose label it is */
+	function labelChange(
+		of: MatrixInfo,
+		path: EmberTypes.RelativeOID,
+		label: { kind: 'target' | 'source'; signal: number; set?: EmberModel.Label; text?: string },
+		kind: TreeChangeKind = Updated,
+	): TreeChange {
+		const element = new NumberedTreeNodeImpl(
+			Number(path.split('.').at(-1)),
+			new ParameterImpl(ParameterType.String, 'label', undefined, label.text),
+		)
+		const whose: SignalLabel = { matrix: of.node as never, matrixPath: '1.4', ...label }
+		if (kind === OutsideTree) return { kind, path, element: element as never, label: whose }
+		if (kind === Added) return { kind, path, element, label: whose }
+		return { kind, path, element, changed: ['value'], previous: {}, label: whose }
+	}
+
+	it("replaces a signal's label from the first label set that has one", () => {
+		const loaded = withSets()
+		const { relabelled } = applyLabelChanges(
+			[loaded],
+			[labelChange(loaded, '1.9.1.1', { kind: 'target', signal: 1, set: primary, text: 'Studio B' })],
+		)
+		expect(relabelled).toEqual(new Set([loaded]))
+		expect(signalLabel(loaded, 'target', 1)).toBe('Studio B')
+	})
+
+	// Kept, should the earlier set's label go
+	it("keeps a later set's label without it becoming the signal's label", () => {
+		const loaded = withSets()
+		applyLabelChanges([loaded], [labelChange(loaded, '1.8.1.1', { kind: 'target', signal: 1, set: short, text: 'Z' })])
+		expect(signalLabel(loaded, 'target', 1)).toBe('Studio A')
+		expect(loaded.labels.targets.get(1)?.get(1)).toBe('Z')
+	})
+
+	it('names a signal from a later set while no earlier one has a label for it', () => {
+		const loaded = withSets()
+		applyLabelChanges(
+			[loaded],
+			[labelChange(loaded, '1.8.1.2', { kind: 'target', signal: 2, set: short, text: 'Booth' })],
+		)
+		expect(signalLabel(loaded, 'target', 2)).toBe('Booth')
+	})
+
+	// The labels getMatrixLabels fetches come as added, and those whose node the tree hasn't loaded as outside it
+	it('takes labels however the library reports them: added, updated or outside the tree', () => {
+		const loaded = withSets()
+		applyLabelChanges(
+			[loaded],
+			[
+				labelChange(loaded, '1.9.2.3', { kind: 'source', signal: 3, set: primary, text: 'Mic 3' }, Added),
+				labelChange(loaded, '1.9.2.4', { kind: 'source', signal: 4, set: primary, text: 'Mic 4' }, OutsideTree),
+			],
+		)
+		expect(signalLabel(loaded, 'source', 3)).toBe('Mic 3')
+		expect(signalLabel(loaded, 'source', 4)).toBe('Mic 4')
+	})
+
+	it("follows the first label in a signal's labels node, by the parameter's number", () => {
+		const loaded = info((m) => (m.targets = new Map([[1, { labelsLocation: '1.2.1' }]])))
+		loaded.labels.targets.set(
+			1,
+			new Map([
+				[2, 'Mon'],
+				[5, 'Long'],
+			]),
+		)
+		applyLabelChanges([loaded], [labelChange(loaded, '1.2.1.5', { kind: 'target', signal: 1, text: 'Longer' })])
+		expect(signalLabel(loaded, 'target', 1)).toBe('Mon')
+		applyLabelChanges([loaded], [labelChange(loaded, '1.2.1.2', { kind: 'target', signal: 1, text: 'Monitor' })])
+		expect(signalLabel(loaded, 'target', 1)).toBe('Monitor')
+		// No longer a string: the next label names the signal
+		applyLabelChanges([loaded], [labelChange(loaded, '1.2.1.2', { kind: 'target', signal: 1 })])
+		expect(signalLabel(loaded, 'target', 1)).toBe('Longer')
+	})
+
+	it("leaves another matrix's labels alone", () => {
+		const loaded = withSets()
+		const other = withSets()
+		const { relabelled } = applyLabelChanges(
+			[loaded],
+			[labelChange(other, '1.9.1.1', { kind: 'target', signal: 1, set: primary, text: 'Elsewhere' })],
+		)
+		expect(relabelled.size).toBe(0)
+		expect(signalLabel(loaded, 'target', 1)).toBe('Studio A')
+	})
+
+	// Two paths configured for the one matrix, by number and by identifiers
+	it('relabels every configured path that is the matrix', () => {
+		const loaded = withSets()
+		const byName: MatrixInfo = { ...loaded, path: 'device.router', key: 'device_router', labels: emptyLabels() }
+		applyLabelChanges(
+			[loaded, byName],
+			[labelChange(loaded, '1.9.1.1', { kind: 'target', signal: 1, set: primary, text: 'Studio B' })],
+		)
+		expect(signalLabel(byName, 'target', 1)).toBe('Studio B')
+	})
+
+	it('puts a change into the labels being read as well', () => {
+		const loaded = withSets()
+		loaded.labelsBeingRead = emptyLabels()
+		applyLabelChanges(
+			[loaded],
+			[labelChange(loaded, '1.9.1.1', { kind: 'target', signal: 1, set: primary, text: 'Studio B' })],
+		)
+		expect(loaded.labelsBeingRead.targets.get(1)).toEqual(new Map([[0, 'Studio B']]))
+	})
+
+	it('reads the labels again once the matrix has new label sets, or labels nodes', () => {
+		const loaded = info((m) => (m.targets = new Map([[1, { identifier: 'Out 1' }]])))
+		const node = loaded.node!
+		const updated = (changed: ContentsProperty[], previous: object): TreeChange => ({
+			kind: Updated,
+			path: '1.4',
+			element: node as never,
+			changed,
+			previous,
+		})
+		expect(applyLabelChanges([loaded], [updated(['labels'], { labels: undefined })]).reread).toEqual(new Set([loaded]))
+		node.contents.targets = new Map([[1, { identifier: 'Out 1', labelsLocation: '1.2.1' }]])
+		expect(
+			applyLabelChanges([loaded], [updated(['targets'], { targets: new Map([[1, { identifier: 'Out 1' }]]) })]).reread
+				.size,
+		).toBe(1)
+		// A signal renamed, or gone offline: its labels are where they were
+		expect(
+			applyLabelChanges(
+				[loaded],
+				[updated(['targets'], { targets: new Map([[1, { identifier: 'Old', labelsLocation: '1.2.1' }]]) })],
+			).reread.size,
+		).toBe(0)
 	})
 })
 
@@ -341,7 +553,7 @@ describe('signalProperty', () => {
 			{ target: 2 },
 		])
 	})
-	router.labels.targets.set(1, 'Studio A')
+	router.labels.targets.set(1, new Map([[0, 'Studio A']]))
 
 	it.each([
 		['target', 1, 'label', 'Studio A'],

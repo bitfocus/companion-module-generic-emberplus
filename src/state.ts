@@ -63,10 +63,11 @@ export class EmberPlusState {
 		const previous = this.matrices
 		this.droppedMatrices.clear()
 		this.matrices = new Map(
-			paths.map((path) => [
-				path,
-				{ ...(previous.get(path) ?? { labels: emptyLabels() }), path, key: matrixOptionKey(path) },
-			]),
+			paths.map((path) => {
+				// A read under way fills the info it started on, not this one
+				const { labelsBeingRead: _reading, ...kept } = previous.get(path) ?? { labels: emptyLabels() }
+				return [path, { ...kept, path, key: matrixOptionKey(path) }]
+			}),
 		)
 	}
 
@@ -305,6 +306,7 @@ export class EmberPlusState {
 			info.node = undefined
 			info.connectionsLoaded = false
 			info.labels = emptyLabels()
+			info.labelsBeingRead = undefined
 		}
 		this.selected = noSelection()
 	}

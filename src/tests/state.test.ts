@@ -387,7 +387,7 @@ describe('clear', () => {
 		state.setMatrixPaths(['0.2'])
 		const info = state.matrices.get('0.2')!
 		info.node = new EmberModel.NumberedTreeNodeImpl(2, new EmberModel.MatrixImpl('router'))
-		info.labels.targets.set(1, 'Mon')
+		info.labels.targets.set(1, new Map([[0, 'Mon']]))
 		state.addMatrixFeedback('fb1', '0.2')
 
 		state.clear()

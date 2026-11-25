@@ -76,8 +76,8 @@ function matrixState(): EmberPlusState {
 	])
 	const info = state.matrices.get('1.4')!
 	info.node = new EmberModel.NumberedTreeNodeImpl(4, audio)
-	info.labels.targets.set(1, ' Mon ')
-	info.labels.sources.set(1, 'Mic')
+	info.labels.targets.set(1, new Map([[0, ' Mon ']]))
+	info.labels.sources.set(1, new Map([[0, 'Mic']]))
 	const video = new EmberModel.MatrixImpl('video')
 	video.matrixType = EmberModel.MatrixType.NToN
 	video.targets = new Map([[3, { identifier: 'Out 3' }]])

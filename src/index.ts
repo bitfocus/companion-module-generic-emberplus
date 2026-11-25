@@ -17,11 +17,14 @@ import {
 	EmberClient,
 	Model as EmberModel,
 	setDebugLogging,
+	type TreeChange,
 	type Types as EmberTypes,
 } from '@phillipivan/emberplus-connection'
 import { describe } from './logging.js'
 import {
+	applyLabelChanges,
 	changedTargets,
+	emptyLabels,
 	connectionSnapshot,
 	isMatrixNode,
 	isNotFound,
@@ -33,6 +36,7 @@ import {
 	signalChoices,
 	type ConnectionSnapshot,
 	type MatrixInfo,
+	type MatrixNode,
 } from './matrices.js'
 import { StatusManager } from './status.js'
 import { UpgradeScripts } from './upgrades.js'
@@ -126,6 +130,8 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 	private feedbackGenerationCounter = 0
 	/** Matrices the provider has reported changes to, or that were loaded, for the next throttled update */
 	private matricesToUpdate: Set<string> = new Set()
+	/** Matrices being loaded whose labels are yet to be read: a change to where their labels are needs no read of its own */
+	private labelsToRead: Set<MatrixInfo> = new Set()
 	/** What each matrix's dropdowns last listed, so that the definitions are only rebuilt when that changes */
 	private matrixChoiceSignatures: Map<string, string> = new Map()
 	/** Each matrix variable's value as last set, serialised, so that only the ones a report changed are set */
@@ -237,6 +243,7 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 		this.variableValueUpdates = {}
 		this.state.clear()
 		this.matricesToUpdate.clear()
+		this.labelsToRead.clear()
 		this.forgetMatrixUpdates()
 		this.recordedConnections.clear()
 	}
@@ -539,6 +546,7 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 		client.on('error', (e) => this.handleConnectionError(client, e))
 		client.on('connected', () => this.handleConnected(client))
 		client.on('disconnected', () => this.handleDisconnected(client))
+		client.on('change', (changes) => this.handleTreeChanges(client, changes))
 
 		// Settles once connected, or with the Error of a failed attempt; the library goes on retrying either way, and
 		// the error event has logged it
@@ -611,6 +619,25 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 		})().catch((e) => this.log('error', `Error registering again after reconnecting: ${describe(e)}`))
 	}
 
+	/**
+	 * A message from the provider changed the tree: follow the matrices' labels. (Their targets, sources and connections
+	 * come through the matrix's own callback, handleChangedValue.) A matrix that has gained label sets, or labels nodes,
+	 * has its labels read again, which asks the provider to report their changes too.
+	 */
+	private handleTreeChanges(client: EmberClient, changes: TreeChange[]): void {
+		if (!this.isCurrentClient(client)) return
+		const { relabelled, reread } = applyLabelChanges(this.state.matrices.values(), changes)
+		for (const info of relabelled) this.matrixChanged(info.path)
+		for (const info of reread) {
+			const { node } = info
+			if (!node || this.labelsToRead.has(info)) continue
+			this.log('debug', `Matrix ${info.path}: its labels have moved, so they are read again`)
+			void this.readLabels(client, info, node).then(() => {
+				if (this.isCurrentClient(client)) this.matrixChanged(info.path)
+			})
+		}
+	}
+
 	private handleDisconnected(client: EmberClient): void {
 		if (!this.isCurrentClient(client)) return
 		this.statusManager.updateStatus(InstanceStatus.Connecting, 'Disconnected')
@@ -676,25 +703,18 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 		info.node = node
 		this.matrixChanged(path)
 
+		this.labelsToRead.add(info)
 		try {
-			const answered = await this.emberQueue.add(async () => loadMatrixContents(client, node))
-			if (answered && this.isCurrentClient(client) && info.node === node) info.connectionsLoaded = true
-		} catch (e) {
-			if (!this.isCurrentClient(client)) return
-			this.log('warn', `Matrix ${path}: its targets, sources and connections could not be loaded: ${describe(e)}`)
-		}
-
-		try {
-			// A signal whose label can't be read just now keeps the one it had
-			info.labels = await readSignalLabels(
-				client,
-				node,
-				(location, e) => this.log('debug', `Matrix ${path}: no labels from ${location}: ${describe(e)}`),
-				info.labels,
-			)
-		} catch (e) {
-			if (!this.isCurrentClient(client)) return
-			this.log('warn', `Matrix ${path}: its labels could not be read: ${describe(e)}`)
+			try {
+				const answered = await this.emberQueue.add(async () => loadMatrixContents(client, node))
+				if (answered && this.isCurrentClient(client) && info.node === node) info.connectionsLoaded = true
+			} catch (e) {
+				if (!this.isCurrentClient(client)) return
+				this.log('warn', `Matrix ${path}: its targets, sources and connections could not be loaded: ${describe(e)}`)
+			}
+			await this.readLabels(client, info, node)
+		} finally {
+			this.labelsToRead.delete(info)
 		}
 		if (!this.isCurrentClient(client)) return
 		const { targets, sources } = node.contents
@@ -703,6 +723,33 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 			`Matrix ${path} loaded: ${targets?.size ?? node.contents.targetCount ?? 0} targets, ${sources?.size ?? node.contents.sourceCount ?? 0} sources, ${info.labels.targets.size + info.labels.sources.size} labels`,
 		)
 		this.matrixChanged(path)
+	}
+
+	/**
+	 * Read a matrix's labels, which also asks the provider to report their changes (handleTreeChanges follows them). A
+	 * signal whose label can't be read just now keeps the one it had. A change reported while they are read goes into
+	 * what is read, as well as into the labels in use until then.
+	 */
+	private async readLabels(client: EmberClient, info: MatrixInfo, node: MatrixNode): Promise<void> {
+		this.labelsToRead.delete(info)
+		const into = emptyLabels()
+		info.labelsBeingRead = into
+		try {
+			const labels = await readSignalLabels(
+				client,
+				node,
+				(location, e) => this.log('debug', `Matrix ${info.path}: no labels from ${location}: ${describe(e)}`),
+				info.labels,
+				into,
+			)
+			// Unless a later read, or another element, has taken over
+			if (info.labelsBeingRead === into && info.node === node) info.labels = labels
+		} catch (e) {
+			if (this.isCurrentClient(client))
+				this.log('warn', `Matrix ${info.path}: its labels could not be read: ${describe(e)}`)
+		} finally {
+			if (info.labelsBeingRead === into) info.labelsBeingRead = undefined
+		}
 	}
 
 	/** Leave out a configured matrix the provider showed not to be one, until the next connection or config change */

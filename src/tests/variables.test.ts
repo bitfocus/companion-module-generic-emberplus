@@ -137,7 +137,7 @@ describe('matrix variables', () => {
 		const info = state.matrices.get('1.4')!
 		info.node = new EmberModel.NumberedTreeNodeImpl(4, matrix)
 		info.connectionsLoaded = connections
-		info.labels.targets.set(1, ' Studio A ')
+		info.labels.targets.set(1, new Map([[0, ' Studio A ']]))
 		return state
 	}
 	const all = { targetNames: true, sourceNames: true, connections: true }

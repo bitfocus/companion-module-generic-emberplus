@@ -80,11 +80,12 @@ function providerTree() {
 	router.connections = connectionsOf([{ target: 1, sources: [1] }, { target: 2 }])
 	router.labels = [new LabelImpl('1.2', 'Primary')]
 	const matrix = new NumberedTreeNodeImpl(1, router)
+	const studioA = label(1, 'Studio A')
 	const labels = new NumberedTreeNodeImpl(
 		2,
 		new EmberNodeImpl('labels'),
 		childrenOf([
-			new NumberedTreeNodeImpl(1, new EmberNodeImpl('targets'), childrenOf([label(1, 'Studio A')])),
+			new NumberedTreeNodeImpl(1, new EmberNodeImpl('targets'), childrenOf([studioA])),
 			new NumberedTreeNodeImpl(2, new EmberNodeImpl('sources'), childrenOf([label(1, 'Mic 1'), label(3, 'Mic 3')])),
 		]),
 	)
@@ -92,7 +93,7 @@ function providerTree() {
 	const tree = childrenOf([
 		new NumberedTreeNodeImpl(1, new EmberNodeImpl('device'), childrenOf([matrix, labels, level])),
 	])
-	return { tree, matrix }
+	return { tree, matrix, studioA }
 }
 
 let server: EmberServer | undefined
@@ -229,7 +230,7 @@ describe('matrices from a provider', () => {
 		)
 	})
 
-	// A signal's identifier comes with the matrix's own reports, so it is followed live; labels are read on connecting
+	// A signal's identifier comes with the matrix's own reports
 	it('follows a signal renamed by the provider, in the dropdowns and the variables', async () => {
 		const { tree, matrix } = providerTree()
 		const { instance, server } = await connect(tree, { matricesString: '1.1' })
@@ -249,6 +250,48 @@ describe('matrices from a provider', () => {
 			},
 			{ timeout: 2000 },
 		)
+	})
+
+	it("follows a label set's label changed by the provider, in the dropdowns and the variables", async () => {
+		const { tree, studioA } = providerTree()
+		const { instance, server } = await connect(tree, { matricesString: '1.1' })
+		await vi.waitFor(() => expect(variables(instance)['matrix_1.1_target_1_name']).toBe('Studio A'), { timeout: 3000 })
+
+		server.update(studioA, { value: 'Studio B' })
+		await vi.waitFor(() => expect(variables(instance)['matrix_1.1_target_1_name']).toBe('Studio B'))
+		await vi.waitFor(
+			() => {
+				const options = latest(instance.setActionDefinitions).setSelectedTarget.options
+				expect(options.find((o: any) => o.id === 'target_1_1').choices).toContainEqual({ id: 1, label: '1: Studio B' })
+			},
+			{ timeout: 2000 },
+		)
+	})
+
+	// The provider reports a change to a label node only once asked for it: so a new set's labels are read
+	it('reads the labels of a label set the provider adds, and follows them', async () => {
+		const { tree, matrix } = providerTree()
+		const second = label(2, 'Booth')
+		const device = tree.get(1)!
+		device.children!.set(
+			4,
+			Object.assign(
+				new NumberedTreeNodeImpl(
+					4,
+					new EmberNodeImpl('more labels'),
+					childrenOf([new NumberedTreeNodeImpl(1, new EmberNodeImpl('targets'), childrenOf([second]))]),
+				),
+				{ parent: device },
+			),
+		)
+		const { instance, server } = await connect(tree, { matricesString: '1.1' })
+		await vi.waitFor(() => expect(variables(instance)['matrix_1.1_target_1_name']).toBe('Studio A'), { timeout: 3000 })
+		expect(variables(instance)['matrix_1.1_target_2_name']).toBe('Out 2')
+
+		server.update(matrix, { labels: [new LabelImpl('1.2', 'Primary'), new LabelImpl('1.4', 'More')] })
+		await vi.waitFor(() => expect(variables(instance)['matrix_1.1_target_2_name']).toBe('Booth'), { timeout: 3000 })
+		server.update(second, { value: 'Booth 2' })
+		await vi.waitFor(() => expect(variables(instance)['matrix_1.1_target_2_name']).toBe('Booth 2'))
 	})
 
 	// The Glow DTD has connect and disconnect for an N:N matrix only: a 1:N matrix is sent absolute
@@ -351,6 +394,7 @@ describe('matrices from a provider', () => {
 		sources.targets = new Map([[1, { labelsLocation: '1.2.1' }]])
 		sources.sources = new Map([[4, { identifier: 'In 4', labelsLocation: '1.2.2' }]])
 		sources.connections = connectionsOf([{ target: 1 }])
+		const [long, mon, cam4] = [label(2, 'Long'), label(1, 'Mon'), label(1, 'Cam 4')]
 		const tree = childrenOf([
 			new NumberedTreeNodeImpl(
 				1,
@@ -362,18 +406,14 @@ describe('matrices from a provider', () => {
 						new EmberNodeImpl('labels'),
 						childrenOf([
 							// The first label is the lowest numbered
-							new NumberedTreeNodeImpl(
-								1,
-								new EmberNodeImpl('target 1'),
-								childrenOf([label(2, 'Long'), label(1, 'Mon')]),
-							),
-							new NumberedTreeNodeImpl(2, new EmberNodeImpl('source 4'), childrenOf([label(1, 'Cam 4')])),
+							new NumberedTreeNodeImpl(1, new EmberNodeImpl('target 1'), childrenOf([long, mon])),
+							new NumberedTreeNodeImpl(2, new EmberNodeImpl('source 4'), childrenOf([cam4])),
 						]),
 					),
 				]),
 			),
 		])
-		const { instance } = await connect(tree, { matricesString: '1.1' })
+		const { instance, server } = await connect(tree, { matricesString: '1.1' })
 		await vi.waitFor(
 			() =>
 				expect(variables(instance)).toMatchObject({
@@ -382,6 +422,16 @@ describe('matrices from a provider', () => {
 				}),
 			{ timeout: 3000 },
 		)
+
+		// And follows their changes: the first label's, and not another's
+		server.update(cam4, { value: 'Cam 4B' })
+		await vi.waitFor(() => expect(variables(instance)['matrix_1.1_source_4_name']).toBe('Cam 4B'))
+		server.update(long, { value: 'Longer' })
+		await vi.waitFor(() => expect(instance.state.matrices.get('1.1').labels.targets.get(1).get(2)).toBe('Longer'))
+		await new Promise((resolve) => setTimeout(resolve, 50))
+		expect(variables(instance)['matrix_1.1_target_1_name']).toBe('Mon')
+		server.update(mon, { value: 'Monitor' })
+		await vi.waitFor(() => expect(variables(instance)['matrix_1.1_target_1_name']).toBe('Monitor'))
 	})
 })
 
