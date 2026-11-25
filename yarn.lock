@@ -569,14 +569,14 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@phillipivan/emberplus-connection@npm:~0.5.0":
-  version: 0.5.0
-  resolution: "@phillipivan/emberplus-connection@npm:0.5.0"
+"@phillipivan/emberplus-connection@npm:~0.5.1":
+  version: 0.5.1
+  resolution: "@phillipivan/emberplus-connection@npm:0.5.1"
   dependencies:
     debug: "npm:^4.4.3"
     eventemitter3: "npm:^5.0.4"
     smart-buffer: "npm:^4.2.0"
-  checksum: 10c0/2c12250e1a38cb64edf922f3456df49660ceed59f0545e083e19e8b7d7cba7dae88521d930cac3104fc2cd3bcc26e7af9c11c434a0f906b9566ba278799e2e78
+  checksum: 10c0/4dad82af3dfee1834eef5aede307047280afefd9123a60b962896d52112d56463cf6ba98a955c20ea1c196838a9418a96fa16f5705f3ea7ec5b680a61d4a8996
   languageName: node
   linkType: hard
 
@@ -1596,7 +1596,7 @@ __metadata:
     "@companion-app/expressions": "npm:1.1.1"
     "@companion-module/base": "npm:~2.2.2"
     "@companion-module/tools": "npm:^3.2.1"
-    "@phillipivan/emberplus-connection": "npm:~0.5.0"
+    "@phillipivan/emberplus-connection": "npm:~0.5.1"
     "@types/node": "npm:^26.6.6"
     "@vitest/coverage-v8": "npm:5.1.0"
     es-toolkit: "npm:^1.53.2"
