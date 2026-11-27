@@ -224,6 +224,68 @@ describe('the API 2 upgrade matches the definitions', () => {
 	})
 })
 
+describe('ramp actions', () => {
+	/** A writeable parameter of each type, and a read-only Integer */
+	function typedState(): EmberPlusState {
+		const state = new EmberPlusState()
+		const types = [ParameterType.Integer, ParameterType.Real, ParameterType.Enum, ParameterType.String]
+		types.forEach((parameterType, i) =>
+			state.updateParameterMap(`1.${i + 1}`, {
+				number: i + 1,
+				contents: { type: ElementType.Parameter, parameterType, access: ParameterAccess.ReadWrite, value: 0 },
+			} as never),
+		)
+		state.updateParameterMap('1.9', {
+			number: 9,
+			contents: { type: ElementType.Parameter, parameterType: ParameterType.Integer, access: ParameterAccess.Read },
+		} as never)
+		return state
+	}
+
+	it.each([ActionId.RampValue, ActionId.StopRamp])('%s lists the writeable Integer and Real paths only', (id) => {
+		const ids = field(definitions(typedState()).actions[id], 'path')?.choices?.map((choice) => choice.id)
+		expect(ids).toEqual(['1.1', '1.2'])
+	})
+
+	it('Ramp Value has the fields of a relative Set Value, a duration from 0, and the easing curves', () => {
+		const definition = all.actions[ActionId.RampValue]
+		expect(definition.options.map((option) => option.id)).toEqual([
+			'path',
+			'value',
+			'duration',
+			'easing',
+			'relative',
+			'min',
+			'max',
+			'waitNote',
+		])
+		expect(field(definition, 'duration')).toMatchObject({ type: 'number', min: 0 })
+		const easing = field(definition, 'easing')
+		expect(easing).toMatchObject({ type: 'dropdown', default: 'linear' })
+		expect(easing?.choices?.map((choice) => choice.id)).not.toContain('bounce-out')
+		for (const id of ['min', 'max']) {
+			expect(field(definition, id)).toMatchObject({ isVisibleExpression: '!!$(options:relative)' })
+		}
+		// The value can be a negative change
+		expect(field(definition, 'value')?.min).toBeLessThan(0)
+		expect(definition.learn).toBeDefined()
+		expect(definition.optionsToMonitorForSubscribe).toEqual(['path'])
+	})
+
+	it('Ramp Value says how long a ramp the action waits for can take', () => {
+		expect(field(all.actions[ActionId.RampValue], 'waitNote')).toMatchObject({
+			type: 'static-text',
+			value: expect.stringContaining('about 5 seconds'),
+		})
+	})
+
+	it('Stop Ramp hides the path while it stops every ramp', () => {
+		const definition = all.actions[ActionId.StopRamp]
+		expect(field(definition, 'all')).toMatchObject({ type: 'checkbox', default: false })
+		expect(field(definition, 'path')).toMatchObject({ isVisibleExpression: '!$(options:all)' })
+	})
+})
+
 describe('recorded actions', () => {
 	const types = [
 		[ActionId.SetValueBoolean, ParameterType.Boolean, true],

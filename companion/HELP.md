@@ -43,6 +43,10 @@ On, the variables of number parameters hold the value as it is displayed: by the
 
 A stream parameter, such as an audio meter, is one the device sends values for many times a second, and only to a consumer that subscribed to it. The module subscribes while a feedback reads the parameter, or while it has a variable (Parameter - Streams), and unsubscribes once neither is so; an action doesn't keep a stream, as it reads the value when it runs. Feedbacks are rechecked, and variables set, at most every 10 ms. Stream values aren't recorded by the Action Recorder.
 
+### Ramp Step Interval
+
+How often a Ramp Value action sends a step, in milliseconds, from 20 to 1000; 50 by default. Shorter is smoother, but sends more messages, and some devices may fall behind, giving a fade that is late or uneven. See Ramps below.
+
 ### Verbose Logs
 
 Logs the Ember+ library's debug output, under the source `ember plus`, the full contents of each parameter as it is registered, and each value as it arrives. The module's own debug messages are always logged; Companion's log view shows them when its Debug level is selected.
@@ -77,6 +81,19 @@ Set Value ENUM finds an entry by name in the parameter's enumeration map, or els
 
 Any value field can be switched to expression mode to set it from variables or an expression, eg `$(internal:custom_level) * 2`. This replaces the `Use Variable?` and `Path from String` options of earlier versions, which are converted automatically when the module is upgraded. An expression for a number field must give a number within the field's range, or the action is skipped. An expression for a checkbox is read as true or false, so for a variable holding text such as `on` or `off` use eg `!arrayIncludes(['', 'false', 'off', '0'], toLowerCase($(internal:custom_state)))`.
 
+## Ramps
+
+- **Ramp Value** fades an Integer or Real parameter to a value over a time. The value is as displayed, converted by the parameter's formula or factor, as for Set Value Integer and Set Value Real, and the ramp moves through the displayed values (dB, Hz), so a parameter with a formula fades evenly as displayed. With **Relative**, the value is an amount to change the displayed value by, within the Minimum and Maximum, which are the device's values, as for Set Value. **Learn** fills in the parameter's current displayed value.
+- **Easing** sets how the value moves over the time: Linear, or Quadratic, Cubic, Quartic, Quintic, Sinusoidal, Exponential or Circular, each In (starting slowly), Out (ending slowly) or In/Out (both). Every curve moves steadily from start to target, never past it.
+- A duration of one Ramp Step Interval or less sets the value at once.
+- **Stop Ramp** stops the ramp on a parameter, or every ramp, where it has reached.
+
+The module sends the steps itself, one every Ramp Step Interval, so a ramp works with any device. But it is a series of steps, not the device's own ramp: on audio, a parameter the device doesn't smooth may give audible steps, and an Integer with few values moves in visible jumps. A device's own ramp function, such as Lawo's `RampMotorFader`, can be called with Invoke Function instead.
+
+A new ramp on a parameter stops the one running there, and starts from where it had reached; a relative ramp adds its change to that point. A Set Value on the parameter, a reconnection, and saving the module config also stop its ramp. A ramp doesn't notice the value changed another way, such as a fader moved by hand: its next step overwrites it.
+
+In an action group that waits for each action, the next action waits for a ramp to finish when it takes less than about 5 seconds, so short ramps can be chained. Companion stops waiting for an action after 5 seconds, so a longer ramp finishes on its own after the action has completed: add a delay before the next action if it must wait. Aborting the running actions stops a ramp the group is waiting for.
+
 ## Functions
 
 Ember+ devices may expose executable functions (such as triggering snapshots, firing macros, or executing remote methods).
@@ -110,6 +127,8 @@ On upgrading, the matrix actions and feedbacks of earlier versions are converted
 - Set Selected Source
 - Set Selected Target
 - Set Host
+- Ramp Value
+- Stop Ramp
 
 ## Host
 

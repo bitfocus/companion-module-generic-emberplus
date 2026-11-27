@@ -37,7 +37,7 @@
 	},
 	"dependencies": {
 		"@companion-module/base": "~2.2.2",
-		"@phillipivan/emberplus-connection": "~0.5.1",
+		"@phillipivan/emberplus-connection": "~0.5.2",
 		"es-toolkit": "^1.53.2",
 		"p-queue": "^10.0.0"
 	},

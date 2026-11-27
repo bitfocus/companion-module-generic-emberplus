@@ -51,6 +51,7 @@ vi.mock('@phillipivan/emberplus-connection', async (importOriginal) => ({
 		disconnect = vi.fn().mockResolvedValue(undefined)
 		discard = vi.fn()
 		removeAllListeners = vi.fn()
+		setNoDelay = vi.fn()
 		getDirectory = vi.fn().mockResolvedValue({ response: Promise.resolve() })
 		getElementByPath = vi.fn().mockResolvedValue(undefined)
 		tree = new Map()
@@ -897,6 +898,17 @@ describe('set host to another provider', () => {
 		expect((instance as any).setVariableValues).toHaveBeenCalledWith({ host: '10.0.0.9', port: 9001 })
 	})
 
+	// Small requests (setValues, matrix connects, ramp steps) go out at once, not held back by Nagle's algorithm. The
+	// library keeps the setting for every connection the client makes after
+	it('turns TCP_NODELAY on for the client it builds, before it connects', async () => {
+		const instance = makeInstance()
+		await (instance as any).setupEmberConnection()
+		const client = (instance as any).emberClient
+		expect(client.setNoDelay).toHaveBeenCalledTimes(1)
+		expect(client.setNoDelay.mock.calls[0][0] ?? true).toBe(true)
+		expect(client.setNoDelay.mock.invocationCallOrder[0]).toBeLessThan(client.connect.mock.invocationCallOrder[0])
+	})
+
 	// The action callbacks hold the client they were defined with
 	it('defines the actions again with the new client before it connects', async () => {
 		const instance = makeInstance()
@@ -1289,6 +1301,72 @@ describe('destroy', () => {
 			removeAllListeners: vi.fn(),
 			discard: vi.fn(),
 		}
+		await instance.destroy()
+	})
+})
+
+// ---------------------------------------------------------------------------
+// Ramps: every one stops when the connection or config it was started under goes
+// ---------------------------------------------------------------------------
+
+describe('ramps', () => {
+	/** An instance with a ramp running on 1.1, far from finished */
+	function rampingInstance() {
+		const instance = makeInstance() as any
+		const client = { removeAllListeners: vi.fn(), discard: vi.fn(), on: vi.fn() }
+		instance.emberClient = client
+		const { done } = instance.ramps.start('1.1', {
+			from: 0,
+			to: 10,
+			target: 10,
+			duration: 60_000,
+			easing: (k: number) => k,
+			toDevice: (displayed: number) => displayed,
+			send: async () => undefined,
+		})
+		return { instance, client, done }
+	}
+
+	it('are stopped by destroy', async () => {
+		const { instance, done } = rampingInstance()
+		await instance.destroy()
+		await expect(done).resolves.toBe('cancelled')
+	})
+
+	it('are stopped by a disconnect', async () => {
+		const { instance, client, done } = rampingInstance()
+		instance.handleDisconnected(client)
+		await expect(done).resolves.toBe('cancelled')
+		await instance.destroy()
+	})
+
+	it("aren't stopped by a disconnect of a client no longer in use", async () => {
+		const { instance } = rampingInstance()
+		instance.handleDisconnected({})
+		expect(instance.ramps.has('1.1')).toBe(true)
+		await instance.destroy()
+	})
+
+	it('are stopped by a config change that keeps the host', async () => {
+		const { instance, done } = rampingInstance()
+		await instance.configUpdated({ ...instance.config, verbose: true })
+		await expect(done).resolves.toBe('cancelled')
+		await instance.destroy()
+	})
+
+	it('are stopped by a host change', async () => {
+		const { instance, done } = rampingInstance()
+		instance.resetConnection()
+		await expect(done).resolves.toBe('cancelled')
+		await instance.destroy()
+	})
+
+	it('step at the interval the config gives, or the default for a config from before the setting', async () => {
+		const instance = makeInstance() as any
+		await instance.configUpdated({ ...instance.config, rampInterval: 25 })
+		expect(instance.ramps.interval).toBe(25)
+		await instance.configUpdated({ ...instance.config, rampInterval: undefined })
+		expect(instance.ramps.interval).toBe(50)
 		await instance.destroy()
 	})
 })

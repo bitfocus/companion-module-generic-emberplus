@@ -3,6 +3,7 @@ import type {
 	CompanionInputFieldCheckbox,
 	CompanionInputFieldDropdown,
 	CompanionInputFieldNumber,
+	CompanionInputFieldStaticText,
 	CompanionInputFieldTextInput,
 } from '@companion-module/base'
 import { EmberClient, Model as EmberModel } from '@phillipivan/emberplus-connection'
@@ -20,9 +21,11 @@ import {
 import { learnSetValueActionOptions, setValue, subscribeParameterAction } from './actions/parameter.js'
 import { invokeFunctionAction } from './actions/function.js'
 import { setHostAction, learnSetHostActionOptions } from './actions/host.js'
+import { learnRampValue, rampValue, RampWaitLimit, stopRamp } from './actions/ramp.js'
 import { EmberPlusState } from './state.js'
 import { matrixDropdown, sourceFields, targetFields, type MatrixOptions } from './matrixOptions.js'
 import { EmberNumberRange, type NumericParameterType } from './ranges.js'
+import { EasingChoices, type EasingId } from './ramps.js'
 import { filterPathChoices, filterFunctionPathChoices } from './util.js'
 
 export enum ActionId {
@@ -40,6 +43,8 @@ export enum ActionId {
 	SetSelectedTarget = 'setSelectedTarget',
 	InvokeFunction = 'invokeFunction',
 	SetHost = 'setHost',
+	RampValue = 'ramp_value',
+	StopRamp = 'stop_ramp',
 }
 
 export type SetValueIntOptions = {
@@ -129,6 +134,27 @@ export type SetHostOptions = {
 	port: number
 }
 
+export type RampValueOptions = {
+	path: string
+	/** As displayed; with Relative, the amount to change it by */
+	value: number
+	/** In ms */
+	duration: number
+	easing: EasingId
+	relative: boolean
+	/** A relative change's limits, in the device's units, as Set Value's */
+	min: number
+	max: number
+	/** The static text on when the action waits for its ramp: no value */
+	waitNote?: never
+}
+
+export type StopRampOptions = {
+	/** Every ramp, rather than the one on the path */
+	all: boolean
+	path: string
+}
+
 export type ActionSchema = {
 	[ActionId.SetValueInt]: { options: SetValueIntOptions }
 	[ActionId.SetValueReal]: { options: SetValueRealOptions }
@@ -144,6 +170,8 @@ export type ActionSchema = {
 	[ActionId.SetSelectedTarget]: { options: SetSelectedTargetOptions }
 	[ActionId.InvokeFunction]: { options: InvokeFunctionOptions }
 	[ActionId.SetHost]: { options: SetHostOptions }
+	[ActionId.RampValue]: { options: RampValueOptions }
+	[ActionId.StopRamp]: { options: StopRampOptions }
 }
 
 const pathTooltip =
@@ -275,6 +303,40 @@ function pathChoices(
 	const choices = filterPathChoices(state, true, paramType)
 	return { ...pathDropDown, choices, default: choices[0]?.id ?? pathDropDown.default }
 }
+
+/** The path dropdown of the ramp actions, listing the registered Integer and Real parameters */
+function rampPathChoices(state: EmberPlusState): CompanionInputFieldDropdown<'path', string | number> {
+	const choices = filterPathChoices(state, true, EmberModel.ParameterType.Integer, EmberModel.ParameterType.Real)
+	return { ...pathDropDown, choices, default: choices[0]?.id ?? pathDropDown.default }
+}
+
+const rampDuration = {
+	type: 'number',
+	label: 'Duration (ms)',
+	id: 'duration',
+	default: 1000,
+	min: 0,
+	max: 3_600_000,
+	step: 100,
+	asInteger: true,
+	tooltip: 'Up to one step interval (the Ramp Step Interval in the module config) sets the value at once',
+} as const satisfies CompanionInputFieldNumber<'duration'>
+
+const rampEasing = {
+	type: 'dropdown',
+	label: 'Easing',
+	id: 'easing',
+	choices: EasingChoices,
+	default: EasingChoices[0].id,
+	tooltip: 'How the value moves over the time. In starts slowly, Out ends slowly, In/Out does both',
+} as const satisfies CompanionInputFieldDropdown<'easing', EasingId>
+
+const rampWaitNote = {
+	type: 'static-text',
+	label: 'Waiting for the ramp',
+	id: 'waitNote',
+	value: `In an action group that waits for each action, the next action waits for a ramp to finish when it takes less than about ${(RampWaitLimit / 1000).toFixed(0)} seconds. A longer ramp finishes on its own after the action has completed.`,
+} as const satisfies CompanionInputFieldStaticText<'waitNote'>
 
 export function GetActionsList(
 	self: EmberPlusInstance,
@@ -493,6 +555,44 @@ export function GetActionsList(
 			],
 			callback: setHostAction(self),
 			learn: learnSetHostActionOptions(config),
+		},
+		[ActionId.RampValue]: {
+			name: 'Ramp Value',
+			description: 'Fade an Integer or Real parameter to a value over a time, in steps sent by the module',
+			options: [
+				rampPathChoices(state),
+				{
+					...valueNumber(EmberModel.ParameterType.Real, 0.001),
+					label: 'Target Value',
+					tooltip:
+						"As displayed: the parameter's formula, or else its factor, converts it to the device's value. With Relative, the amount to change the displayed value by",
+				},
+				rampDuration,
+				rampEasing,
+				relative,
+				limit('min', EmberModel.ParameterType.Real, deviceUnitsNote),
+				limit('max', EmberModel.ParameterType.Real, deviceUnitsNote),
+				rampWaitNote,
+			],
+			callback: rampValue(self, emberClient, state),
+			subscribe: subscribeParameterAction(self),
+			learn: learnRampValue(state),
+			optionsToMonitorForSubscribe: ['path'],
+		},
+		[ActionId.StopRamp]: {
+			name: 'Stop Ramp',
+			description: 'Stop a ramp where it has reached',
+			options: [
+				{
+					type: 'checkbox',
+					label: 'All ramps',
+					id: 'all',
+					default: false,
+					disableAutoExpression: true,
+				},
+				{ ...rampPathChoices(state), isVisibleExpression: '!$(options:all)' },
+			],
+			callback: stopRamp(self),
 		},
 	}
 	// Without a matrix to work on (none configured, or none the provider has), the matrix actions aren't offered

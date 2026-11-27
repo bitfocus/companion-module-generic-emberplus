@@ -42,7 +42,7 @@ function harness(node: any) {
 	if (node?.contents?.type === ElementType.Parameter) state.updateParameterMap('0.1', node)
 	return {
 		state,
-		self: { registerNewParameter: vi.fn().mockResolvedValue(node) } as any,
+		self: { registerNewParameter: vi.fn().mockResolvedValue(node), ramps: { cancel: vi.fn() } } as any,
 		client: { setValue: vi.fn().mockResolvedValue({ response: Promise.resolve() }) } as any,
 		queue: { add: vi.fn().mockImplementation(async (fn: () => Promise<void>) => fn()) } as any,
 	}

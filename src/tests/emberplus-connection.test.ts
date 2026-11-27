@@ -269,6 +269,7 @@ describe('set value string requests', () => {
 		const emberClient = client
 		const self = {
 			registerNewParameter: async (path: string) => emberClient.getElementByPath(path),
+			ramps: { cancel: () => false },
 			logger: { debug: () => undefined },
 		} as unknown as Parameters<typeof setValue>[0]
 		const state = { parameters: new Map() } as unknown as Parameters<typeof setValue>[4]

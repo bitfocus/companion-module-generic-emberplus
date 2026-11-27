@@ -39,6 +39,28 @@ const learnNumericOptions = (learned: SetValueOptions, emberPath: EmberModel.Par
 }
 
 /**
+ * Learn an Integer or Real parameter's value as displayed: by its formula, or else its factor, with its limits. A
+ * formula that can't be computed leaves the device's value learned, as the recorder and the variables do. Returns
+ * whether the displayed value was learned
+ */
+export const learnDisplayedNumber = (
+	learned: SetValueOptions,
+	emberPath: EmberModel.Parameter,
+	path: string,
+): boolean => {
+	learnNumericOptions(learned, emberPath)
+	let displayed: number | undefined
+	try {
+		displayed = displayedNumber(emberPath)
+	} catch (e) {
+		logger.debug(`Learn: the formula of ${path} can't be computed, so its device value is learned: ${describe(e)}`)
+	}
+	if (displayed === undefined) return false
+	learned.value = displayed
+	return true
+}
+
+/**
  * Learn the parameter's current value (a number as displayed, by its formula or factor), its limits, and an
  * enumeration's entry. Returns only what was learned, so an expression in the path is kept.
  */
@@ -83,22 +105,9 @@ export const learnSetValueActionOptions =
 
 			case ActionId.SetValueInt:
 			case ActionId.SetValueReal: {
-				learnNumericOptions(learned, emberPath)
-				// The action takes the value as displayed: by the parameter's formula, or else its factor. A formula that
-				// can't be computed leaves the device's value learned, as the recorder and the variables do
-				let displayed: number | undefined
-				try {
-					displayed = displayedNumber(emberPath)
-				} catch (e) {
-					logger.debug(
-						`Learn: the formula of ${path} can't be computed, so its device value is learned: ${describe(e)}`,
-					)
-				}
-				if (displayed !== undefined) {
-					learned.value = displayed
-					// Which an Integer action upgraded with Device Units then takes too
-					if (actionType === ActionId.SetValueInt) learned.deviceUnits = false
-				}
+				// Which an Integer action upgraded with Device Units then takes too
+				if (learnDisplayedNumber(learned, emberPath, path) && actionType === ActionId.SetValueInt)
+					learned.deviceUnits = false
 				break
 			}
 
@@ -117,7 +126,7 @@ const parseStringValue = (options: SetValueOptions): string => {
 }
 
 /** A relative action's own limits, in the device's units; one missing (an action saved without it) is no limit */
-const withinRelativeLimits = (value: number, options: SetValueOptions): number =>
+const withinRelativeLimits = (value: number, options: Pick<SetValueOptions, 'min' | 'max'>): number =>
 	checkNumberLimits(value, options.min ?? -Infinity, options.max ?? Infinity)
 
 /**
@@ -133,10 +142,26 @@ const parseNumericValue = (
 	state: EmberPlusState,
 ): number | undefined => {
 	if (options.deviceUnits) return parseDeviceUnitsValue(options, path, parameter, paramType, state)
+	// The current value is only read for a relative change: a formula that can't be computed fails only those
+	return numericTarget(options, parameter, paramType, options.relative ? displayedNumber(parameter) : undefined)
+}
 
+/**
+ * The device value an Integer or Real action's options give: the value as displayed, or for a relative change that
+ * amount added to the current displayed value given, converted by the parameter's formula or factor (the library's
+ * deviceValue, which rounds an integer), then held to the action's limits (device units), the type's range and the
+ * parameter's minimum and maximum. Undefined for no value, or a value set outright beyond the type's range. Throws
+ * FormulaError for a formula that can't be computed, or has no second expression.
+ */
+export const numericTarget = (
+	options: Pick<SetValueOptions, 'value' | 'relative' | 'min' | 'max'>,
+	parameter: EmberModel.Parameter,
+	paramType: EmberModel.ParameterType.Integer | EmberModel.ParameterType.Real,
+	current: number | undefined,
+): number | undefined => {
 	let displayed = Number(options.value)
 	if (isNaN(displayed)) return undefined
-	if (options.relative) displayed += displayedNumber(parameter) ?? 0
+	if (options.relative) displayed += current ?? 0
 
 	let value = EmberModel.deviceValue(parameter, displayed)
 	if (isNaN(value)) return undefined
@@ -243,7 +268,8 @@ const parseBooleanValue = (options: SetValueOptions, path: string, state: EmberP
 	return Boolean(options.value)
 }
 
-function validateNodeAccess(
+/** Check a node is a parameter the module may write to, throwing if not */
+export function validateNodeAccess(
 	node: EmberModel.TreeElement<EmberModel.EmberElement>,
 	path: string,
 ): asserts node is EmberTypes.ElementOf<EmberModel.Parameter> {
@@ -278,6 +304,8 @@ export const setValue =
 	) =>
 	async (action: CompanionActionEvent<TOptions>, context: CompanionActionCallbackContext): Promise<void> => {
 		const path = resolveEventPath(action)
+		// A ramp on the path would overwrite the value set with its next step
+		self.ramps.cancel(path)
 		const node = await self.registerNewParameter(path, context.signal)
 
 		if (!node || node.contents.type !== EmberModel.ElementType.Parameter) {

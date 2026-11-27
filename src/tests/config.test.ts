@@ -25,3 +25,14 @@ describe('Connection Variables config option', () => {
 		expect(GetConfigFields().find((f) => f.id === 'verbose')).toMatchObject({ type: 'checkbox', default: false })
 	})
 })
+
+describe('Ramp Step Interval config option', () => {
+	it('is a number of ms, 20 to 1000, 50 by default', () => {
+		expect(GetConfigFields().find((f) => f.id === 'rampInterval')).toMatchObject({
+			type: 'number',
+			min: 20,
+			max: 1000,
+			default: 50,
+		})
+	})
+})

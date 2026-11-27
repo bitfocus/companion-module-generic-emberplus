@@ -1,4 +1,5 @@
 import type { DropdownChoice, SomeCompanionConfigField } from '@companion-module/base'
+import { rampIntervalDefault } from './ramps.js'
 
 export const portDefault = 9000
 
@@ -36,6 +37,8 @@ export type EmberPlusConfig = {
 	variables: ConnectionVariable[]
 	/** Turns on the Ember+ library's debug output, and fuller detail in the module's own debug messages */
 	verbose: boolean
+	/** How often a ramp sends a step, in ms. A config from before the setting has none: rampIntervalDefault */
+	rampInterval?: number
 }
 
 export function GetConfigFields(): SomeCompanionConfigField[] {
@@ -131,6 +134,18 @@ export function GetConfigFields(): SomeCompanionConfigField[] {
 			width: 6,
 			default: false,
 			tooltip: "Log the Ember+ library's debug output, and each registered parameter's full contents",
+		},
+		{
+			type: 'number',
+			id: 'rampInterval',
+			label: 'Ramp Step Interval (ms)',
+			width: 6,
+			min: 20,
+			max: 1000,
+			step: 1,
+			default: rampIntervalDefault,
+			tooltip:
+				'How often Ramp Value sends a step. Shorter is smoother, but sends more messages: some devices may fall behind',
 		},
 	]
 }

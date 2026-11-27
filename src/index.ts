@@ -38,6 +38,7 @@ import {
 	type MatrixInfo,
 	type MatrixNode,
 } from './matrices.js'
+import { RampEngine } from './ramps.js'
 import { StatusManager } from './status.js'
 import { UpgradeScripts } from './upgrades.js'
 import {
@@ -145,6 +146,10 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 	private matrixVariableDefinitions:
 		{ kinds: string; definitions: CompanionVariableDefinitions; serialised: string } | undefined
 	private statusManager = new StatusManager(this, { status: InstanceStatus.Connecting, message: 'Initialising' }, 2000)
+	/** The ramps running, which Ramp Value starts, and Stop Ramp, Set Value and a reconnect stop */
+	public readonly ramps = new RampEngine({
+		onStepError: (path, e) => this.log('debug', `Ramp on ${path}: a step failed: ${describe(e)}`),
+	})
 
 	/**
 	 * Main initialization function called once the module
@@ -165,6 +170,8 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 	 * Process an updated configuration array.
 	 */
 	public async configUpdated(config: EmberPlusConfig): Promise<void> {
+		// A ramp started under the old config stops where it is, whatever changed
+		this.ramps.cancelAll()
 		const oldConfig = structuredClone(this.config)
 		this.log('debug', `Old Config: ${describe(oldConfig)}`)
 
@@ -212,6 +219,7 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 	 * Clean up the instance before it is destroyed.
 	 */
 	public async destroy(): Promise<void> {
+		this.ramps.cancelAll()
 		this.throttledFeedbackChecksVariableUpdates.cancel()
 		this.debouncedUpdateActionFeedbackDefs.cancel()
 		this.debouncedStreamSync.cancel()
@@ -222,6 +230,7 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 
 	private applyConfig(config: EmberPlusConfig): void {
 		this.config = config
+		this.ramps.setStepInterval(config.rampInterval)
 		setDebugLogging(Boolean(config.verbose), (message) => libraryLogger.debug(message))
 		const [host, port] = parseBonjourHost(config)
 		this.config.host = host
@@ -234,6 +243,7 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 	 * may be another. The monitored paths stay, so their variables do (see EmberPlusState.clear).
 	 */
 	private resetConnection(): void {
+		this.ramps.cancelAll()
 		this.throttledFeedbackChecksVariableUpdates.cancel()
 		this.emberQueue.clear()
 		this.feedbacksToCheck.clear()
@@ -540,6 +550,10 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 		this.statusManager.updateStatus(InstanceStatus.Connecting)
 
 		const client = new EmberClient(this.config.host, this.config.port)
+		// Send each request at once, rather than letting Nagle's algorithm hold a small one back to join the next: the
+		// module sends only small messages, setValues, matrix connects and ramp steps, where the delay shows. The library
+		// keeps it for every connection the client makes, reconnecting included
+		client.setNoDelay()
 		this.emberClient = client
 		define()
 
@@ -640,6 +654,8 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 
 	private handleDisconnected(client: EmberClient): void {
 		if (!this.isCurrentClient(client)) return
+		// Steps would be lost while disconnected, and the value has moved on by the time the library reconnects
+		this.ramps.cancelAll()
 		this.statusManager.updateStatus(InstanceStatus.Connecting, 'Disconnected')
 		this.log('warn', `Disconnected from ${this.config.host}:${this.config.port}`)
 	}
