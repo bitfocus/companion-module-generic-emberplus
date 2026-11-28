@@ -15,6 +15,7 @@ describe('Connection Variables config option', () => {
 				{ id: 'matrixSourceNames', label: 'Matrix - Source Names' },
 				{ id: 'matrixTargetNames', label: 'Matrix - Target Names' },
 				{ id: 'matrixConnections', label: 'Matrix - Connections' },
+				{ id: 'matrixTargetDispositions', label: 'Matrix - Target Disposition' },
 			],
 		})
 	})

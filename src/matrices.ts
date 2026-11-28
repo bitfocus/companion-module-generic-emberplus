@@ -444,6 +444,17 @@ export function loadedConnections(info: MatrixInfo): EmberModel.Connections | un
 	return info.connectionsLoaded ? info.node?.contents.connections : undefined
 }
 
+/**
+ * A target's connection disposition, as the provider last reported it: tally, modified, pending or locked, in lower
+ * case. A report without one is a tally (the DTD's default). Null until the matrix's connections are loaded, or for a
+ * target the provider has reported no connection for
+ */
+export function targetDisposition(info: MatrixInfo, target: number): string | null {
+	const connection = loadedConnections(info)?.get(target)
+	if (!connection) return null
+	return (connection.disposition ?? EmberModel.ConnectionDisposition.Tally).toLowerCase()
+}
+
 /** The sources connected to a target, lowest first; undefined until the matrix's connections are loaded */
 export function connectedSources(info: MatrixInfo, target: number): number[] | undefined {
 	const connections = loadedConnections(info)
@@ -509,13 +520,8 @@ export function signalProperty(
 			return contents?.labelsLocation ?? null
 		case 'connections':
 			return kind === 'target' ? connectionValue(info, signal) : null
-		case 'disposition': {
-			const connections = loadedConnections(info)
-			if (kind !== 'target' || !connections) return null
-			const connection = connections.get(signal)
-			if (!connection) return null
-			return (connection.disposition ?? EmberModel.ConnectionDisposition.Tally).toLowerCase()
-		}
+		case 'disposition':
+			return kind === 'target' ? targetDisposition(info, signal) : null
 		default:
 			return unhandledProperty(property)
 	}

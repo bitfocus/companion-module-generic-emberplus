@@ -347,13 +347,17 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 		return { values: chosen.includes('parameterValues'), streams: chosen.includes('parameterStreams') }
 	}
 
-	/** Which matrix variables there are (Matrix - Target Names, Source Names and Connections in Connection Variables) */
+	/**
+	 * Which matrix variables there are (Matrix - Target Names, Source Names, Connections and Target Disposition in
+	 * Connection Variables)
+	 */
 	private get matrixVariables(): MatrixVariables {
 		const chosen = this.config.variables ?? connectionVariablesDefault
 		return {
 			targetNames: chosen.includes('matrixTargetNames'),
 			sourceNames: chosen.includes('matrixSourceNames'),
 			connections: chosen.includes('matrixConnections'),
+			dispositions: chosen.includes('matrixTargetDispositions'),
 		}
 	}
 

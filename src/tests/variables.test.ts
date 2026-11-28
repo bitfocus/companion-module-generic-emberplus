@@ -137,14 +137,19 @@ describe('matrix variables', () => {
 			[2, { identifier: 'Out 2' }],
 		])
 		matrix.sources = new Map([[3, {}]])
-		if (connections) matrix.connections = EmberModel.connectionsOf([{ target: 1, sources: [3, 1] }])
+		if (connections) {
+			matrix.connections = EmberModel.connectionsOf([
+				{ target: 1, sources: [3, 1], disposition: EmberModel.ConnectionDisposition.Locked },
+			])
+		}
 		const info = state.matrices.get('1.4')!
 		info.node = new EmberModel.NumberedTreeNodeImpl(4, matrix)
 		info.connectionsLoaded = connections
 		info.labels.targets.set(1, new Map([[0, ' Studio A ']]))
 		return state
 	}
-	const all = { targetNames: true, sourceNames: true, connections: true }
+	const all = { targetNames: true, sourceNames: true, connections: true, dispositions: true }
+	const none = { targetNames: false, sourceNames: false, connections: false, dispositions: false }
 	const own = {
 		'matrix_1.4_name': { name: 'Matrix 1.4: Name' },
 		'matrix_1.4_targets': { name: 'Matrix 1.4: Targets' },
@@ -162,24 +167,31 @@ describe('matrix variables', () => {
 			...limits,
 			'matrix_1.4_target_1_name': { name: 'Matrix 1.4: Target 1 Name' },
 			'matrix_1.4_target_1_sources': { name: 'Matrix 1.4: Target 1 Sources' },
+			'matrix_1.4_target_1_disposition': { name: 'Matrix 1.4: Target 1 Disposition' },
 			'matrix_1.4_target_2_name': { name: 'Matrix 1.4: Target 2 Name' },
 			'matrix_1.4_target_2_sources': { name: 'Matrix 1.4: Target 2 Sources' },
+			'matrix_1.4_target_2_disposition': { name: 'Matrix 1.4: Target 2 Disposition' },
 			'matrix_1.4_source_3_name': { name: 'Matrix 1.4: Source 3 Name' },
 		})
 		expect(
-			Object.keys(GetMatrixVariablesList(matrixState(), { ...all, targetNames: false, connections: false })),
+			Object.keys(
+				GetMatrixVariablesList(matrixState(), { ...all, targetNames: false, connections: false, dispositions: false }),
+			),
 		).toEqual([...Object.keys(own), ...Object.keys(limits), 'matrix_1.4_source_3_name'])
+		// Target Disposition on its own
+		expect(Object.keys(GetMatrixVariablesList(matrixState(), { ...none, dispositions: true }))).toEqual([
+			...Object.keys(own),
+			...Object.keys(limits),
+			'matrix_1.4_target_1_disposition',
+			'matrix_1.4_target_2_disposition',
+		])
 		// Its own, whatever the Connection Variables
-		expect(
-			GetMatrixVariablesList(matrixState(), { targetNames: false, sourceNames: false, connections: false }),
-		).toEqual({ ...own, ...limits })
+		expect(GetMatrixVariablesList(matrixState(), none)).toEqual({ ...own, ...limits })
 	})
 
 	// The connection limits are for an N:N matrix only
 	it('defines no connection limits for a matrix that is not N:N', () => {
-		expect(
-			GetMatrixVariablesList(matrixState(true, false), { targetNames: false, sourceNames: false, connections: false }),
-		).toEqual(own)
+		expect(GetMatrixVariablesList(matrixState(true, false), none)).toEqual(own)
 	})
 
 	it("gives an N:N matrix's own values, names as reported, and connected sources lowest first", () => {
@@ -194,8 +206,11 @@ describe('matrix variables', () => {
 			'matrix_1.4_max_total_connects': 2,
 			'matrix_1.4_target_1_name': ' Studio A ',
 			'matrix_1.4_target_1_sources': [1, 3],
+			'matrix_1.4_target_1_disposition': 'locked',
 			'matrix_1.4_target_2_name': 'Out 2',
 			'matrix_1.4_target_2_sources': [],
+			// No connection reported for it
+			'matrix_1.4_target_2_disposition': null,
 			'matrix_1.4_source_3_name': '',
 		})
 	})
@@ -208,8 +223,29 @@ describe('matrix variables', () => {
 		expect(values['matrix_1.4_target_2_sources']).toBeNull()
 	})
 
-	it('gives no connections until they are loaded', () => {
+	it('gives no connections, and no dispositions, until they are loaded', () => {
 		const values = matrixVariableValues(matrixState(false).matrices.get('1.4')!, all)
 		expect(values['matrix_1.4_target_1_sources']).toBeNull()
+		expect(values['matrix_1.4_target_1_disposition']).toBeNull()
+	})
+
+	// The DTD's default, for a connection reported without one
+	it('gives a connection reported without a disposition as a tally', () => {
+		const state = matrixState()
+		const info = state.matrices.get('1.4')!
+		info.node!.contents.connections = EmberModel.connectionsOf([{ target: 1, sources: [3] }])
+		expect(matrixVariableValues(info, all)['matrix_1.4_target_1_disposition']).toBe('tally')
+	})
+
+	it.each([
+		[EmberModel.ConnectionDisposition.Tally, 'tally'],
+		[EmberModel.ConnectionDisposition.Modified, 'modified'],
+		[EmberModel.ConnectionDisposition.Pending, 'pending'],
+		[EmberModel.ConnectionDisposition.Locked, 'locked'],
+	])('gives a disposition of %s as %j', (disposition, expected) => {
+		const state = matrixState()
+		const info = state.matrices.get('1.4')!
+		info.node!.contents.connections = EmberModel.connectionsOf([{ target: 1, sources: [3], disposition }])
+		expect(matrixVariableValues(info, all)['matrix_1.4_target_1_disposition']).toBe(expected)
 	})
 })

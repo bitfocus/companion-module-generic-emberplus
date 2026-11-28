@@ -230,6 +230,39 @@ describe('matrices from a provider', () => {
 		)
 	})
 
+	// Matrix - Target Disposition: the provider's last word on each target's connection, with nothing else changing
+	it("follows a target's disposition in its variable, a report that changes only that setting only it", async () => {
+		const { tree, matrix } = providerTree()
+		const { instance, server } = await connect(tree, {
+			matricesString: '1.1',
+			variables: ['matrixConnections', 'matrixTargetDispositions'],
+		})
+		// Reported without one in the tree: a tally
+		await vi.waitFor(() => expect(variables(instance)['matrix_1.1_target_1_disposition']).toBe('tally'), {
+			timeout: 3000,
+		})
+		expect(Object.keys(latest(instance.setVariableDefinitions))).toContain('matrix_1.1_target_2_disposition')
+
+		// Queued with the sources it has: the provider reports it pending, the sources as they were
+		instance.setVariableValues.mockClear()
+		server.queueMatrixConnection(matrix, { target: 1, sources: [1] })
+		await vi.waitFor(() => expect(variables(instance)['matrix_1.1_target_1_disposition']).toBe('pending'))
+		expect(variables(instance)).toEqual({ 'matrix_1.1_target_1_disposition': 'pending' })
+
+		// Then made, as it is: tally again
+		instance.setVariableValues.mockClear()
+		server.updateMatrixConnection(matrix, { target: 1, sources: [1] })
+		await vi.waitFor(() => expect(variables(instance)['matrix_1.1_target_1_disposition']).toBe('tally'))
+		expect(variables(instance)).toEqual({ 'matrix_1.1_target_1_disposition': 'tally' })
+	})
+
+	it('has no disposition variables without Matrix - Target Disposition', async () => {
+		const { tree } = providerTree()
+		const { instance } = await connect(tree, { matricesString: '1.1' })
+		await vi.waitFor(() => expect(variables(instance)['matrix_1.1_target_1_sources']).toBe(1), { timeout: 3000 })
+		expect(Object.keys(latest(instance.setVariableDefinitions)).some((id) => id.endsWith('_disposition'))).toBe(false)
+	})
+
 	// A signal's identifier comes with the matrix's own reports
 	it('follows a signal renamed by the provider, in the dropdowns and the variables', async () => {
 		const { tree, matrix } = providerTree()

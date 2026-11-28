@@ -10,6 +10,7 @@ export const ConnectionVariable = [
 	'matrixSourceNames',
 	'matrixTargetNames',
 	'matrixConnections',
+	'matrixTargetDispositions',
 ] as const
 export type ConnectionVariable = (typeof ConnectionVariable)[number]
 
@@ -19,6 +20,7 @@ export const connectionVariableChoices = [
 	{ id: 'matrixSourceNames', label: 'Matrix - Source Names' },
 	{ id: 'matrixTargetNames', label: 'Matrix - Target Names' },
 	{ id: 'matrixConnections', label: 'Matrix - Connections' },
+	{ id: 'matrixTargetDispositions', label: 'Matrix - Target Disposition' },
 ] as const satisfies DropdownChoice<ConnectionVariable>[]
 
 /** Parameter values only, for new connections and those upgraded from before the option */
@@ -116,7 +118,7 @@ export function GetConfigFields(): SomeCompanionConfigField[] {
 			choices: connectionVariableChoices,
 			default: connectionVariablesDefault,
 			tooltip:
-				"Parameter - Values: a variable for each parameter in use, by the configured paths, actions and feedbacks. Parameter - Streams: the same for stream parameters, such as meters, which update many times a second. Without them, use the Parameter Property feedback. Matrix - Target Names and Source Names: each configured matrix's signal names. Matrix - Connections: each target's connected sources. Without them, use the Matrix Property feedback",
+				"Parameter - Values: a variable for each parameter in use, by the configured paths, actions and feedbacks. Parameter - Streams: the same for stream parameters, such as meters, which update many times a second. Without them, use the Parameter Property feedback. Matrix - Target Names and Source Names: each configured matrix's signal names. Matrix - Connections: each target's connected sources. Matrix - Target Disposition: each target's connection disposition (tally, modified, pending or locked). Without them, use the Matrix Property feedback",
 		},
 		{
 			type: 'checkbox',

@@ -11,6 +11,7 @@ import {
 	matrixTypeName,
 	signalLabel,
 	signalNumbers,
+	targetDisposition,
 	type MatrixInfo,
 	type SignalKind,
 } from './matrices.js'
@@ -94,10 +95,17 @@ export interface MatrixVariables {
 	sourceNames: boolean
 	/** Matrix - Connections: each target's connected sources */
 	connections: boolean
+	/** Matrix - Target Disposition: each target's connection disposition */
+	dispositions: boolean
 }
 
-/** A matrix variable's id: a signal's name, or a target's connected sources */
-export function matrixVariableId(path: string, kind: SignalKind, signal: number, what: 'name' | 'sources'): string {
+/** A matrix variable's id: a signal's name, or a target's connected sources or connection disposition */
+export function matrixVariableId(
+	path: string,
+	kind: SignalKind,
+	signal: number,
+	what: 'name' | 'sources' | 'disposition',
+): string {
 	return `matrix_${sanitiseVariableId(path)}_${kind}_${signal}_${what}`
 }
 
@@ -147,6 +155,11 @@ export function GetMatrixVariablesList(state: EmberPlusState, kinds: MatrixVaria
 					name: `Matrix ${info.path}: Target ${target} Sources`,
 				}
 			}
+			if (kinds.dispositions) {
+				variables[matrixVariableId(info.path, 'target', target, 'disposition')] = {
+					name: `Matrix ${info.path}: Target ${target} Disposition`,
+				}
+			}
 		}
 		if (kinds.sourceNames) {
 			for (const source of signalNumbers(matrix, 'source')) {
@@ -163,7 +176,9 @@ export function GetMatrixVariablesList(state: EmberPlusState, kinds: MatrixVaria
  * A loaded matrix's variable values: its own, its name (matrixName), its targets' and sources' numbers, lowest first,
  * its type (matrixTypeName), and an N:N matrix's connection limits (connectLimits); and for the kinds chosen, a signal's
  * name (its first label, or else its identifier, as reported; empty for neither), and a target's connected sources
- * (connectionValue: an N:N matrix's numbers, any other's one number or null; null until the connections are loaded)
+ * (connectionValue: an N:N matrix's numbers, any other's one number or null; null until the connections are loaded),
+ * and its connection disposition (targetDisposition: tally, modified, pending or locked; null until loaded, or for a
+ * target with no connection reported)
  */
 export function matrixVariableValues(info: MatrixInfo, kinds: MatrixVariables): CompanionVariableValues {
 	const values: CompanionVariableValues = {}
@@ -184,6 +199,9 @@ export function matrixVariableValues(info: MatrixInfo, kinds: MatrixVariables): 
 		}
 		if (kinds.connections) {
 			values[matrixVariableId(info.path, 'target', target, 'sources')] = connectionValue(info, target)
+		}
+		if (kinds.dispositions) {
+			values[matrixVariableId(info.path, 'target', target, 'disposition')] = targetDisposition(info, target)
 		}
 	}
 	if (kinds.sourceNames) {
