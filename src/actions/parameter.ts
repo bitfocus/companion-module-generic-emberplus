@@ -23,6 +23,7 @@ import {
 	resolveEventPath,
 	substituteEscapeCharacters,
 } from '../util.js'
+import { withValidFactor } from '../factor.js'
 
 const logger = createModuleLogger('Actions/Set Value')
 
@@ -105,9 +106,13 @@ export const learnSetValueActionOptions =
 
 			case ActionId.SetValueInt:
 			case ActionId.SetValueReal: {
-				// Which an Integer action upgraded with Device Units then takes too
-				if (learnDisplayedNumber(learned, emberPath, path) && actionType === ActionId.SetValueInt)
-					learned.deviceUnits = false
+				// With Device Units, the device's value, sent as it is
+				if (action.options.deviceUnits) {
+					learnNumericOptions(learned, emberPath)
+					break
+				}
+				// As displayed; for a formula that can't be computed, the device's value, so in device units
+				if (!learnDisplayedNumber(learned, emberPath, path) && isDefined(emberPath.value)) learned.deviceUnits = true
 				break
 			}
 
@@ -163,7 +168,7 @@ export const numericTarget = (
 	if (isNaN(displayed)) return undefined
 	if (options.relative) displayed += current ?? 0
 
-	let value = EmberModel.deviceValue(parameter, displayed)
+	let value = EmberModel.deviceValue(withValidFactor(parameter), displayed)
 	if (isNaN(value)) return undefined
 
 	const range = EmberNumberRange[paramType]
@@ -175,9 +180,9 @@ export const numericTarget = (
 }
 
 /**
- * The device value for an Integer action from before 3.0 kept in the device's units (Device Units): the value multiplied
- * by the action's own Factor, rounded down, and a relative change added to the device's value, as such actions always
- * did. The parameter's own formula and factor play no part
+ * The device value for an action in the device's units (Device Units): the value as it is, bypassing the parameter's
+ * formula and factor, with a relative change added to the device's value. An Integer's is rounded to a whole number,
+ * as a displayed value is; a Real's is sent as it is
  */
 const parseDeviceUnitsValue = (
 	options: SetValueOptions,
@@ -186,8 +191,8 @@ const parseDeviceUnitsValue = (
 	paramType: EmberModel.ParameterType.Integer | EmberModel.ParameterType.Real,
 	state: EmberPlusState,
 ): number | undefined => {
-	const factor = Math.trunc(Number(options.factor ?? 1))
-	let value = Math.floor(Number(options.value) * (isNaN(factor) ? 1 : factor))
+	let value = Number(options.value)
+	if (paramType === EmberModel.ParameterType.Integer) value = Math.round(value)
 	const range = EmberNumberRange[paramType]
 	if (isNaN(value) || value < range.min || value > range.max) return undefined
 	if (options.relative) value = calcRelativeNumber(value, path, options.min, options.max, paramType, state)

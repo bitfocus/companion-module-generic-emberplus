@@ -150,15 +150,23 @@ describe('learnSetValueActionOptions', () => {
 		expect(result).not.toHaveProperty('factor')
 	})
 
-	// An action upgraded with Device Units takes the displayed value once learned
-	it('Int: clears Device Units, as the learned value is as displayed', async () => {
-		expect((await learn('setValueInt', { value: 500, factor: 100 }, { deviceUnits: true }))?.deviceUnits).toBe(false)
+	// The value Device Units sends as it is
+	it.each(['setValueInt', 'setValueReal'] as const)(
+		'%s: learns the device value with Device Units ticked',
+		async (actionType) => {
+			const result = await learn(actionType, { value: 500, factor: 100, minimum: 0 }, { deviceUnits: true })
+			expect(result).toEqual({ value: 500, min: 0 })
+		},
+	)
+
+	it('Int: learns the displayed value, leaving Device Units unticked', async () => {
+		expect(await learn('setValueInt', { value: 500, factor: 100 }, { deviceUnits: false })).toEqual({ value: 5 })
 	})
 
-	// As the recorder and the variables do: Learn failed outright, learning nothing
-	it("Int: learns the device value, and leaves Device Units, for a formula that can't be computed", async () => {
-		const result = await learn('setValueInt', { value: 7, minimum: 0, formula: '$ +' }, { deviceUnits: true })
-		expect(result).toEqual({ value: 7, min: 0 })
+	// The device value is all Learn can give: Device Units, so it is sent as it is. Learn used to fail outright
+	it("Int: learns the device value, and ticks Device Units, for a formula that can't be computed", async () => {
+		const result = await learn('setValueInt', { value: 7, minimum: 0, formula: '$ +' })
+		expect(result).toEqual({ value: 7, min: 0, deviceUnits: true })
 	})
 
 	it('Int: learns the value as displayed, by the formula', async () => {
@@ -224,6 +232,12 @@ describe('setValue Integer', () => {
 		expect((await run('setValueInt', { value: 5 }, { factor: 100 })).sent).toBe(500)
 	})
 
+	// The library takes any whole number but 0 and 1 as a factor: a negative one would turn the value round
+	it('ignores a factor that is no positive whole number', async () => {
+		expect((await run('setValueInt', { value: 5 }, { factor: -10 })).sent).toBe(5)
+		expect((await run('setValueInt', { value: 5, relative: true }, { value: 20, factor: -10 })).sent).toBe(25)
+	})
+
 	// The module floored the product, so a value whose product came out a little under the whole number lost one
 	it('rounds to a whole number', async () => {
 		expect((await run('setValueInt', { value: 0.29 }, { factor: 100 })).sent).toBe(29)
@@ -258,19 +272,48 @@ describe('setValue Integer', () => {
 
 // Actions from before 3.0 with a Factor other than 1 keep sending value x Factor, in the device's units
 describe('setValue Integer with Device Units', () => {
-	it('multiplies the value by the action Factor, rounding down, whatever the parameter factor or formula', async () => {
-		const options = { value: 2.5, deviceUnits: true, factor: 3 }
-		expect((await run('setValueInt', options, { factor: 100, formula: '$ * 2\n$ / 2' })).sent).toBe(7)
+	it('sends the value as it is, bypassing the parameter factor and formula', async () => {
+		const options = { value: 42, deviceUnits: true }
+		expect((await run('setValueInt', options, { factor: 100 })).sent).toBe(42)
+		expect((await run('setValueInt', options, { formula: '$ * 2\n$ / 2' })).sent).toBe(42)
+	})
+
+	// As a displayed value is: the module used to round a device value down
+	it('rounds to a whole number', async () => {
+		expect((await run('setValueInt', { value: 2.5, deviceUnits: true }, { factor: 100 })).sent).toBe(3)
+		expect((await run('setValueInt', { value: 2.4, deviceUnits: true })).sent).toBe(2)
+	})
+
+	// A Factor saved by an earlier version, which no definition has now, is ignored
+	it('ignores a Factor the action was saved with', async () => {
+		expect((await run('setValueInt', { value: 5, deviceUnits: true, factor: 10 })).sent).toBe(5)
 	})
 
 	it('adds a relative change to the device value', async () => {
-		const options = { value: 2, relative: true, deviceUnits: true, factor: 10 }
+		const options = { value: 20, relative: true, deviceUnits: true }
 		expect((await run('setValueInt', options, { value: 50, factor: 100 })).sent).toBe(70)
 	})
 
-	it('takes the displayed value once Device Units is unticked', async () => {
-		const options = { value: 2, deviceUnits: false, factor: 10 }
-		expect((await run('setValueInt', options, { factor: 100 })).sent).toBe(200)
+	it('takes the displayed value with Device Units unticked', async () => {
+		expect((await run('setValueInt', { value: 2, deviceUnits: false }, { factor: 100 })).sent).toBe(200)
+	})
+
+	it("holds the value to the parameter's limits", async () => {
+		const options = { value: 500, deviceUnits: true }
+		expect((await run('setValueInt', options, { maximum: 100, factor: 10 })).sent).toBe(100)
+	})
+})
+
+describe('setValue Real with Device Units', () => {
+	it('sends the value as it is, fraction and all, bypassing the parameter factor and formula', async () => {
+		expect((await run('setValueReal', { value: 2.75, deviceUnits: true }, { factor: 10 })).sent).toBe(2.75)
+		expect((await run('setValueReal', { value: 2.75, deviceUnits: true }, { formula: '$ * 2\n$ / 2' })).sent).toBe(2.75)
+	})
+
+	it("adds a relative change to the device value, within the action's limits", async () => {
+		const options = { value: 0.5, relative: true, deviceUnits: true, max: 2 }
+		expect((await run('setValueReal', { ...options, max: 10 }, { value: 1.25, factor: 10 })).sent).toBe(1.75)
+		expect((await run('setValueReal', options, { value: 1.75 })).sent).toBe(2)
 	})
 })
 

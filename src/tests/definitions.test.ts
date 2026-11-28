@@ -13,6 +13,7 @@ import {
 	matrixOptionsMoved,
 	numericOptionsApi2,
 	numericPairsApi2,
+	optionsRemovedAfterApi2,
 	pathPairsApi2,
 	renamedFeedbacksApi2,
 	UpgradeScripts,
@@ -129,14 +130,17 @@ describe('action and feedback definitions', () => {
 		},
 	)
 
-	// The value is as displayed, the parameter's own formula or factor converting it. Only an action upgraded with a
-	// Factor other than 1 has Device Units ticked, and shows it and its Factor
-	it('Set Value Integer shows Device Units and its Factor only while Device Units is ticked', () => {
-		const definition = all.actions[ActionId.SetValueInt]
-		for (const id of ['deviceUnits', 'factor']) {
-			expect(field(definition, id)).toMatchObject({ isVisibleExpression: '!!$(options:deviceUnits)' })
-		}
-		expect(field(definition, 'deviceUnits')).toMatchObject({ type: 'checkbox', default: false })
+	// The value is as displayed, the parameter's own formula or factor converting it, or with Device Units in the
+	// device's units, sent as it is. An action upgraded with a Factor other than 1 has Device Units ticked
+	it.each([ActionId.SetValueInt, ActionId.SetValueReal])('%s offers Device Units, unticked', (id) => {
+		const deviceUnits = field(all.actions[id], 'deviceUnits')
+		expect(deviceUnits).toMatchObject({ type: 'checkbox', default: false })
+		expect(deviceUnits?.isVisibleExpression).toBeUndefined()
+	})
+
+	// The parameter's own factor or formula converts a displayed value; there is no Factor of the action's to set
+	it.each([ActionId.SetValueInt, ActionId.SetValueReal])('%s has no Factor of its own', (id) => {
+		expect(field(all.actions[id], 'factor')).toBeUndefined()
 	})
 
 	it.each(Object.entries(all.actions))('action %s monitors only options it has', (_id, definition) => {
@@ -182,8 +186,12 @@ describe('the API 2 upgrade matches the definitions', () => {
 		['feedbacks', numericOptionsApi2.feedbacks],
 	] as const) {
 		for (const [id, keys] of Object.entries(lists)) {
-			it(`${kind} ${id}: ${keys?.join(', ')} are number options`, () => {
-				for (const key of keys ?? []) expect(field(all[kind][id], key)).toMatchObject({ type: 'number' })
+			it(`${kind} ${id}: ${keys?.join(', ')} are number options, unless a later script removes them`, () => {
+				const removed = optionsRemovedAfterApi2[kind][id] ?? []
+				for (const key of keys ?? []) {
+					if (removed.includes(key)) expect(field(all[kind][id], key)).toBeUndefined()
+					else expect(field(all[kind][id], key)).toMatchObject({ type: 'number' })
+				}
 			})
 		}
 	}

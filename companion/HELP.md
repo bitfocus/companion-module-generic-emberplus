@@ -75,7 +75,11 @@ Central to the concept of ember+ is the address or path of the data element you 
 
 For Set Value Actions one must ensure the correct data type is selected. In particular confusion can occur between Integer and ENUM types.
 
-Set Value Integer and Set Value Real take the value as it is displayed. The parameter's formula converts it to the device's value; an integer without one is multiplied by its factor, and rounded to a whole number. A relative change is made to the displayed value. The Minimum and Maximum of a relative change are the device's values, not as displayed. This replaces Set Value Integer's Factor option of earlier versions; Learn fills in the displayed value. On upgrading, an action whose Factor was 1 takes the displayed value from then on, so check those on parameters with a factor or formula. An action with any other Factor keeps it, with **Device Units** ticked, and goes on sending its value multiplied by that Factor, as it did; untick Device Units, or use Learn, to give it the displayed value.
+Set Value Integer and Set Value Real take the value as it is displayed. The parameter's formula converts it to the device's value; an integer without one is multiplied by its factor, and rounded to a whole number. A factor counts only if it is a positive whole number, here and wherever the module applies one. A relative change is made to the displayed value. The Minimum and Maximum of a relative change are the device's values, not as displayed. This replaces Set Value Integer's Factor option of earlier versions; Learn fills in the displayed value.
+
+Tick **Device Units** to give the value in the device's units instead: it is sent as it is, bypassing the parameter's formula and factor, and a relative change is added to the device's value. An Integer's value is rounded to a whole number; a Real's is sent with its fraction. With Device Units ticked, Learn fills in the device's value. For a parameter whose formula can't be computed, Learn fills in the device's value and ticks Device Units.
+
+On upgrading, Set Value Integer's Factor option of earlier versions is removed, and every such action takes the displayed value from then on, converted by the parameter's own formula or factor. An action whose Factor matched the parameter's factor sends what it did; any other, check, particularly on parameters with a formula, and use Learn to fill in the displayed value, or tick Device Units to give the device's value.
 
 Set Value ENUM finds an entry by name in the parameter's enumeration map, or else its enumeration, so a device whose entries aren't numbered from 0 is set correctly. An entry whose name begins with `~` is found with or without the `~`. A relative change steps through the entries in their order, passing over any outside the Minimum and Maximum.
 
@@ -153,14 +157,17 @@ The host accepts variables, and may be left empty to keep the currently configur
 
 Returns a property of a parameter to a button's local variable, chosen from:
 
-- **Value**: integers divided by their factor, as the Parameter Value feedback of earlier versions returned them. Octet strings are returned as an array of bytes.
+- **Value**: the value as the device reports it, with no formula or factor applied: the device's units, as Minimum, Maximum and Default Value are. Octet strings are returned as an array of bytes.
+- **Value by Formula / Factor**: the value as a number, by the parameter's formula, or else divided by its factor: what Set Value Integer and Set Value Real take, and what the parameter variables hold with Apply Formula and Factor on. A parameter with neither returns its value as reported; an enumeration, its number.
 - **Value with Units**: the value by its formula or factor, formatted by the parameter's format, with its unit, eg `-12.5 dB`.
-- **Value by Formula**: the value computed by the parameter's formula. A parameter without a formula returns its plain value.
-- **Value as Displayed**: the value as a number, by the parameter's formula, or else divided by its factor: what Set Value Integer and Set Value Real take, and what the parameter variables hold with Apply Formula and Factor on.
-- **Minimum as Displayed**, **Maximum as Displayed** and **Step as Displayed**: the same for its range, lower end first, and its step. An enumeration stating no range takes its entries'; an integer stating no step takes 1. A real without a step has none.
+- **Minimum by Formula / Factor**, **Maximum by Formula / Factor** and **Step by Formula / Factor**: the same for its range, lower end first, and its step. An enumeration stating no range takes its entries'; an integer stating no step takes 1. A real without a step has none.
 - **Identifier Path**: the parameter's path by the identifiers of it and the nodes above it, eg `Device.Inputs.Gain`.
-- **Value as Enumeration Entry**: the name of the value's entry, from the parameter's enumeration map or enumeration. A parameter with neither returns its plain value. This replaces the Return ENUM checkbox of earlier versions.
+- **Value as Enumeration Entry**: the name of the value's entry, from the parameter's enumeration map or enumeration. A parameter with neither returns its value as reported. This replaces the Return ENUM checkbox of earlier versions.
 - The parameter's own properties, as the provider reports them: Identifier, Description, Type, Access, Minimum, Maximum, Default Value, Factor, Format, Step, Online, Stream Identifier, Stream Descriptor, Schema Identifiers and Template Reference. A property the provider doesn't report returns nothing.
+
+A factor counts only if it is a positive whole number; a parameter reporting any other is taken to have none. The Factor property still returns it as reported.
+
+On upgrading, feedbacks that returned Value (an integer divided by its factor, before 3.0) are moved to Value by Formula / Factor, so they keep the numbers they showed; for a parameter with a formula, they now return the formula's result. Value by Formula and Value as Displayed, of the 3.0 pre-releases, are both Value by Formula / Factor. A property chosen by an expression isn't changed: one giving `value` now gets the value as reported.
 
 Use it in an expression to style a button, or compare the value, in place of the deprecated feedbacks.
 
@@ -188,7 +195,7 @@ The module also provides graphics elements for your own layered buttons:
 - `Signal Meter`: a bar for a level, such as an audio meter, along any edge of the button, coloured by the audio metering scale or in one colour.
 - `Value Dial`, `Centred Dial` and `Width Dial`: knob-style arcs, filling from the minimum, growing out from zero, or opening out from the middle.
 
-Give each one a value and the ends of its range, eg from Parameter Property feedbacks into local variables. A parameter's Minimum and Maximum properties are its device values, so they suit its plain Value; for a Value by Formula, such as a meter's level in dB, give the ends as displayed, eg -60 and 0.
+Give each one a value and the ends of its range, eg from Parameter Property feedbacks into local variables. A parameter's Minimum and Maximum properties are its device values, so they suit its Value; for Value by Formula / Factor, such as a meter's level in dB, use Minimum and Maximum by Formula / Factor, or give the ends as displayed, eg -60 and 0.
 
 ## Presets
 

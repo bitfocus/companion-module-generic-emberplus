@@ -29,16 +29,14 @@ function parameter(fields: Partial<EmberModel.TypedParameter<EmberModel.Paramete
 }
 
 describe('parameterProperty', () => {
+	// As the device reports it: neither a formula nor a factor applies
 	describe('value', () => {
-		// As Parameter Value always gave it, so upgraded feedbacks don't change
-		it('divides an integer by its factor', () => {
-			expect(parameterProperty(parameter({ value: 500, factor: 100 }), 'value')).toBe(5)
-		})
-
-		it('leaves a real as it is, factor or not', () => {
-			expect(parameterProperty(parameter({ parameterType: ParameterType.Real, value: 1.5, factor: 10 }), 'value')).toBe(
-				1.5,
-			)
+		it.each([
+			['an integer with a factor', { value: 500, factor: 100 }, 500],
+			['an integer with a formula', { value: 10, formula: '$ * 2 + 1\n($ - 1) / 2' }, 10],
+			['a real with a factor', { parameterType: ParameterType.Real, value: 1.5, factor: 10 }, 1.5],
+		])('gives %s as reported', (_name, fields, expected) => {
+			expect(parameterProperty(parameter(fields), 'value')).toBe(expected)
 		})
 
 		it('gives an octet string as its bytes', () => {
@@ -46,48 +44,29 @@ describe('parameterProperty', () => {
 			expect(parameterProperty(octets, 'value')).toEqual([1, 2, 3])
 		})
 
-		it('gives null for a null value, and for a property a saved feedback left out', () => {
+		it('gives null for a null value, and the value for a property a saved feedback left out', () => {
 			expect(parameterProperty(parameter({ value: null }), 'value')).toBeNull()
-			expect(parameterProperty(parameter({ value: 7 }), undefined)).toBe(7)
-		})
-	})
-
-	describe('value by formula', () => {
-		it('computes the formula, provider to consumer', () => {
-			expect(parameterProperty(parameter({ value: 10, formula: '$ * 2 + 1\n($ - 1) / 2' }), 'formula')).toBe(21)
-		})
-
-		it('computes an integer parameter as an integer, a real as a real', () => {
-			expect(parameterProperty(parameter({ value: 7, formula: '$ \\ 2' }), 'formula')).toBe(3)
-			expect(
-				parameterProperty(parameter({ parameterType: ParameterType.Real, value: 7, formula: '$ / 2' }), 'formula'),
-			).toBe(3.5)
-		})
-
-		it('gives the plain value without a formula', () => {
-			expect(parameterProperty(parameter({ value: 500, factor: 100 }), 'formula')).toBe(5)
-		})
-
-		it('gives the plain value for a formula it cannot parse, and logs why', () => {
-			expect(parameterProperty(parameter({ value: 5, formula: '$ +' }), 'formula')).toBe(5)
-			expect(logs).toHaveBeenCalledWith('Feedbacks/Parameter Property', 'debug', expect.stringContaining('$ +'))
+			expect(parameterProperty(parameter({ value: 70, factor: 10 }), undefined)).toBe(70)
 		})
 	})
 
 	// What the Set Value actions take, so a preset's rotary steps from it: the library's displayValue, the inverse of
 	// the deviceValue they convert with
-	describe('value as displayed', () => {
+	describe('value by formula / factor', () => {
 		it.each([
 			['an integer by its factor', { value: -125, factor: 10 }, -12.5],
 			['a real by its factor, as the library has it', { parameterType: ParameterType.Real, value: 5, factor: 2 }, 2.5],
 			['by the formula, before the factor', { value: 10, formula: '$ * 2 + 1\n($ - 1) / 2', factor: 10 }, 21],
+			['an integer by its formula, as an integer', { value: 7, formula: '$ \\ 2' }, 3],
+			['a real by its formula, as a real', { parameterType: ParameterType.Real, value: 7, formula: '$ / 2' }, 3.5],
 			['as it is with neither', { value: 7 }, 7],
 		])('gives %s', (_name, fields, expected) => {
 			expect(parameterProperty(parameter(fields), 'displayed')).toBe(expected)
 		})
 
-		it('gives the plain value for a formula it cannot compute', () => {
+		it('gives the reported value for a formula it cannot compute, and logs why', () => {
 			expect(parameterProperty(parameter({ value: 5, formula: '$ +' }), 'displayed')).toBe(5)
+			expect(logs).toHaveBeenCalledWith('Feedbacks/Parameter Property', 'debug', expect.stringContaining('$ +'))
 		})
 
 		it('gives a value that is no number as it is', () => {
@@ -96,10 +75,28 @@ describe('parameterProperty', () => {
 			)
 			expect(parameterProperty(parameter({ value: null }), 'displayed')).toBeNull()
 		})
+
+		// Value by Formula, of 3.0 pre-releases, was merged into it: an expression may still give its id
+		it("is what the merged Value by Formula's id gives", () => {
+			expect(parameterProperty(parameter({ value: 500, factor: 100 }), 'formula' as never)).toBe(5)
+		})
+	})
+
+	// A factor of 0 divided by 0; a negative one turned the value round. Only a positive whole number is a factor
+	describe('a factor that is no positive whole number', () => {
+		it.each([0, -10, 2.5])('%s is ignored, as if the provider gave none', (factor) => {
+			const gain = parameter({ value: 50, minimum: -100, maximum: 100, factor, format: '%d°dB' })
+			expect(parameterProperty(gain, 'displayed')).toBe(50)
+			expect(parameterProperty(gain, 'units')).toBe('50 dB')
+			expect(parameterProperty(gain, 'displayedMinimum')).toBe(-100)
+			expect(parameterProperty(gain, 'displayedStep')).toBe(1)
+			// Still reported as it came
+			expect(parameterProperty(gain, 'factor')).toBe(factor)
+		})
 	})
 
 	// What a placed preset reads its range and step by, as the Set Value actions take values
-	describe('range and step as displayed', () => {
+	describe('range and step by formula / factor', () => {
 		it("gives an integer's range and step by its factor", () => {
 			const gain = parameter({ value: 0, minimum: -128, maximum: 127, factor: 10 })
 			expect(parameterProperty(gain, 'displayedMinimum')).toBe(-12.8)
@@ -214,11 +211,11 @@ describe('parameterProperty', () => {
 			expect(parameterProperty(mapped, 'enumeration')).toBe('Mute')
 		})
 
-		it('gives the plain value without an enumeration or enumMap', () => {
-			expect(parameterProperty(parameter({ value: 500, factor: 100 }), 'enumeration')).toBe(5)
+		it('gives the reported value without an enumeration or enumMap', () => {
+			expect(parameterProperty(parameter({ value: 500, factor: 100 }), 'enumeration')).toBe(500)
 		})
 
-		it('gives the plain value for a value with no entry', () => {
+		it('gives the reported value for a value with no entry', () => {
 			const enumerated = parameter({ parameterType: ParameterType.Enum, value: 5, enumeration: 'Off\nOn' })
 			expect(parameterProperty(enumerated, 'enumeration')).toBe(5)
 		})
@@ -270,15 +267,24 @@ describe('parameterProperty', () => {
 	})
 
 	it('tells the properties that change with the value from those that change only with the parameter', () => {
-		for (const property of ['value', 'units', 'formula', 'displayed', 'enumeration'] as const) {
+		for (const property of ['value', 'units', 'displayed', 'enumeration'] as const) {
 			expect(readsValue(property), property).toBe(true)
 		}
 		for (const property of ['identifierPath', 'displayedMinimum', 'displayedStep', 'access'] as const) {
 			expect(readsValue(property), property).toBe(false)
 		}
-		// A saved feedback without one reads Value; one this version doesn't know is taken to read the value
+		// A saved feedback without one reads Value; one this version doesn't know is taken to read the value, as is
+		// Value by Formula's id, merged into Value by Formula / Factor
 		expect(readsValue(undefined)).toBe(true)
+		expect(readsValue('formula' as never)).toBe(true)
 		expect(readsValue('somethingNew' as never)).toBe(true)
+	})
+
+	it('offers Value by Formula / Factor once, and not Value by Formula', () => {
+		const labels = parameterPropertyChoices.map((choice) => choice.label)
+		expect(labels).toContain('Value by Formula / Factor')
+		expect(labels).not.toContain('Value by Formula')
+		expect(labels).not.toContain('Value as Displayed')
 	})
 
 	it('has a choice for every property, and returns each without throwing', () => {

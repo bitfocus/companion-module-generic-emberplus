@@ -170,7 +170,7 @@ const RANGE_VARIABLES = [
 ]
 
 /**
- * A rotary for an integer or real parameter. A turn sets the value as displayed, from the Value as Displayed property
+ * A rotary for an integer or real parameter. A turn sets the value as displayed, from the Value by Formula / Factor property
  * (by formula, or else factor, as the Set Value actions take it), stepped and held to the range as displayed; the arc
  * is in displayed units too, and the text is Value with Units. Linear unless `logarithmic` is set on the button.
  */
@@ -182,9 +182,12 @@ function numberPreset(type: EmberModel.ParameterType.Integer | EmberModel.Parame
 		return type === EmberModel.ParameterType.Integer
 			? {
 					actionId: ActionId.SetValueInt,
-					options: { path: PATH, value, relative: false, min, max, deviceUnits: false, factor: 1 },
+					options: { path: PATH, value, relative: false, min, max, deviceUnits: false },
 				}
-			: { actionId: ActionId.SetValueReal, options: { path: PATH, value, relative: false, min, max } }
+			: {
+					actionId: ActionId.SetValueReal,
+					options: { path: PATH, value, relative: false, min, max, deviceUnits: false },
+				}
 	}
 	return {
 		type: 'layered',

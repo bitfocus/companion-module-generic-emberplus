@@ -53,9 +53,8 @@ export type SetValueIntOptions = {
 	relative: boolean
 	min: number
 	max: number
-	/** An action from before 3.0 with a Factor other than 1: the value in the device's units, multiplied by Factor */
+	/** The value in the device's units, sent as it is */
 	deviceUnits: boolean
-	factor: number
 }
 
 export type SetValueRealOptions = {
@@ -64,6 +63,8 @@ export type SetValueRealOptions = {
 	relative: boolean
 	min: number
 	max: number
+	/** The value in the device's units, sent as it is */
+	deviceUnits: boolean
 }
 
 export type SetValueBooleanOptions = {
@@ -100,7 +101,6 @@ export type SetValueOptions = {
 	asEnum?: boolean
 	enumValue?: string
 	deviceUnits?: boolean
-	factor?: number
 }
 
 /** The matrix, by its configured path, its target, and its source or (an N:N matrix) sources */
@@ -216,10 +216,8 @@ function limit<TKey extends 'min' | 'max'>(
 	}
 }
 
-const integerTooltip =
-	"As displayed: the parameter's formula, or else its factor, converts it to the device's value. A relative change is made to the displayed value"
-const realTooltip =
-	"As displayed: the parameter's formula, if it has one, converts it to the device's value. A relative change is made to the displayed value"
+const valueTooltip =
+	"As displayed: the parameter's formula, or else its factor, converts it to the device's value. A relative change is made to the displayed value. With Device Units, the device's value, sent as it is"
 const deviceUnitsNote = ". In the device's units, not as displayed"
 
 /** A value to set, or for a relative action the amount to change it by, in the range Ember+ allows the type */
@@ -240,9 +238,8 @@ function valueNumber(type: NumericParameterType, step: number): CompanionInputFi
 
 // Fields named in an isVisibleExpression must not be expressions themselves
 /**
- * Set on Set Value Integer actions from before 3.0 whose Factor wasn't 1, so they go on sending their value multiplied by
- * it, in the device's units. Shown only while ticked: unticked, or by Learn, the action takes the displayed value, as
- * new ones do, and the field is gone
+ * The value in the device's units, sent as it is: the parameter's formula and factor are bypassed, and a relative change
+ * is added to the device's value. Unticked, the value is as displayed, converted by the parameter's own formula or factor
  */
 const deviceUnits = {
 	type: 'checkbox',
@@ -250,23 +247,9 @@ const deviceUnits = {
 	id: 'deviceUnits',
 	default: false,
 	disableAutoExpression: true,
-	isVisibleExpression: '!!$(options:deviceUnits)',
 	tooltip:
-		"From an earlier version: the value is in the device's units, multiplied by Factor, as it was. Untick it, or use Learn, to give the value as displayed, converted by the parameter's own formula or factor",
+		"Send the value in the device's units, as it is: the parameter's formula and factor aren't applied. A relative change is added to the device's value. Unticked, the value is as displayed",
 } as const satisfies CompanionInputFieldCheckbox<'deviceUnits'>
-
-const deviceUnitsFactor = {
-	type: 'number',
-	label: 'Factor',
-	id: 'factor',
-	default: 1,
-	min: 1,
-	max: 0xffffffff,
-	step: 1,
-	asInteger: true,
-	isVisibleExpression: '!!$(options:deviceUnits)',
-	tooltip: 'With Device Units, the value is multiplied by this',
-} as const satisfies CompanionInputFieldNumber<'factor'>
 
 const relative = {
 	type: 'checkbox',
@@ -353,12 +336,11 @@ export function GetActionsList(
 			options: [
 				pathChoices(state, EmberModel.ParameterType.Integer),
 				// As displayed, so a fraction can be meant: the parameter's formula or factor converts it, rounding
-				{ ...valueNumber(EmberModel.ParameterType.Integer, 1), asInteger: false, tooltip: integerTooltip },
+				{ ...valueNumber(EmberModel.ParameterType.Integer, 1), asInteger: false, tooltip: valueTooltip },
 				relative,
 				limit('min', EmberModel.ParameterType.Integer, deviceUnitsNote),
 				limit('max', EmberModel.ParameterType.Integer, deviceUnitsNote),
 				deviceUnits,
-				deviceUnitsFactor,
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.Integer, ActionId.SetValueInt, state, queue),
 			subscribe: subscribeParameterAction(self),
@@ -370,10 +352,11 @@ export function GetActionsList(
 			options: [
 				pathChoices(state, EmberModel.ParameterType.Real),
 				// TODO - don't want the step at all preferably
-				{ ...valueNumber(EmberModel.ParameterType.Real, 0.001), tooltip: realTooltip },
+				{ ...valueNumber(EmberModel.ParameterType.Real, 0.001), tooltip: valueTooltip },
 				relative,
 				limit('min', EmberModel.ParameterType.Real, deviceUnitsNote),
 				limit('max', EmberModel.ParameterType.Real, deviceUnitsNote),
+				deviceUnits,
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.Real, ActionId.SetValueReal, state, queue),
 			subscribe: subscribeParameterAction(self),

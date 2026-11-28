@@ -11,6 +11,7 @@ import { describe } from '../logging.js'
 import { EmberNumberRange } from '../ranges.js'
 import { easingOf } from '../ramps.js'
 import { EmberPlusState } from '../state.js'
+import { withValidFactor } from '../factor.js'
 import { checkNumberLimits, displayedNumber, resolveEventPath } from '../util.js'
 import { learnDisplayedNumber, numericTarget, validateNodeAccess } from './parameter.js'
 
@@ -67,7 +68,7 @@ export const rampValue =
 
 		const range = EmberNumberRange[paramType]
 		const toDevice = (displayed: number): number => {
-			const value = EmberModel.deviceValue(parameter, displayed)
+			const value = EmberModel.deviceValue(withValidFactor(parameter), displayed)
 			if (isNaN(value)) throw new Error(`${displayed} gives no device value`)
 			return checkNumberLimits(
 				checkNumberLimits(value, range.min, range.max),

@@ -724,6 +724,66 @@ function matricesByPath(context: Context, props: Props): Result {
 	return result
 }
 
+// 3.0, Parameter Property's value properties: Value became the value as the device reports it, where it divided an
+// integer by its factor; Value by Formula was merged into Value as Displayed, renamed Value by Formula / Factor, which
+// it equalled but for edge cases. A separate script, so that a connection already upgraded by a 3.0 pre-release gets
+// it too.
+
+/** Parameter Property's properties that moved, and where to: both to Value by Formula / Factor */
+export const movedValueProperties: Partial<Record<string, string>> = { value: 'displayed', formula: 'displayed' }
+
+/**
+ * Saved Parameter Property feedbacks reading Value or Value by Formula move to Value by Formula / Factor, so an integer
+ * with a factor keeps the number it showed; one with a formula now gets the formula's result. A property an expression
+ * chooses can't be rewritten: an expression giving 'value' gets the reported value from now on
+ */
+function valuePropertiesMoved(_context: Context, props: Props): Result {
+	const result = emptyResult()
+	for (const feedback of props.feedbacks) {
+		if (feedback.feedbackId !== FeedbackId.ParameterProperty) continue
+		const property = feedback.options.property
+		if (property?.isExpression !== false || typeof property.value !== 'string') continue
+		const moved = movedValueProperties[property.value]
+		if (moved === undefined) continue
+		feedback.options.property = plain(moved)
+		result.updatedFeedbacks.push(feedback)
+	}
+	return result
+}
+
+// 3.0, Set Value Integer's own Factor went: Device Units is an on/off choice, the device's value as it is or the value
+// as displayed by the parameter's own formula or factor. A separate script, so that a connection already upgraded by a
+// 3.0 pre-release gets it too.
+
+/** Options removed after the API 2 upgrade wrote them, by a later script: the definitions no longer have them */
+export const optionsRemovedAfterApi2: {
+	actions: Partial<Record<string, string[]>>
+	feedbacks: Partial<Record<string, string[]>>
+} = {
+	actions: { [ActionId.SetValueInt]: ['factor'] },
+	feedbacks: {},
+}
+
+/**
+ * Set Value Integer's Factor is removed. An action upgraded with a Factor other than 1 (Device Units ticked, sending its
+ * value multiplied by it) takes its value as displayed from now on, converted by the parameter's own factor or formula:
+ * the user's call, as such a Factor matched the parameter's, which the module now reads (a release note warns). One with
+ * Device Units and a Factor of 1 sent its value as it is, as Device Units now does, so keeps it
+ */
+function setValueFactorRemoved(_context: Context, props: Props): Result {
+	const result = emptyResult()
+	for (const action of props.actions) {
+		const removed = optionsRemovedAfterApi2.actions[action.actionId]
+		if (!removed || !removed.some((key) => key in action.options)) continue
+		const { options } = action
+		const one = options.factor === undefined || (options.factor.isExpression === false && options.factor.value === 1)
+		remove(options, ...removed)
+		if (!one && isTicked(options.deviceUnits)) options.deviceUnits = plain(false)
+		result.updatedActions.push(action)
+	}
+	return result
+}
+
 export const UpgradeScripts: CompanionStaticUpgradeScript<EmberPlusConfig>[] = [
 	v250,
 	v260,
@@ -732,4 +792,6 @@ export const UpgradeScripts: CompanionStaticUpgradeScript<EmberPlusConfig>[] = [
 	v280,
 	v300,
 	matricesByPath,
+	valuePropertiesMoved,
+	setValueFactorRemoved,
 ]

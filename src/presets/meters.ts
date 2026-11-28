@@ -45,7 +45,7 @@ function meterEnd(set: string, own: string, fallback: number): string {
 
 /**
  * A level meter for a stream parameter, such as an audio meter: a bar along the bottom, its level as displayed, from
- * the Value as Displayed property; the parameter's path by identifiers in the middle, and the level with its unit at
+ * the Value by Formula / Factor property; the parameter's path by identifiers in the middle, and the level with its unit at
  * the top. Nothing here writes to the device, so the button has no actions. The Parameter Property feedbacks reading
  * it keep the stream subscribed while the button is there.
  */

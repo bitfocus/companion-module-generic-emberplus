@@ -121,6 +121,17 @@ describe('Ramp Value', () => {
 		])
 	})
 
+	it('ignores a factor that is no positive whole number, for the start and each step', async () => {
+		const h = harness(gain({ value: 2, factor: -10 }))
+		const done = h.run({ value: 4, duration: 200 })
+		await vi.advanceTimersByTimeAsync(200)
+		await done
+		expect(h.sent()).toEqual([
+			[3, false],
+			[4, true],
+		])
+	})
+
 	it('converts the target by the formula', async () => {
 		const h = harness(parameterNode(ParameterType.Integer, { value: 0, formula: '$ / 10\n$ * 10' }))
 		const done = h.run({ value: 5, duration: 0 })

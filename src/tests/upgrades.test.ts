@@ -179,15 +179,25 @@ describe('API 2 upgrade, from a 2.9 connection', () => {
 		expect(actions[0].options.deviceUnits).toEqual({ isExpression: false, value: false })
 	})
 
-	// Any other Factor is kept, with Device Units, so the action goes on sending value x Factor as it did
+	// v300 alone kept any other Factor, with Device Units, so the action went on sending value x Factor
 	it.each([
 		['10', { isExpression: false, value: 10 }],
 		['$(internal:custom_f)', { isExpression: true, value: '$(internal:custom_f)' }],
-	])('keeps a Set Value Integer Factor of %j, with Device Units', (factor, kept) => {
-		const { actions } = upgrade({ actions: [action('setValueInt', { path: '1', value: 5, factor })] }, API2)
+	])('v300 keeps a Set Value Integer Factor of %j, with Device Units', (factor, kept) => {
+		const { actions } = upgrade({ actions: [action('setValueInt', { path: '1', value: 5, factor })] }, API2, API2 + 1)
 		expect(actions[0].options.factor).toEqual(kept)
 		expect(actions[0].options.deviceUnits).toEqual({ isExpression: false, value: true })
 	})
+
+	// Then setValueFactorRemoved: the Factor goes, and the value is taken as displayed, by the parameter's own factor
+	it.each(['10', '$(internal:custom_f)'])(
+		'ends with a Set Value Integer Factor of %j removed, and Device Units unticked',
+		(factor) => {
+			const { actions } = upgrade({ actions: [action('setValueInt', { path: '1', value: 5, factor })] }, API2)
+			expect(actions[0].options).not.toHaveProperty('factor')
+			expect(actions[0].options.deviceUnits).toEqual({ isExpression: false, value: false })
+		},
+	)
 
 	// Set Host's port became a number field; empty text kept the current port
 	it.each([
@@ -316,7 +326,7 @@ describe('API 2 upgrade, from a 2.9 connection', () => {
 		const { updated } = upgrade(
 			{
 				actions: [action('take', {}), action('setValueString', { path: '1', value: 'x', parseEscapeChars: true })],
-				feedbacks: [feedback('clear', {}), feedback('parameter_property', { path: '1', property: 'value' })],
+				feedbacks: [feedback('clear', {}), feedback('parameter_property', { path: '1', property: 'units' })],
 			},
 			API2,
 		)
@@ -334,11 +344,13 @@ describe('API 2 upgrade, from a 2.9 connection', () => {
 		},
 	)
 
-	// Parameter Value became Parameter Property; its Return ENUM checkbox, the Value as Enumeration Entry property
+	// Parameter Value became Parameter Property; its Return ENUM checkbox, the Value as Enumeration Entry property.
+	// Without it, Value, which a later script (valuePropertiesMoved) moves to Value by Formula / Factor: what Value gave
+	// before 3.0, an integer divided by its factor
 	it.each([
 		[true, 'enumeration'],
-		[false, 'value'],
-		[undefined, 'value'],
+		[false, 'displayed'],
+		[undefined, 'displayed'],
 	])('turns Parameter Value with Return ENUM %j into Parameter Property returning %j', (asEnum, property) => {
 		const { feedbacks, updated } = upgrade(
 			{ feedbacks: [feedback('value', { path: '1', pathVar: '$(a:b)', usePathVar: true, asEnum })] },
@@ -669,5 +681,102 @@ describe('matrices by path, from a 3.0 pre-release connection', () => {
 			sources_1_4: { isExpression: false, value: [2] },
 		})
 		expect(config?.matricesString).toBe('1.4')
+	})
+})
+
+describe('the value properties upgrade (3.0)', () => {
+	/** The index of the script, so a test can start from a connection last upgraded by a 3.0 pre-release */
+	const VALUES = UpgradeScripts.findIndex((script) => script.name === 'valuePropertiesMoved')
+
+	// Value gave an integer divided by its factor until it became the reported value; Value by Formula was merged in
+	it.each(['value', 'formula'])('moves Parameter Property %j to Value by Formula / Factor', (property) => {
+		const { feedbacks, updated } = upgrade(
+			{ feedbacks: [feedback('parameter_property', { path: '1.2', property })] },
+			VALUES,
+		)
+		expect(feedbacks[0].options).toEqual({
+			path: { isExpression: false, value: '1.2' },
+			property: { isExpression: false, value: 'displayed' },
+		})
+		expect(updated.feedbacks.size).toBe(1)
+	})
+
+	it.each(['displayed', 'units', 'enumeration', 'factor', 'minimum'])('leaves %j as it is', (property) => {
+		const { feedbacks, updated } = upgrade(
+			{ feedbacks: [feedback('parameter_property', { path: '1.2', property })] },
+			VALUES,
+		)
+		expect(feedbacks[0].options.property).toEqual({ isExpression: false, value: property })
+		expect(updated.feedbacks.size).toBe(0)
+	})
+
+	// It can't know what an expression will give, even one whose text is a property's id
+	it('leaves a property chosen by an expression, and other feedbacks', () => {
+		const chosen = feedback('parameter_property', { path: '1.2' })
+		chosen.options.property = { isExpression: true, value: 'value' }
+		const other = feedback('parameter', { path: '1.2', property: 'value' })
+		const { feedbacks, updated } = upgrade({ feedbacks: [chosen, other] }, VALUES)
+		expect(feedbacks[0].options.property).toEqual({ isExpression: true, value: 'value' })
+		expect(feedbacks[1].options.property).toEqual({ isExpression: false, value: 'value' })
+		expect(updated.feedbacks.size).toBe(0)
+	})
+
+	it('changes nothing when run on its own output', () => {
+		const { feedbacks } = upgrade({ feedbacks: [feedback('parameter_property', { property: 'value' })] }, VALUES)
+		const again = upgrade({ feedbacks }, VALUES)
+		expect(again.updated.feedbacks.size).toBe(0)
+	})
+})
+
+describe('the Set Value Integer Factor upgrade (3.0)', () => {
+	/** The index of the script, so a test can start from a connection last upgraded by a 3.0 pre-release */
+	const FACTOR = UpgradeScripts.findIndex((script) => script.name === 'setValueFactorRemoved')
+
+	function setValueInt(options: Record<string, JsonValue | undefined>) {
+		return upgrade({ actions: [action('setValueInt', { path: '1', value: 5, ...options })] }, FACTOR)
+	}
+
+	// The user's call: such a Factor matched the parameter's, which the displayed value is now converted by
+	it.each([10, 100])('unticks Device Units for a Factor of %j, and removes it', (factor) => {
+		const { actions, updated } = setValueInt({ deviceUnits: true, factor })
+		expect(actions[0].options).not.toHaveProperty('factor')
+		expect(actions[0].options.deviceUnits).toEqual({ isExpression: false, value: false })
+		expect(actions[0].options.value).toEqual({ isExpression: false, value: 5 })
+		expect(updated.actions.size).toBe(1)
+	})
+
+	it('unticks Device Units for a Factor an expression gives', () => {
+		const saved = action('setValueInt', { path: '1', value: 5, deviceUnits: true })
+		saved.options.factor = { isExpression: true, value: '$(internal:custom_f)' }
+		const { actions } = upgrade({ actions: [saved] }, FACTOR)
+		expect(actions[0].options).not.toHaveProperty('factor')
+		expect(actions[0].options.deviceUnits).toEqual({ isExpression: false, value: false })
+	})
+
+	// It sent its value as it is, as Device Units now does
+	it('keeps Device Units with a Factor of 1, and removes it', () => {
+		const { actions } = setValueInt({ deviceUnits: true, factor: 1 })
+		expect(actions[0].options).not.toHaveProperty('factor')
+		expect(actions[0].options.deviceUnits).toEqual({ isExpression: false, value: true })
+	})
+
+	// A 3.0 pre-release saved a new action's Factor too, at 1, with Device Units unticked
+	it('removes the Factor of an action without Device Units', () => {
+		const { actions } = setValueInt({ deviceUnits: false, factor: 1 })
+		expect(actions[0].options).not.toHaveProperty('factor')
+		expect(actions[0].options.deviceUnits).toEqual({ isExpression: false, value: false })
+	})
+
+	it('leaves an action without a Factor, and other actions', () => {
+		const { updated } = upgrade(
+			{
+				actions: [
+					action('setValueInt', { path: '1', value: 5, deviceUnits: true }),
+					action('setValueReal', { path: '1', value: 5, deviceUnits: true }),
+				],
+			},
+			FACTOR,
+		)
+		expect(updated.actions.size).toBe(0)
 	})
 })

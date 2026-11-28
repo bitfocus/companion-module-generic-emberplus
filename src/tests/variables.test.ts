@@ -78,6 +78,10 @@ describe('hasParameterVariables', () => {
 })
 
 describe('parameterVariableValue', () => {
+	it('ignores a factor that is no positive whole number', () => {
+		expect(parameterVariableValue(parameter({ value: 500, factor: -100 }), true)).toBe(500)
+	})
+
 	// Apply Formula and Factor to Parameter Variables
 	it('gives an integer divided by its factor, displayed', () => {
 		expect(parameterVariableValue(parameter({ value: 500, factor: 100 }), true)).toBe(5)

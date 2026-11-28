@@ -213,7 +213,7 @@ const propertyDropdown = {
 	choices: parameterPropertyChoices,
 	default: parameterPropertyChoices[0].id,
 	tooltip:
-		"Value: integers divided by their factor. Value with Units: by formula or factor, formatted, then the unit. Value by Formula and Value as Enumeration Entry: the plain value for a parameter without a formula, or without an enumeration. Value as Displayed: a number, by formula or else factor, as Set Value Integer and Real take it; so too Minimum, Maximum and Step as Displayed (an enumeration's range its entries' where it states none, an integer's step 1 where it states none). Identifier Path: the identifiers of it and the nodes above it. The rest as the provider reports them, or nothing for one it leaves out",
+		"Value: as the device reports it, with no formula or factor applied. Value by Formula / Factor: a number, by the parameter's formula, or else divided by its factor, as Set Value Integer and Real take it; so too Minimum, Maximum and Step by Formula / Factor (an enumeration's range its entries' where it states none, an integer's step 1 where it states none). Value with Units: by formula or factor, formatted, then the unit. Value as Enumeration Entry: the entry's name, or the value for one with none. A factor counts only if it is a positive whole number. Identifier Path: the identifiers of it and the nodes above it. The rest as the provider reports them, or nothing for one it leaves out",
 } as const satisfies CompanionInputFieldDropdown<'property', ParameterProperty>
 
 // Named in the visibility of the signal and property fields, so it must not be an expression itself

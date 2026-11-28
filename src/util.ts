@@ -24,6 +24,7 @@ import type { EmberPlusConfig } from './config.js'
 import type EmberPlusInstance from './index.js'
 import { isNToN, type MatrixInfo } from './matrices.js'
 import { NoSource } from './matrixOptions.js'
+import { withValidFactor } from './factor.js'
 import { EmberNumberRange, type NumericParameterType } from './ranges.js'
 import { EmberPlusState } from './state.js'
 import { Model as EmberModel, type Types as EmberTypes } from '@phillipivan/emberplus-connection'
@@ -151,12 +152,12 @@ export function isStreamParameter(parameter: EmberModel.Parameter | undefined): 
 
 /**
  * A number parameter's value as it is displayed: by its formula, or else divided by its factor (the library's
- * displayValue). Undefined for a value that isn't a number, or none at present. Throws FormulaError for a formula that
- * can't be computed.
+ * displayValue; a factor only if it is a positive whole number). Undefined for a value that isn't a number, or none at
+ * present. Throws FormulaError for a formula that can't be computed.
  */
 export function displayedNumber(parameter: EmberModel.Parameter | undefined): number | undefined {
 	if (!parameter) return undefined
-	const { value } = EmberModel.displayValue(parameter)
+	const { value } = EmberModel.displayValue(withValidFactor(parameter))
 	return typeof value === 'number' ? value : undefined
 }
 

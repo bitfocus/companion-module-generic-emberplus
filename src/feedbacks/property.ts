@@ -1,6 +1,7 @@
 import { createModuleLogger, type DropdownChoice } from '@companion-module/base'
 import { Model as EmberModel, type Types as EmberTypes } from '@phillipivan/emberplus-connection'
 import { enumEntries, enumEntryName } from '../enums.js'
+import { withValidFactor } from '../factor.js'
 import { identifierPath } from '../identifiers.js'
 import { describe } from '../logging.js'
 
@@ -10,7 +11,6 @@ const logger = createModuleLogger('Feedbacks/Parameter Property')
 export const ParameterProperty = [
 	'value',
 	'units',
-	'formula',
 	'displayed',
 	'enumeration',
 	'identifier',
@@ -37,9 +37,8 @@ export type ParameterProperty = (typeof ParameterProperty)[number]
 
 export const parameterPropertyChoices = [
 	{ id: 'value', label: 'Value' },
+	{ id: 'displayed', label: 'Value by Formula / Factor' },
 	{ id: 'units', label: 'Value with Units' },
-	{ id: 'formula', label: 'Value by Formula' },
-	{ id: 'displayed', label: 'Value as Displayed' },
 	{ id: 'enumeration', label: 'Value as Enumeration Entry' },
 	{ id: 'identifier', label: 'Identifier' },
 	{ id: 'identifierPath', label: 'Identifier Path' },
@@ -48,13 +47,13 @@ export const parameterPropertyChoices = [
 	{ id: 'access', label: 'Access' },
 	{ id: 'minimum', label: 'Minimum' },
 	{ id: 'maximum', label: 'Maximum' },
-	{ id: 'displayedMinimum', label: 'Minimum as Displayed' },
-	{ id: 'displayedMaximum', label: 'Maximum as Displayed' },
+	{ id: 'displayedMinimum', label: 'Minimum by Formula / Factor' },
+	{ id: 'displayedMaximum', label: 'Maximum by Formula / Factor' },
 	{ id: 'defaultValue', label: 'Default Value' },
 	{ id: 'factor', label: 'Factor' },
 	{ id: 'format', label: 'Format' },
 	{ id: 'step', label: 'Step' },
-	{ id: 'displayedStep', label: 'Step as Displayed' },
+	{ id: 'displayedStep', label: 'Step by Formula / Factor' },
 	{ id: 'isOnline', label: 'Online' },
 	{ id: 'streamIdentifier', label: 'Stream Identifier' },
 	{ id: 'streamDescriptor', label: 'Stream Descriptor' },
@@ -63,13 +62,14 @@ export const parameterPropertyChoices = [
 ] as const satisfies DropdownChoice<ParameterProperty>[]
 
 /** The properties that read the parameter's value, so change with it: the rest only with what the provider says of it */
-const VALUE_PROPERTIES: ReadonlySet<ParameterProperty> = new Set([
-	'value',
-	'units',
-	'formula',
-	'displayed',
-	'enumeration',
-])
+const VALUE_PROPERTIES: ReadonlySet<ParameterProperty> = new Set(['value', 'units', 'displayed', 'enumeration'])
+
+/**
+ * Properties of 3.0 pre-releases, and the one each became: Value by Formula was merged into Value by Formula / Factor,
+ * which it equalled but for edge cases. An upgrade script moves saved feedbacks; this covers a property an expression
+ * gives
+ */
+const mergedProperties: Partial<Record<string, ParameterProperty>> = { formula: 'displayed' }
 
 /** Whether a property changes with the parameter's value (any not known to this version counts as one that does) */
 export function readsValue(property: ParameterProperty | undefined): boolean {
@@ -90,43 +90,25 @@ function jsonOf(value: EmberTypes.EmberValue | undefined): ParameterPropertyValu
 	return Buffer.isBuffer(value) ? Array.from(value) : value
 }
 
-/** A parameter's value as the feedback always gave it: an integer divided by its factor */
-function plainValue(parameter: EmberModel.Parameter): ParameterPropertyValue {
-	const { value } = parameter
-	if (parameter.parameterType === EmberModel.ParameterType.Integer && typeof value === 'number') {
-		return value / (parameter.factor ?? 1)
-	}
-	return jsonOf(value)
-}
-
-/** The value by the parameter's formula (provider to consumer), or the plain value without one */
-function formulaValue(parameter: EmberModel.Parameter): ParameterPropertyValue {
-	const { formula, value } = parameter
-	if (!formula || typeof value !== 'number') return plainValue(parameter)
-	const integer =
-		parameter.parameterType === EmberModel.ParameterType.Integer ||
-		parameter.parameterType === EmberModel.ParameterType.Enum
-	try {
-		return EmberModel.parseFormula(formula).toDisplay(value, integer ? 'integer' : 'real')
-	} catch (e) {
-		logger.debug(`Formula ${JSON.stringify(formula)} can't be computed for ${value}: ${describe(e)}`)
-		return plainValue(parameter)
-	}
+/** A parameter's value as the provider reports it, as JSON: the device value, with no formula or factor applied */
+function reportedValue(parameter: EmberModel.Parameter): ParameterPropertyValue {
+	return jsonOf(parameter.value)
 }
 
 /**
- * A number's value as displayed, as a number: by the parameter's formula, or else divided by its factor (the library's
- * displayValue), as the parameter variables give it. A formula that can't be computed gives the plain value, as does a
- * value that isn't a number.
+ * A number's value by the parameter's formula, or else divided by its factor (the library's displayValue, a factor
+ * only if it is a positive whole number), as Set Value Integer and Real take it and the parameter variables give it.
+ * An enumeration's value is its number. A formula that can't be computed gives the reported value, as does a value that
+ * isn't a number.
  */
 function displayedValue(parameter: EmberModel.Parameter): ParameterPropertyValue {
-	if (typeof parameter.value !== 'number') return plainValue(parameter)
+	if (typeof parameter.value !== 'number') return reportedValue(parameter)
 	try {
-		const { value } = EmberModel.displayValue(parameter)
-		return typeof value === 'number' ? value : plainValue(parameter)
+		const { value } = EmberModel.displayValue(withValidFactor(parameter))
+		return typeof value === 'number' ? value : reportedValue(parameter)
 	} catch (e) {
 		logger.debug(`Value of ${parameter.identifier ?? 'parameter'} can't be displayed: ${describe(e)}`)
-		return plainValue(parameter)
+		return reportedValue(parameter)
 	}
 }
 
@@ -143,31 +125,32 @@ function unitsValue(parameter: EmberModel.Parameter): ParameterPropertyValue {
 		if (name !== undefined) return name
 	}
 	try {
-		const { text, unit } = EmberModel.displayValue(parameter)
+		const { text, unit } = EmberModel.displayValue(withValidFactor(parameter))
 		const trimmed = unit?.trim()
 		if (!trimmed || !text.endsWith(unit ?? '')) return text
 		return `${text.slice(0, text.length - (unit ?? '').length).trimEnd()} ${trimmed}`
 	} catch (e) {
 		logger.debug(`Value of ${parameter.identifier ?? 'parameter'} can't be displayed: ${describe(e)}`)
-		return plainValue(parameter)
+		return reportedValue(parameter)
 	}
 }
 
 /**
  * The name of the value's entry, from the enumMap or else the enumeration, as the device names it (a hidden entry with
- * its "~"), or the plain value without one
+ * its "~"), or the reported value without one
  */
 function enumerationValue(parameter: EmberModel.Parameter): ParameterPropertyValue {
-	return enumEntryName(parameter) ?? plainValue(parameter)
+	return enumEntryName(parameter) ?? reportedValue(parameter)
 }
 
 /**
- * A number in the parameter's displayed units: by its formula, or else its factor, as the Set Value actions take it.
+ * A number in the parameter's displayed units: by its formula, or else its factor (a positive whole number), as the Set
+ * Value actions take it.
  * Undefined for one the formula can't compute.
  */
 export function displayedNumberOf(parameter: EmberModel.Parameter, value: number): number | undefined {
 	try {
-		const shown = EmberModel.displayValue(parameter, value).value
+		const shown = EmberModel.displayValue(withValidFactor(parameter), value).value
 		return typeof shown === 'number' && Number.isFinite(shown) ? shown : undefined
 	} catch {
 		return undefined
@@ -226,14 +209,13 @@ export function parameterProperty(
 	property: ParameterProperty | undefined,
 	element?: EmberModel.TreeElement<EmberModel.EmberElement>,
 ): ParameterPropertyValue {
-	switch (property) {
+	const chosen = mergedProperties[String(property)] ?? property
+	switch (chosen) {
 		case undefined:
 		case 'value':
-			return plainValue(parameter)
+			return reportedValue(parameter)
 		case 'units':
 			return unitsValue(parameter)
-		case 'formula':
-			return formulaValue(parameter)
 		case 'displayed':
 			return displayedValue(parameter)
 		case 'enumeration':
@@ -265,11 +247,11 @@ export function parameterProperty(
 		case 'streamIdentifier':
 		case 'schemaIdentifiers':
 		case 'templateReference':
-			return parameter[property] ?? null
+			return parameter[chosen] ?? null
 		default:
 			// A property this version doesn't offer, saved by another
-			unhandledProperty(property)
-			return plainValue(parameter)
+			unhandledProperty(chosen)
+			return reportedValue(parameter)
 	}
 }
 
