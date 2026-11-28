@@ -1,20 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
-	subscribeParameterFeedback,
 	unsubscribeParameterFeedback,
 	learnParameterFeedbackOptions,
 	resolveBooleanFeedback,
 	parameterFeedbackCallback,
-	parameterValueFeedbackCallback,
-} from './parameter.js'
-import { FeedbackId } from '../feedback.js'
-import { compareNumber, parseEscapeCharacters } from '../util.js'
+} from '../../feedbacks/parameter.js'
+import { FeedbackId } from '../../feedback.js'
+import { compareNumber, parseEscapeCharacters } from '../../util.js'
 
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
 
-vi.mock('emberplus-connection', () => ({
+vi.mock('@phillipivan/emberplus-connection', () => ({
 	Model: {
 		ParameterType: {
 			Boolean: 'boolean',
@@ -26,17 +24,7 @@ vi.mock('emberplus-connection', () => ({
 	},
 }))
 
-vi.mock('emberplus-connection/dist/model', () => ({
-	ParameterType: {
-		Boolean: 'boolean',
-		Integer: 'integer',
-		Real: 'real',
-		Enum: 'enum',
-		String: 'string',
-	},
-}))
-
-vi.mock('../feedback', () => ({
+vi.mock('../../feedback', () => ({
 	FeedbackId: {
 		Boolean: 'boolean',
 		Parameter: 'parameter',
@@ -45,7 +33,7 @@ vi.mock('../feedback', () => ({
 	},
 }))
 
-vi.mock('../util', () => ({
+vi.mock('../../util', () => ({
 	resolveEventPath: vi.fn((feedback) => feedback.options.path ?? '0.1'),
 	compareNumber: vi.fn(() => true),
 	parseEscapeCharacters: vi.fn((s) => s),
@@ -60,7 +48,7 @@ vi.mock('../util', () => ({
 	},
 }))
 
-vi.mock('../state', () => ({
+vi.mock('../../state', () => ({
 	EmberPlusState: class {
 		parameters = new Map()
 		addIdToPathMap = vi.fn()
@@ -84,13 +72,16 @@ function makeState(overrides: Partial<MockState> = {}): any {
 		parameters: new Map<string, any>(),
 		addIdToPathMap: vi.fn(),
 		getCurrentEnumValue: vi.fn(() => 'On'),
+		// Off is entry 0, On entry 1
+		getEnumValue: vi.fn((_path: string, name: string) => ({ Off: 0, On: 1 })[name]),
 		...overrides,
 	}
 }
 
 function makeSelf(overrides: Record<string, any> = {}) {
 	return {
-		registerNewParameter: vi.fn().mockResolvedValue(false),
+		useParameterForFeedback: vi.fn().mockResolvedValue(false),
+		releaseParameterFeedback: vi.fn(),
 		...overrides,
 	} as any
 }
@@ -102,45 +93,18 @@ function makeFeedback(path = '0.1', options: Record<string, any> = {}) {
 	} as any
 }
 
-const ctx = {} as any
-
-// ---------------------------------------------------------------------------
-// subscribeParameterFeedback
-// ---------------------------------------------------------------------------
-
-describe('subscribeParameterFeedback', () => {
-	it('calls registerNewParameter with the resolved path', async () => {
-		const state = makeState()
-		const self = makeSelf({ registerNewParameter: vi.fn().mockResolvedValue(true) })
-		const fn = subscribeParameterFeedback(state, self)
-		await fn(makeFeedback('0.1'), ctx)
-		expect(self.registerNewParameter).toHaveBeenCalledWith('0.1', true)
-	})
-
-	it('adds feedback id to path map when registerNewParameter returns true', async () => {
-		const state = makeState()
-		const self = makeSelf({ registerNewParameter: vi.fn().mockResolvedValue(true) })
-		await subscribeParameterFeedback(state, self)(makeFeedback('0.1'), ctx)
-		expect(state.addIdToPathMap).toHaveBeenCalledWith('fb1', '0.1')
-	})
-
-	it('does not add to path map when registerNewParameter returns false', async () => {
-		const state = makeState()
-		const self = makeSelf({ registerNewParameter: vi.fn().mockResolvedValue(false) })
-		await subscribeParameterFeedback(state, self)(makeFeedback('0.1'), ctx)
-		expect(state.addIdToPathMap.mock.calls.length).toBe(0)
-	})
-})
+const ctx = { signal: new AbortController().signal } as any
 
 // ---------------------------------------------------------------------------
 // unsubscribeParameterFeedback
 // ---------------------------------------------------------------------------
 
 describe('unsubscribeParameterFeedback', () => {
-	it('maps feedback id to empty string to remove it', async () => {
-		const state = makeState()
-		await unsubscribeParameterFeedback(state)(makeFeedback('0.1'), ctx)
-		expect(state.addIdToPathMap).toHaveBeenCalledWith('fb1', '')
+	// The instance stops rechecking it, and ends the path's stream if nothing else reads it
+	it('releases the feedback', async () => {
+		const self = makeSelf()
+		await unsubscribeParameterFeedback(self)(makeFeedback('0.1'), ctx)
+		expect(self.releaseParameterFeedback).toHaveBeenCalledWith('fb1')
 	})
 })
 
@@ -202,15 +166,14 @@ describe('learnParameterFeedbackOptions', () => {
 		expect(result).toBeUndefined()
 	})
 
-	it('Parameter: sets value, valueVar, and asInt correctly for Integer type', async () => {
+	it('Parameter: learns the device value, factor 1 and asInt for an Integer type', async () => {
 		const state = makeState()
 		state.parameters.set('0.1', { value: 42, parameterType: 'integer', factor: 100 })
-		const feedback = makeFeedback('0.1', { factor: '1' })
+		const feedback = makeFeedback('0.1', { factor: 1, comparitor: 'eq' })
 		const result = await learnParameterFeedbackOptions(state, FeedbackId.Parameter)(feedback, ctx)
-		expect(result?.value).toBe(42)
-		expect(result?.valueVar).toBe('42')
-		expect(result?.asInt).toBe(true)
-		expect(result?.factor).toBe('100')
+		// Only what was learned, so the path and comparitor (and any expression in them) are kept. The device value with a
+		// factor of 1: the feedback multiplies the value by its factor, so the parameter's factor was applied twice
+		expect(result).toEqual({ value: 42, asInt: true, factor: 1 })
 	})
 
 	it('Parameter: asInt is false for Real type', async () => {
@@ -277,7 +240,7 @@ describe('resolveBooleanFeedback', () => {
 		state.parameters.set('0.1', { value: 500 })
 		await resolveBooleanFeedback(state, 'integer' as any, '0.1', 5, {
 			comparitor: 'eq' as any,
-			factor: '100',
+			factor: 100,
 		})
 		expect(vi.mocked(compareNumber).mock.calls[0][0]).toBe(500) // Math.floor(5 * 100)
 	})
@@ -288,21 +251,31 @@ describe('resolveBooleanFeedback', () => {
 		state.parameters.set('0.1', { value: 5 })
 		await resolveBooleanFeedback(state, 'integer' as any, '0.1', 5, {
 			comparitor: 'eq' as any,
-			factor: 'not-a-number',
+			factor: Number.NaN,
 		})
 		expect(vi.mocked(compareNumber).mock.calls[0][0]).toBe(5) // Math.floor(5 * 1)
 	})
 
-	it('Enum: returns true when current enum value matches', async () => {
+	// Glow 2.50: a null value is none at present. Read as a number it was 0, so '<= 5' or '== 0' held
+	it.each([['real'], ['integer']])('%s: a null value matches no comparison', async (type) => {
+		vi.mocked(compareNumber).mockReturnValue(true)
 		const state = makeState()
-		state.getCurrentEnumValue.mockReturnValue('On')
+		state.parameters.set('0.1', { value: null })
+		const result = await resolveBooleanFeedback(state, type as any, '0.1', 0, { comparitor: 'eq' as any, factor: 1 })
+		expect(result).toBe(false)
+	})
+
+	it('Enum: returns true when the parameter is on the entry named', async () => {
+		const state = makeState()
+		state.parameters.set('0.1', { value: 1 })
 		const result = await resolveBooleanFeedback(state, 'enum' as any, '0.1', 'On')
 		expect(result).toBe(true)
 	})
 
-	it('Enum: returns false when current enum value does not match', async () => {
+	it('Enum: returns false when the parameter is on another entry, or the name is no entry', async () => {
 		const state = makeState()
-		state.getCurrentEnumValue.mockReturnValue('Off')
+		state.parameters.set('0.1', { value: 0 })
+		expect(await resolveBooleanFeedback(state, 'enum' as any, '0.1', 'Unknown')).toBe(false)
 		const result = await resolveBooleanFeedback(state, 'enum' as any, '0.1', 'On')
 		expect(result).toBe(false)
 	})
@@ -341,12 +314,16 @@ describe('resolveBooleanFeedback', () => {
 // ---------------------------------------------------------------------------
 
 describe('parameterFeedbackCallback', () => {
-	it('calls registerNewParameter on every invocation', async () => {
+	// API 2 has no feedback subscribe hook, so the callback registers the path, and the feedback against it, each time
+	it('uses the path for the feedback on every invocation', async () => {
 		const state = makeState()
 		const self = makeSelf()
 		const fn = parameterFeedbackCallback(self, state, FeedbackId.Boolean)
 		await fn(makeFeedback('0.1'), ctx)
-		expect(self.registerNewParameter).toHaveBeenCalledWith('0.1', true)
+		await fn(makeFeedback('0.1'), ctx)
+		expect(self.useParameterForFeedback).toHaveBeenCalledTimes(2)
+		// with the check's abort signal, so a superseded check doesn't wait in the queue
+		expect(self.useParameterForFeedback).toHaveBeenCalledWith('fb1', '0.1', ctx.signal)
 	})
 
 	it('returns false when path is not in state.parameters', async () => {
@@ -354,13 +331,6 @@ describe('parameterFeedbackCallback', () => {
 		const self = makeSelf()
 		const result = await parameterFeedbackCallback(self, state, FeedbackId.Boolean)(makeFeedback('0.1'), ctx)
 		expect(result).toBe(false)
-	})
-
-	it('does not call registerNewParameter a second time in the else branch', async () => {
-		const state = makeState()
-		const self = makeSelf({ registerNewParameter: vi.fn().mockResolvedValue(false) })
-		await parameterFeedbackCallback(self, state, FeedbackId.Boolean)(makeFeedback('0.1'), ctx)
-		expect(self.registerNewParameter.mock.calls.length).toBe(1)
 	})
 
 	it('Boolean: resolves feedback when parameter exists', async () => {
@@ -374,7 +344,6 @@ describe('parameterFeedbackCallback', () => {
 	it('ENUM: passes enum value string from options', async () => {
 		const state = makeState()
 		state.parameters.set('0.1', { value: 1 })
-		state.getCurrentEnumValue.mockReturnValue('On')
 		const self = makeSelf()
 		const feedback = makeFeedback('0.1', { value: 'On' })
 		const result = await parameterFeedbackCallback(self, state, FeedbackId.ENUM)(feedback, ctx)
@@ -389,10 +358,8 @@ describe('parameterFeedbackCallback', () => {
 		const feedback = makeFeedback('0.1', {
 			asInt: true,
 			value: 5,
-			valueVar: '5',
-			useVar: false,
 			comparitor: 'eq',
-			factor: '1',
+			factor: 1,
 		})
 		const result = await parameterFeedbackCallback(self, state, FeedbackId.Parameter)(feedback, ctx)
 		expect(result).toBe(true)
@@ -406,28 +373,20 @@ describe('parameterFeedbackCallback', () => {
 		const feedback = makeFeedback('0.1', {
 			asInt: false,
 			value: 3.14,
-			useVar: false,
 			comparitor: 'eq',
-			factor: '1',
+			factor: 1,
 		})
 		const result = await parameterFeedbackCallback(self, state, FeedbackId.Parameter)(feedback, ctx)
 		expect(result).toBe(true)
 	})
 
-	it('Parameter: uses valueVar when useVar is true', async () => {
+	it('Parameter: applies the factor option to an Integer comparison', async () => {
 		const state = makeState()
-		state.parameters.set('0.1', { value: 5 })
+		state.parameters.set('0.1', { value: 500 })
 		const self = makeSelf()
-		const feedback = makeFeedback('0.1', {
-			asInt: true,
-			value: 0,
-			valueVar: '5',
-			useVar: true,
-			comparitor: 'eq',
-			factor: '1',
-		})
+		const feedback = makeFeedback('0.1', { asInt: true, value: 5, comparitor: 'eq', factor: 100 })
 		await parameterFeedbackCallback(self, state, FeedbackId.Parameter)(feedback, ctx)
-		expect(vi.mocked(compareNumber).mock.calls.at(-1)?.[0]).toBe(5) // Math.floor('5' * 1)
+		expect(vi.mocked(compareNumber).mock.calls.at(-1)?.[0]).toBe(500) // Math.floor(5 * 100)
 	})
 
 	it('String: passes value and parse flag from options', async () => {
@@ -437,74 +396,5 @@ describe('parameterFeedbackCallback', () => {
 		const feedback = makeFeedback('0.1', { value: 'hello', parseEscapeChars: false })
 		const result = await parameterFeedbackCallback(self, state, FeedbackId.String)(feedback, ctx)
 		expect(result).toBe(true)
-	})
-})
-
-// ---------------------------------------------------------------------------
-// parameterValueFeedbackCallback
-// ---------------------------------------------------------------------------
-
-describe('parameterValueFeedbackCallback', () => {
-	it('returns null when path is not in state.parameters', async () => {
-		const state = makeState()
-		const self = makeSelf()
-		const result = await parameterValueFeedbackCallback(self, state)(makeFeedback('0.1'), ctx)
-		expect(result).toBeNull()
-	})
-
-	it('returns the raw value for non-Integer types', async () => {
-		const state = makeState()
-		state.parameters.set('0.1', { value: 'hello', parameterType: 'string' })
-		const self = makeSelf()
-		const result = await parameterValueFeedbackCallback(self, state)(makeFeedback('0.1'), ctx)
-		expect(result).toBe('hello')
-	})
-
-	it('applies factor division for Integer type', async () => {
-		const state = makeState()
-		state.parameters.set('0.1', { value: 500, parameterType: 'integer', factor: 100 })
-		const self = makeSelf()
-		const result = await parameterValueFeedbackCallback(self, state)(makeFeedback('0.1'), ctx)
-		expect(result).toBe(5)
-	})
-
-	it('defaults factor to 1 when not set for Integer type', async () => {
-		const state = makeState()
-		state.parameters.set('0.1', { value: 42, parameterType: 'integer' })
-		const self = makeSelf()
-		const result = await parameterValueFeedbackCallback(self, state)(makeFeedback('0.1'), ctx)
-		expect(result).toBe(42)
-	})
-
-	it('converts Buffer values to an Array', async () => {
-		const state = makeState()
-		const buf = Buffer.from([1, 2, 3])
-		state.parameters.set('0.1', { value: buf, parameterType: 'string' })
-		const self = makeSelf()
-		const result = await parameterValueFeedbackCallback(self, state)(makeFeedback('0.1'), ctx)
-		expect(Array.isArray(result)).toBe(true)
-		expect(result).toEqual([1, 2, 3])
-	})
-
-	it('returns null when parameter value is null', async () => {
-		const state = makeState()
-		state.parameters.set('0.1', { value: null, parameterType: 'string' })
-		const self = makeSelf()
-		const result = await parameterValueFeedbackCallback(self, state)(makeFeedback('0.1'), ctx)
-		expect(result).toBeNull()
-	})
-
-	it('calls registerNewParameter with false (read-only)', async () => {
-		const state = makeState()
-		const self = makeSelf()
-		await parameterValueFeedbackCallback(self, state)(makeFeedback('0.1'), ctx)
-		expect(self.registerNewParameter).toHaveBeenCalledWith('0.1', false)
-	})
-
-	it('does not call registerNewParameter a second time in the else branch', async () => {
-		const state = makeState()
-		const self = makeSelf({ registerNewParameter: vi.fn().mockResolvedValue(false) })
-		await parameterValueFeedbackCallback(self, state)(makeFeedback('0.1'), ctx)
-		expect(self.registerNewParameter.mock.calls.length).toBe(1)
 	})
 })

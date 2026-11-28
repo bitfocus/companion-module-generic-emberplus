@@ -1,8 +1,14 @@
-import type { CompanionFeedbackContext, CompanionFeedbackInfo, JsonValue } from '@companion-module/base'
-import { Model as EmberModel } from 'emberplus-connection'
-import type { parameterFeedbackOptions } from '../feedback.js'
-import type { EmberPlusInstance } from '../index.js'
+import type {
+	CompanionFeedbackCallbackContext,
+	CompanionFeedbackContext,
+	CompanionFeedbackInfo,
+	CompanionFeedbackLearnContext,
+} from '@companion-module/base'
+import { Model as EmberModel } from '@phillipivan/emberplus-connection'
+import type { ParameterFeedbackOptions } from '../feedback.js'
+import type EmberPlusInstance from '../index.js'
 import { EmberPlusState } from '../state.js'
+import { parameterProperty, readsValue, type ParameterPropertyValue } from './property.js'
 import {
 	compareNumber,
 	NumberComparitor,
@@ -11,58 +17,61 @@ import {
 	substituteEscapeCharacters,
 } from '../util.js'
 import { FeedbackId } from '../feedback.js'
-import { ParameterType } from 'emberplus-connection/dist/model/index.js'
 
-export const subscribeParameterFeedback =
-	(state: EmberPlusState, self: EmberPlusInstance) =>
-	async (feedback: CompanionFeedbackInfo, _context: CompanionFeedbackContext): Promise<void> => {
-		const path = resolveEventPath(feedback)
-		if (await self.registerNewParameter(path, true)) state.addIdToPathMap(feedback.id, path)
-	}
-
+/** The feedback is removed or disabled: stop rechecking it, and end its stream if nothing else reads it */
 export const unsubscribeParameterFeedback =
-	(state: EmberPlusState) =>
-	async (feedback: CompanionFeedbackInfo, _context: CompanionFeedbackContext): Promise<void> => {
-		state.addIdToPathMap(feedback.id, '')
+	(self: EmberPlusInstance) =>
+	async (
+		feedback: CompanionFeedbackInfo<ParameterFeedbackOptions>,
+		_context: CompanionFeedbackContext,
+	): Promise<void> => {
+		self.releaseParameterFeedback(feedback.id)
 	}
 
+/**
+ * Learn the parameter's current value, and for numbers its factor. Returns only what was learned, so an expression in
+ * the path is kept.
+ */
 export const learnParameterFeedbackOptions =
-	(state: EmberPlusState, feedbackType: FeedbackId) =>
+	<TOptions extends ParameterFeedbackOptions>(state: EmberPlusState, feedbackType: FeedbackId) =>
 	async (
-		feedback: CompanionFeedbackInfo,
-		_context: CompanionFeedbackContext,
-	): Promise<parameterFeedbackOptions | undefined> => {
+		feedback: CompanionFeedbackInfo<TOptions>,
+		_context: CompanionFeedbackLearnContext,
+	): Promise<Partial<TOptions> | undefined> => {
 		const path = resolveEventPath(feedback)
 		const val = state.parameters.get(path)
 		if (val === undefined || val === null || val.value === undefined || val.value === null) return undefined
-		const options = { ...feedback.options } as parameterFeedbackOptions
+		const learned: ParameterFeedbackOptions = {}
 		const enumVal = state.getCurrentEnumValue(path)
 		switch (feedbackType) {
 			case FeedbackId.String:
-				options.value = feedback.options.parseEscapeChars
+				learned.value = feedback.options.parseEscapeChars
 					? substituteEscapeCharacters(val.value.toString())
 					: val.value.toString()
 				break
 			case FeedbackId.ENUM:
 				if (enumVal === '') return undefined
-				options.value = enumVal
+				learned.value = enumVal
 				break
 			case FeedbackId.Parameter:
 				if (typeof val?.value !== 'number') return undefined
-				options.value = val.value
-				options.valueVar = val.value.toString()
-				options.factor = val.factor?.toString() ?? options.factor
-				options.asInt = val.parameterType === ParameterType.Integer || val.parameterType === ParameterType.Enum
+				// The device's value, with a factor of 1: the feedback multiplies the value by its factor before comparing it
+				// with the device's, so learning the parameter's factor too applied it twice, and the feedback never matched
+				learned.value = val.value
+				learned.factor = 1
+				learned.asInt =
+					val.parameterType === EmberModel.ParameterType.Integer || val.parameterType === EmberModel.ParameterType.Enum
 				break
 			default:
 				return undefined
 		}
-		return options
+		// Each case sets only the keys its feedback's options have, with the types they have there
+		return learned as Partial<TOptions>
 	}
 
 interface resolveFeedbackOptions {
 	comparitor?: NumberComparitor
-	factor?: string
+	factor?: number
 	parse?: boolean
 }
 
@@ -71,38 +80,46 @@ export async function resolveBooleanFeedback(
 	type: EmberModel.ParameterType,
 	path: string,
 	value?: boolean | number | string,
-	options: resolveFeedbackOptions = { comparitor: NumberComparitor.Equal, factor: `1`, parse: true },
+	options: resolveFeedbackOptions = { comparitor: NumberComparitor.Equal, factor: 1, parse: true },
 ): Promise<boolean> {
-	let fact = Number.parseInt(options.factor ?? '1')
+	let fact = Math.trunc(Number(options.factor ?? 1))
 	options.comparitor = options.comparitor ?? NumberComparitor.Equal
 	if (Number.isNaN(fact) || fact < 1) fact = 1
 
+	const current = state.parameters.get(path)?.value
+	// A number parameter without a value (null: none at present, Glow 2.50) compares as nothing, not as 0
+	const hasNumber = current !== null && current !== undefined
 	switch (type) {
 		case EmberModel.ParameterType.Boolean:
-			return Boolean(state.parameters.get(path)?.value)
+			return Boolean(current)
 		case EmberModel.ParameterType.Real:
-			return compareNumber(Number(value), options.comparitor, Number(state.parameters.get(path)?.value))
+			return hasNumber && compareNumber(Number(value), options.comparitor, Number(current))
 		case EmberModel.ParameterType.Integer:
 			// Only Factorize integer parameters
-			return compareNumber(
-				Math.floor(Number(value) * fact),
-				options.comparitor,
-				Math.floor(Number(state.parameters.get(path)?.value)),
+			return (
+				hasNumber && compareNumber(Math.floor(Number(value) * fact), options.comparitor, Math.floor(Number(current)))
 			)
-		case EmberModel.ParameterType.Enum:
-			return state.getCurrentEnumValue(path) === value
+		case EmberModel.ParameterType.Enum: {
+			// By the entry named: a name beginning with "~" matches with it or without it, as it may have been typed
+			const entry = state.getEnumValue(path, value?.toString() ?? '')
+			return entry !== undefined && entry === current
+		}
 		case EmberModel.ParameterType.String:
 		default:
 			if (options.parse) value = parseEscapeCharacters(value?.toString() ?? '')
-			return state.parameters.get(path)?.value?.toString() === value
+			return current?.toString() === value
 	}
 }
 
 export const parameterFeedbackCallback =
-	(self: EmberPlusInstance, state: EmberPlusState, feedbackType: FeedbackId) =>
-	async (feedback: CompanionFeedbackInfo, _context: CompanionFeedbackContext): Promise<boolean> => {
+	<TOptions extends ParameterFeedbackOptions>(
+		self: EmberPlusInstance,
+		state: EmberPlusState,
+		feedbackType: FeedbackId,
+	) =>
+	async (feedback: CompanionFeedbackInfo<TOptions>, context: CompanionFeedbackCallbackContext): Promise<boolean> => {
 		const path = resolveEventPath(feedback)
-		if (await self.registerNewParameter(path, true)) state.addIdToPathMap(feedback.id, path)
+		await self.useParameterForFeedback(feedback.id, path, context.signal)
 		if (state.parameters.has(path)) {
 			switch (feedbackType) {
 				case FeedbackId.Boolean:
@@ -112,17 +129,17 @@ export const parameterFeedbackCallback =
 						state,
 						EmberModel.ParameterType.Enum,
 						path,
-						feedback.options['value']?.toString() ?? '',
+						feedback.options.value?.toString() ?? '',
 					)
 				case FeedbackId.Parameter:
 					return await resolveBooleanFeedback(
 						state,
-						feedback.options['asInt'] ? EmberModel.ParameterType.Integer : EmberModel.ParameterType.Real,
+						feedback.options.asInt ? EmberModel.ParameterType.Integer : EmberModel.ParameterType.Real,
 						path,
-						feedback.options['useVar'] ? String(feedback.options['valueVar']) : Number(feedback.options['value']),
+						Number(feedback.options.value),
 						{
-							comparitor: feedback.options['comparitor'] as NumberComparitor,
-							factor: feedback.options['factor']?.toString() ?? '1',
+							comparitor: feedback.options.comparitor,
+							factor: feedback.options.factor ?? 1,
 						},
 					)
 				case FeedbackId.String:
@@ -130,32 +147,22 @@ export const parameterFeedbackCallback =
 						state,
 						EmberModel.ParameterType.String,
 						path,
-						feedback.options['value']?.toString() ?? '',
-						{ parse: Boolean(feedback.options['parseEscapeChars']) },
+						feedback.options.value?.toString() ?? '',
+						{ parse: Boolean(feedback.options.parseEscapeChars) },
 					)
 			}
 		}
 		return false
 	}
 
-export const parameterValueFeedbackCallback =
-	(self: EmberPlusInstance, state: EmberPlusState) =>
-	async (feedback: CompanionFeedbackInfo, _context: CompanionFeedbackContext): Promise<JsonValue> => {
+export const parameterPropertyFeedbackCallback =
+	<TOptions extends ParameterFeedbackOptions>(self: EmberPlusInstance, state: EmberPlusState) =>
+	async (
+		feedback: CompanionFeedbackInfo<TOptions>,
+		context: CompanionFeedbackCallbackContext,
+	): Promise<ParameterPropertyValue> => {
 		const path = resolveEventPath(feedback)
-		if (await self.registerNewParameter(path, false)) state.addIdToPathMap(feedback.id, path)
-		if (state.parameters.has(path)) {
-			const value = state.parameters.get(path)?.value ?? null
-			if (state.parameters.get(path)?.parameterType == EmberModel.ParameterType.Integer && typeof value == 'number') {
-				const factor = state.parameters.get(path)?.factor ?? 1
-				return value / factor
-			}
-			if (feedback.options['asEnum'] && state.parameters.get(path)?.parameterType == EmberModel.ParameterType.Enum) {
-				return state.getCurrentEnumValue(path)
-			}
-			if (Buffer.isBuffer(value)) {
-				return Array.from(value)
-			}
-			return value
-		}
-		return null
+		await self.useParameterForFeedback(feedback.id, path, context.signal, readsValue(feedback.options.property))
+		const parameter = state.parameters.get(path)
+		return parameter ? parameterProperty(parameter, feedback.options.property, state.parameterElements.get(path)) : null
 	}

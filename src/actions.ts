@@ -1,40 +1,32 @@
 import type {
-	CompanionActionDefinition,
 	CompanionActionDefinitions,
+	CompanionInputFieldCheckbox,
 	CompanionInputFieldDropdown,
 	CompanionInputFieldNumber,
+	CompanionInputFieldStaticText,
 	CompanionInputFieldTextInput,
-	CompanionInputFieldCheckbox,
-	CompanionOptionValues,
 } from '@companion-module/base'
-import { EmberClient, Model as EmberModel } from 'emberplus-connection'
+import { EmberClient, Model as EmberModel } from '@phillipivan/emberplus-connection'
 import type PQueue from 'p-queue'
 import { type EmberPlusConfig, portDefault } from './config.js'
-import type { EmberPlusInstance } from './index.js'
-import { doMatrixAction, doTake, doClear, setSelectedSource, setSelectedTarget } from './actions/matrix.js'
+import type EmberPlusInstance from './index.js'
+import {
+	doMatrixAction,
+	doTake,
+	doClear,
+	learnMatrixSources,
+	setSelectedSource,
+	setSelectedTarget,
+} from './actions/matrix.js'
 import { learnSetValueActionOptions, setValue, subscribeParameterAction } from './actions/parameter.js'
 import { invokeFunctionAction } from './actions/function.js'
 import { setHostAction, learnSetHostActionOptions } from './actions/host.js'
+import { learnRampValue, rampValue, RampWaitLimit, stopRamp } from './actions/ramp.js'
 import { EmberPlusState } from './state.js'
+import { matrixDropdown, sourceFields, targetFields, type MatrixOptions } from './matrixOptions.js'
+import { EmberNumberRange, type NumericParameterType } from './ranges.js'
+import { EasingChoices, type EasingId } from './ramps.js'
 import { filterPathChoices, filterFunctionPathChoices } from './util.js'
-
-export interface setValueActionOptions extends CompanionOptionValues {
-	path: string
-	pathVar: string
-	usePathVar: boolean
-	value: string | number | boolean
-	useVar?: boolean
-	variable: boolean
-	valueVar?: string
-	relative?: boolean
-	min?: string
-	max?: string
-	factor?: string
-	toggle?: boolean
-	parseEscapeChars?: boolean
-	asEnum?: boolean
-	enumValue?: string
-}
 
 export enum ActionId {
 	SetValueInt = 'setValueInt',
@@ -51,146 +43,283 @@ export enum ActionId {
 	SetSelectedTarget = 'setSelectedTarget',
 	InvokeFunction = 'invokeFunction',
 	SetHost = 'setHost',
+	RampValue = 'ramp_value',
+	StopRamp = 'stop_ramp',
 }
 
+export type SetValueIntOptions = {
+	path: string
+	value: number
+	relative: boolean
+	min: number
+	max: number
+	/** The value in the device's units, sent as it is */
+	deviceUnits: boolean
+}
+
+export type SetValueRealOptions = {
+	path: string
+	value: number
+	relative: boolean
+	min: number
+	max: number
+	/** The value in the device's units, sent as it is */
+	deviceUnits: boolean
+}
+
+export type SetValueBooleanOptions = {
+	path: string
+	toggle: boolean
+	value: boolean
+}
+
+export type SetValueEnumOptions = {
+	path: string
+	value: number
+	asEnum: boolean
+	enumValue: string
+	relative: boolean
+	min: number
+	max: number
+}
+
+export type SetValueStringOptions = {
+	path: string
+	value: string
+	parseEscapeChars: boolean
+}
+
+/** The options of every Set Value action, as the shared parameter callbacks read them */
+export type SetValueOptions = {
+	path?: string
+	value?: string | number | boolean
+	relative?: boolean
+	min?: number
+	max?: number
+	toggle?: boolean
+	parseEscapeChars?: boolean
+	asEnum?: boolean
+	enumValue?: string
+	deviceUnits?: boolean
+}
+
+/** The matrix, by its configured path, its target, and its source or (an N:N matrix) sources */
+export type MatrixActionOptions = MatrixOptions
+
+/** The actions that work on a matrix, offered only while there is one */
+export const MatrixActionIds = [
+	ActionId.MatrixConnect,
+	ActionId.MatrixDisconnect,
+	ActionId.MatrixSetConnection,
+	ActionId.Take,
+	ActionId.Clear,
+	ActionId.SetSelectedSource,
+	ActionId.SetSelectedTarget,
+] as const
+
+/** The matrix, by its configured path, and its source */
+export type SetSelectedSourceOptions = MatrixOptions
+
+/** The matrix, by its configured path, and its target */
+export type SetSelectedTargetOptions = MatrixOptions
+
+export type InvokeFunctionOptions = {
+	path: string
+	args: string
+	parseEscapeChars: boolean
+}
+
+export type SetHostOptions = {
+	host: string
+	port: number
+}
+
+export type RampValueOptions = {
+	path: string
+	/** As displayed; with Relative, the amount to change it by */
+	value: number
+	/** In ms */
+	duration: number
+	easing: EasingId
+	relative: boolean
+	/** A relative change's limits, in the device's units, as Set Value's */
+	min: number
+	max: number
+	/** The static text on when the action waits for its ramp: no value */
+	waitNote?: never
+}
+
+export type StopRampOptions = {
+	/** Every ramp, rather than the one on the path */
+	all: boolean
+	path: string
+}
+
+export type ActionSchema = {
+	[ActionId.SetValueInt]: { options: SetValueIntOptions }
+	[ActionId.SetValueReal]: { options: SetValueRealOptions }
+	[ActionId.SetValueString]: { options: SetValueStringOptions }
+	[ActionId.SetValueBoolean]: { options: SetValueBooleanOptions }
+	[ActionId.SetValueEnum]: { options: SetValueEnumOptions }
+	[ActionId.MatrixConnect]: { options: MatrixActionOptions }
+	[ActionId.MatrixDisconnect]: { options: MatrixActionOptions }
+	[ActionId.MatrixSetConnection]: { options: MatrixActionOptions }
+	[ActionId.Take]: { options: Record<string, never> }
+	[ActionId.Clear]: { options: Record<string, never> }
+	[ActionId.SetSelectedSource]: { options: SetSelectedSourceOptions }
+	[ActionId.SetSelectedTarget]: { options: SetSelectedTargetOptions }
+	[ActionId.InvokeFunction]: { options: InvokeFunctionOptions }
+	[ActionId.SetHost]: { options: SetHostOptions }
+	[ActionId.RampValue]: { options: RampValueOptions }
+	[ActionId.StopRamp]: { options: StopRampOptions }
+}
+
+const pathTooltip =
+	'Path may be supplied in decimals: 1.2.3, text: path.to.ember.element, or with a descriptor and the decimals wrapped in brackets: path to ember element[1.2.3.4]'
+
+/** Registered paths to choose from, or a path typed in. Use expression mode to build the path from variables */
 const pathDropDown = {
 	type: 'dropdown',
-	label: 'Select registered path',
+	label: 'Path',
 	id: 'path',
 	choices: [],
 	default: 'No paths configured!',
 	allowCustom: true,
-	isVisibleExpression: '!$(options:usePathVar)',
-} as const satisfies CompanionInputFieldDropdown
+	tooltip: `Select a registered path or type one in. ${pathTooltip}`,
+} as const satisfies CompanionInputFieldDropdown<'path'>
 
-const pathString = {
-	type: 'textinput',
-	label: 'Path',
-	id: 'pathVar',
-	useVariables: { local: true },
-	default: '',
-	tooltip: `Path may be supplied in decimals: 1.2.3, text: path.to.ember.element, or with a descriptor and the decimals wrapped in brackets: path to ember element[1.2.3.4]`,
-	isVisibleExpression: '!!$(options:usePathVar)',
-} as const satisfies CompanionInputFieldTextInput
+/**
+ * A relative action's limit: a number in the range Ember+ allows the type, the range's ends meaning no limit. An
+ * expression beyond the range is held to it rather than skipping the action.
+ */
+function limit<TKey extends 'min' | 'max'>(
+	id: TKey,
+	type: NumericParameterType,
+	note: string = '',
+): CompanionInputFieldNumber<TKey> {
+	const range = EmberNumberRange[type]
+	const which = id === 'min' ? 'minimum' : 'maximum'
+	return {
+		type: 'number',
+		label: id === 'min' ? 'Minimum' : 'Maximum',
+		id,
+		min: range.min,
+		max: range.max,
+		default: id === 'min' ? range.min : range.max,
+		asInteger: type !== EmberModel.ParameterType.Real,
+		clampValues: true,
+		// An enumeration's lower end is its first entry, a real limit
+		showMinAsNegativeInfinity: type !== EmberModel.ParameterType.Enum,
+		showMaxAsPositiveInfinity: true,
+		tooltip: `Relative action ${which} value will be limited to this value${note}`,
+		isVisibleExpression: '!!$(options:relative)',
+	}
+}
 
-const usePathVar = {
+const valueTooltip =
+	"As displayed: the parameter's formula, or else its factor, converts it to the device's value. A relative change is made to the displayed value. With Device Units, the device's value, sent as it is"
+const deviceUnitsNote = ". In the device's units, not as displayed"
+
+/** A value to set, or for a relative action the amount to change it by, in the range Ember+ allows the type */
+function valueNumber(type: NumericParameterType, step: number): CompanionInputFieldNumber<'value'> {
+	const { max } = EmberNumberRange[type]
+	return {
+		type: 'number',
+		label: 'Value',
+		id: 'value',
+		// Negative for a relative change of any type, the callback holding a value set outright to the range
+		min: -max,
+		max,
+		default: 0,
+		step,
+		asInteger: type !== EmberModel.ParameterType.Real,
+	}
+}
+
+// Fields named in an isVisibleExpression must not be expressions themselves
+/**
+ * The value in the device's units, sent as it is: the parameter's formula and factor are bypassed, and a relative change
+ * is added to the device's value. Unticked, the value is as displayed, converted by the parameter's own formula or factor
+ */
+const deviceUnits = {
 	type: 'checkbox',
-	label: 'Path from String',
-	id: 'usePathVar',
+	label: 'Device Units',
+	id: 'deviceUnits',
 	default: false,
-} as const satisfies CompanionInputFieldCheckbox
-
-const pathInput = {
-	type: 'textinput',
-	label: 'Path',
-	id: 'path',
-	useVariables: { local: true },
-	tooltip: `Path may be supplied in decimals: 1.2.3, text: path.to.ember.element, or with a descriptor and the decimals wrapped in brackets: path to ember element[1.2.3.4]`,
-} as const satisfies CompanionInputFieldTextInput
-
-const minLimit = {
-	type: 'textinput',
-	label: 'Minimum',
-	id: 'min',
-	default: '-4294967295',
-	useVariables: { local: true },
-	tooltip: 'Relative action minimum value will be limited to this value',
-	isVisibleExpression: '!!$(options:relative)',
-} as const satisfies CompanionInputFieldTextInput
-
-const maxLimit = {
-	type: 'textinput',
-	label: 'Maximum',
-	id: 'max',
-	default: '4294967295',
-	useVariables: { local: true },
-	tooltip: 'Relative action maximum value will be limited to this value',
-	isVisibleExpression: '!!$(options:relative)',
-} as const satisfies CompanionInputFieldTextInput
+	disableAutoExpression: true,
+	tooltip:
+		"Send the value in the device's units, as it is: the parameter's formula and factor aren't applied. A relative change is added to the device's value. Unticked, the value is as displayed",
+} as const satisfies CompanionInputFieldCheckbox<'deviceUnits'>
 
 const relative = {
 	type: 'checkbox',
 	label: 'Relative',
 	id: 'relative',
 	default: false,
-	tooltip: 'Adjust value by this amount. Variable will be auto-created.',
-} as const satisfies CompanionInputFieldCheckbox
-
-const createVariable = {
-	type: 'checkbox',
-	label: 'Auto Create Variable',
-	id: 'variable',
-	default: false,
-} as const satisfies CompanionInputFieldCheckbox
-
-const useVariable = {
-	type: 'checkbox',
-	label: 'Use Variable?',
-	id: 'useVar',
-	default: false,
-} as const satisfies CompanionInputFieldCheckbox
-
-const factorOpt = {
-	type: 'textinput',
-	label: 'Factor',
-	id: 'factor',
-	useVariables: { local: true },
-	default: '1',
-	tooltip: `Value will be multiplied by this field`,
-} as const satisfies CompanionInputFieldTextInput
+	tooltip: 'Adjust value by this amount',
+	disableAutoExpression: true,
+} as const satisfies CompanionInputFieldCheckbox<'relative'>
 
 const asEnum = {
 	type: 'checkbox',
 	label: 'Set from Enumeration Value?',
 	id: 'asEnum',
 	default: false,
-} as const satisfies CompanionInputFieldCheckbox
+	disableAutoExpression: true,
+} as const satisfies CompanionInputFieldCheckbox<'asEnum'>
 
 const enumVal = {
 	type: 'textinput',
 	label: 'Enumeration',
 	id: 'enumValue',
-	useVariables: { local: true },
+	useVariables: true,
 	default: '',
 	tooltip: 'Must exactly match a valid enumeration value',
 	isVisibleExpression: '!!$(options:asEnum)',
-} as const satisfies CompanionInputFieldTextInput
+} as const satisfies CompanionInputFieldTextInput<'enumValue'>
 
-const matrixInputs: Array<CompanionInputFieldTextInput | CompanionInputFieldNumber | CompanionInputFieldCheckbox> = [
-	pathInput,
-	{
-		type: 'number',
-		label: 'Target',
-		id: 'target',
-		min: 0,
-		max: 0xffffffff,
-		default: 0,
-		step: 1,
-		isVisibleExpression: '!$(options:useVar)',
-	},
-	{
-		type: 'textinput',
-		label: 'Target',
-		id: 'targetVar',
-		regex: '',
-		useVariables: { local: true },
-		default: '0',
-		isVisibleExpression: '!!$(options:useVar)',
-	},
-	{
-		type: 'textinput',
-		label: 'Sources',
-		id: 'sources',
-		regex: '/^((\\s*\\d+,)*(\\s*\\d+)$)|$/', // comma separated list
-		useVariables: { local: true },
-	},
-	{
-		type: 'checkbox',
-		label: 'Use Variable?',
-		id: 'useVar',
-		default: false,
-	},
-]
+/** The path dropdown, listing the registered parameters of a type, or the first of them as the default */
+function pathChoices(
+	state: EmberPlusState,
+	paramType: EmberModel.ParameterType,
+): CompanionInputFieldDropdown<'path', string | number> {
+	const choices = filterPathChoices(state, true, paramType)
+	return { ...pathDropDown, choices, default: choices[0]?.id ?? pathDropDown.default }
+}
+
+/** The path dropdown of the ramp actions, listing the registered Integer and Real parameters */
+function rampPathChoices(state: EmberPlusState): CompanionInputFieldDropdown<'path', string | number> {
+	const choices = filterPathChoices(state, true, EmberModel.ParameterType.Integer, EmberModel.ParameterType.Real)
+	return { ...pathDropDown, choices, default: choices[0]?.id ?? pathDropDown.default }
+}
+
+const rampDuration = {
+	type: 'number',
+	label: 'Duration (ms)',
+	id: 'duration',
+	default: 1000,
+	min: 0,
+	max: 3_600_000,
+	step: 100,
+	asInteger: true,
+	tooltip: 'Up to one step interval (the Ramp Step Interval in the module config) sets the value at once',
+} as const satisfies CompanionInputFieldNumber<'duration'>
+
+const rampEasing = {
+	type: 'dropdown',
+	label: 'Easing',
+	id: 'easing',
+	choices: EasingChoices,
+	default: EasingChoices[0].id,
+	tooltip: 'How the value moves over the time. In starts slowly, Out ends slowly, In/Out does both',
+} as const satisfies CompanionInputFieldDropdown<'easing', EasingId>
+
+const rampWaitNote = {
+	type: 'static-text',
+	label: 'Waiting for the ramp',
+	id: 'waitNote',
+	value: `In an action group that waits for each action, the next action waits for a ramp to finish when it takes less than about ${(RampWaitLimit / 1000).toFixed(0)} seconds. A longer ramp finishes on its own after the action has completed.`,
+} as const satisfies CompanionInputFieldStaticText<'waitNote'>
 
 export function GetActionsList(
 	self: EmberPlusInstance,
@@ -198,230 +327,103 @@ export function GetActionsList(
 	config: EmberPlusConfig,
 	state: EmberPlusState,
 	queue: PQueue,
-): CompanionActionDefinitions {
-	const actions: { [id in ActionId]: CompanionActionDefinition | undefined } = {
+): CompanionActionDefinitions<ActionSchema> {
+	const functionChoices = filterFunctionPathChoices(state)
+
+	const actions: CompanionActionDefinitions<ActionSchema> = {
 		[ActionId.SetValueInt]: {
 			name: 'Set Value Integer',
 			options: [
-				{
-					...pathDropDown,
-					choices: filterPathChoices(state, true, EmberModel.ParameterType.Integer),
-					default:
-						filterPathChoices(state, true, EmberModel.ParameterType.Integer).find(() => true)?.id ??
-						'No paths configured!',
-				},
-				pathString,
-				usePathVar,
-				{
-					type: 'number',
-					label: 'Value',
-					id: 'value',
-					min: -0xffffffff,
-					max: 0xffffffff,
-					default: 0,
-					step: 1,
-					isVisibleExpression: '!$(options:useVar)',
-				},
-				{
-					type: 'textinput',
-					label: 'Value',
-					id: 'valueVar',
-					useVariables: { local: true },
-					default: '0',
-					isVisibleExpression: '!!$(options:useVar)',
-				},
-				useVariable,
+				pathChoices(state, EmberModel.ParameterType.Integer),
+				// As displayed, so a fraction can be meant: the parameter's formula or factor converts it, rounding
+				{ ...valueNumber(EmberModel.ParameterType.Integer, 1), asInteger: false, tooltip: valueTooltip },
 				relative,
-				{
-					...minLimit,
-					tooltip: 'Relative action maximum value will be limited to this value. Value is not factored',
-				},
-				{
-					...maxLimit,
-					tooltip: 'Relative action maximum value will be limited to this value. Value is not factored',
-				},
-				factorOpt,
-				{
-					...createVariable,
-					isVisibleExpression: '!$(options:relative)',
-				},
+				limit('min', EmberModel.ParameterType.Integer, deviceUnitsNote),
+				limit('max', EmberModel.ParameterType.Integer, deviceUnitsNote),
+				deviceUnits,
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.Integer, ActionId.SetValueInt, state, queue),
 			subscribe: subscribeParameterAction(self),
 			learn: learnSetValueActionOptions(state, EmberModel.ParameterType.Integer, ActionId.SetValueInt),
-			optionsToIgnoreForSubscribe: ['factor', 'max', 'min', 'relative', 'useVar', 'valueVar', 'value'],
+			optionsToMonitorForSubscribe: ['path'],
 		},
 		[ActionId.SetValueReal]: {
 			name: 'Set Value Real',
 			options: [
-				{
-					...pathDropDown,
-					choices: filterPathChoices(state, true, EmberModel.ParameterType.Real),
-					default:
-						filterPathChoices(state, true, EmberModel.ParameterType.Real).find(() => true)?.id ??
-						'No paths configured!',
-				},
-				pathString,
-				usePathVar,
-				{
-					type: 'number',
-					label: 'Value',
-					id: 'value',
-					min: -0xffffffff,
-					max: 0xffffffff,
-					default: 0,
-					step: 0.001, // TODO - don't want this at all preferably
-					isVisibleExpression: '!$(options:useVar)',
-				},
-				{
-					type: 'textinput',
-					label: 'Value',
-					id: 'valueVar',
-					default: '0.0',
-					useVariables: { local: true },
-					isVisibleExpression: '!!$(options:useVar)',
-				},
-				useVariable,
+				pathChoices(state, EmberModel.ParameterType.Real),
+				// TODO - don't want the step at all preferably
+				{ ...valueNumber(EmberModel.ParameterType.Real, 0.001), tooltip: valueTooltip },
 				relative,
-				minLimit,
-				maxLimit,
-				{
-					...createVariable,
-					isVisibleExpression: '!$(options:relative)',
-				},
+				limit('min', EmberModel.ParameterType.Real, deviceUnitsNote),
+				limit('max', EmberModel.ParameterType.Real, deviceUnitsNote),
+				deviceUnits,
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.Real, ActionId.SetValueReal, state, queue),
 			subscribe: subscribeParameterAction(self),
 			learn: learnSetValueActionOptions(state, EmberModel.ParameterType.Real, ActionId.SetValueReal),
-			optionsToIgnoreForSubscribe: ['max', 'min', 'relative', 'useVar', 'valueVar', 'value'],
+			optionsToMonitorForSubscribe: ['path'],
 		},
 		[ActionId.SetValueBoolean]: {
 			name: 'Set Value Boolean',
 			options: [
-				{
-					...pathDropDown,
-					choices: filterPathChoices(state, true, EmberModel.ParameterType.Boolean),
-					default:
-						filterPathChoices(state, true, EmberModel.ParameterType.Boolean).find(() => true)?.id ??
-						'No paths configured!',
-				},
-				pathString,
-				usePathVar,
+				pathChoices(state, EmberModel.ParameterType.Boolean),
 				{
 					type: 'checkbox',
 					label: 'Toggle',
 					id: 'toggle',
 					default: false,
-					tooltip: 'Variable will be auto-created.',
+					disableAutoExpression: true,
 				},
 				{
 					type: 'checkbox',
 					label: 'Value',
 					id: 'value',
 					default: false,
-					isVisibleExpression: '!$(options:useVar) && !$(options:toggle)',
-				},
-				{
-					type: 'textinput',
-					label: 'Value',
-					id: 'valueVar',
-					default: 'false',
-					useVariables: { local: true },
-					isVisibleExpression: '!!$(options:useVar) && !$(options:toggle)',
-				},
-				{
-					...useVariable,
-					isVisibleExpression: '!$(options:toggle)',
-				},
-				{
-					...createVariable,
 					isVisibleExpression: '!$(options:toggle)',
 				},
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.Boolean, ActionId.SetValueBoolean, state, queue),
 			subscribe: subscribeParameterAction(self),
 			learn: learnSetValueActionOptions(state, EmberModel.ParameterType.Boolean, ActionId.SetValueBoolean),
-			optionsToIgnoreForSubscribe: ['useVar', 'valueVar', 'value'],
+			optionsToMonitorForSubscribe: ['path'],
 		},
 		[ActionId.SetValueEnum]: {
 			name: 'Set Value ENUM',
 			options: [
+				pathChoices(state, EmberModel.ParameterType.Enum),
 				{
-					...pathDropDown,
-					choices: filterPathChoices(state, true, EmberModel.ParameterType.Enum),
-					default:
-						filterPathChoices(state, true, EmberModel.ParameterType.Enum).find(() => true)?.id ??
-						'No paths configured!',
-				},
-				pathString,
-				usePathVar,
-				{
-					type: 'number',
-					label: 'Value',
-					id: 'value',
-					min: 0x00000000,
-					max: 0xffffffff,
-					default: 0,
-					step: 1,
-					isVisible: (options) => {
-						return !options.useVar && !options.asEnum
-					},
-				},
-				{
-					type: 'textinput',
-					label: 'Value',
-					id: 'valueVar',
-					useVariables: { local: true },
-					default: '0',
-					tooltip: 'Return an integer between 0 and 4294967295',
-					isVisibleExpression: '!!$(options:useVar) && !$(options:asEnum)',
+					...valueNumber(EmberModel.ParameterType.Enum, 1),
+					isVisibleExpression: '!$(options:asEnum)',
 				},
 				enumVal,
 				asEnum,
-				{
-					...useVariable,
-					isVisibleExpression: '!$(options:asEnum)',
-				},
 				{
 					...relative,
 					isVisibleExpression: '!$(options:asEnum)',
 				},
 				{
-					...minLimit,
-					default: '0',
+					...limit('min', EmberModel.ParameterType.Enum),
 					isVisibleExpression: '!$(options:asEnum) && !!$(options:relative)',
 				},
 				{
-					...maxLimit,
+					...limit('max', EmberModel.ParameterType.Enum),
 					isVisibleExpression: '!$(options:asEnum) && !!$(options:relative)',
-				},
-				{
-					...createVariable,
-					isVisibleExpression: '!$(options:asEnum) && !$(options:relative)',
 				},
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.Enum, ActionId.SetValueEnum, state, queue),
 			subscribe: subscribeParameterAction(self),
 			learn: learnSetValueActionOptions(state, EmberModel.ParameterType.Enum, ActionId.SetValueEnum),
-			optionsToIgnoreForSubscribe: ['useVar', 'valueVar', 'value', 'asEnum', 'min', 'max', 'enumVal'],
+			optionsToMonitorForSubscribe: ['path'],
 		},
 		[ActionId.SetValueString]: {
 			name: 'Set Value String',
 			options: [
-				{
-					...pathDropDown,
-					choices: filterPathChoices(state, true, EmberModel.ParameterType.String),
-					default:
-						filterPathChoices(state, true, EmberModel.ParameterType.String).find(() => true)?.id ??
-						'No paths configured!',
-				},
-				pathString,
-				usePathVar,
+				pathChoices(state, EmberModel.ParameterType.String),
 				{
 					type: 'textinput',
 					label: 'Value',
 					id: 'value',
-					useVariables: { local: true },
+					useVariables: true,
 					multiline: true,
 					default: '',
 				},
@@ -432,39 +434,32 @@ export function GetActionsList(
 					default: true,
 					tooltip: 'Parse escape characters such as \\r \\n \\t',
 				},
-				createVariable,
 			],
 			callback: setValue(self, emberClient, EmberModel.ParameterType.String, ActionId.SetValueString, state, queue),
 			subscribe: subscribeParameterAction(self),
 			learn: learnSetValueActionOptions(state, EmberModel.ParameterType.String, ActionId.SetValueString),
-			optionsToIgnoreForSubscribe: ['parseEscapeChars', 'value'],
+			optionsToMonitorForSubscribe: ['path'],
 		},
 		[ActionId.MatrixConnect]: {
 			name: 'Matrix Connect',
-			options: [...matrixInputs],
-			callback: doMatrixAction(self, emberClient, async (...args) => emberClient.matrixConnect(...args), queue, state),
+			description: 'Connect sources to a target, as well as those connected to it (for an N:N matrix)',
+			options: [matrixDropdown(state), ...targetFields(state), ...sourceFields(state, { several: true })],
+			callback: doMatrixAction(self, emberClient, 'connect', queue, state),
+			learn: learnMatrixSources(state, { none: false }),
 		},
 		[ActionId.MatrixDisconnect]: {
 			name: 'Matrix Disconnect',
-			options: [...matrixInputs],
-			callback: doMatrixAction(
-				self,
-				emberClient,
-				async (...args) => emberClient.matrixDisconnect(...args),
-				queue,
-				state,
-			),
+			description: 'Disconnect sources from a target',
+			options: [matrixDropdown(state), ...targetFields(state), ...sourceFields(state, { several: true })],
+			callback: doMatrixAction(self, emberClient, 'disconnect', queue, state),
 		},
 		[ActionId.MatrixSetConnection]: {
 			name: 'Matrix Set Connection',
-			options: [...matrixInputs],
-			callback: doMatrixAction(
-				self,
-				emberClient,
-				async (...args) => emberClient.matrixSetConnection(...args),
-				queue,
-				state,
-			),
+			description:
+				"Connect exactly these sources to a target, replacing those connected to it. None disconnects the target's sources",
+			options: [matrixDropdown(state), ...targetFields(state), ...sourceFields(state, { several: true, none: true })],
+			callback: doMatrixAction(self, emberClient, 'absolute', queue, state),
+			learn: learnMatrixSources(state, { none: true }),
 		},
 		[ActionId.Take]: {
 			name: 'Take',
@@ -478,102 +473,12 @@ export function GetActionsList(
 		},
 		[ActionId.SetSelectedSource]: {
 			name: 'Set Selected Source',
-			options: [
-				{
-					type: 'number',
-					label: 'Select Matrix Number',
-					id: 'matrix',
-					required: true,
-					min: -0,
-					max: 0xffffffff,
-					default: 0,
-					isVisibleExpression: '!$(options:useVar)',
-				},
-				{
-					type: 'textinput',
-					label: 'Select Matrix Number',
-					id: 'matrixVar',
-					regex: '',
-					useVariables: { local: true },
-					default: '0',
-					isVisibleExpression: '!!$(options:useVar)',
-				},
-				{
-					type: 'number',
-					label: 'Value',
-					id: 'source',
-					required: true,
-					min: -0,
-					max: 0xffffffff,
-					default: 0,
-					isVisibleExpression: '!$(options:useVar)',
-				},
-				{
-					type: 'textinput',
-					label: 'Value',
-					id: 'sourceVar',
-					regex: '',
-					useVariables: { local: true },
-					default: '0',
-					isVisibleExpression: '!!$(options:useVar)',
-				},
-				{
-					type: 'checkbox',
-					label: 'Use Variable?',
-					id: 'useVar',
-					default: false,
-				},
-			],
+			options: [matrixDropdown(state), ...sourceFields(state, { several: false })],
 			callback: setSelectedSource(self, emberClient, config, state, queue),
 		},
 		[ActionId.SetSelectedTarget]: {
 			name: 'Set Selected Target',
-			options: [
-				{
-					type: 'number',
-					label: 'Select Matrix Number',
-					id: 'matrix',
-					required: true,
-					min: -0,
-					max: 0xffffffff,
-					default: 0,
-					isVisibleExpression: '!$(options:useVar)',
-				},
-				{
-					type: 'textinput',
-					label: 'Select Matrix Number',
-					id: 'matrixVar',
-					regex: '',
-					useVariables: { local: true },
-					default: '0',
-					isVisibleExpression: '!!$(options:useVar)',
-				},
-				{
-					type: 'number',
-					label: 'Value',
-					id: 'target',
-					required: true,
-					min: -0,
-					max: 0xffffffff,
-					default: 0,
-					isVisibleExpression: '!$(options:useVar)',
-				},
-				{
-					type: 'textinput',
-					label: 'Value',
-					id: 'targetVar',
-					regex: '',
-					useVariables: { local: true },
-					default: '0',
-					isVisibleExpression: '!!$(options:useVar)',
-				},
-				{
-					type: 'checkbox',
-					label: 'Use Variable?',
-					id: 'useVar',
-					default: false,
-				},
-			],
+			options: [matrixDropdown(state), ...targetFields(state)],
 			callback: setSelectedTarget(self, state),
 		},
 		[ActionId.InvokeFunction]: {
@@ -581,16 +486,14 @@ export function GetActionsList(
 			options: [
 				{
 					...pathDropDown,
-					choices: filterFunctionPathChoices(state),
-					default: filterFunctionPathChoices(state).find(() => true)?.id ?? 'No functions configured!',
+					choices: functionChoices,
+					default: functionChoices[0]?.id ?? 'No functions configured!',
 				},
-				pathString,
-				usePathVar,
 				{
 					type: 'textinput',
 					label: 'Arguments',
 					id: 'args',
-					useVariables: { local: true },
+					useVariables: true,
 					multiline: true,
 					default: '',
 					tooltip:
@@ -606,6 +509,7 @@ export function GetActionsList(
 			],
 			callback: invokeFunctionAction(self, emberClient, state, queue),
 			subscribe: subscribeParameterAction(self),
+			optionsToMonitorForSubscribe: ['path'],
 		},
 		[ActionId.SetHost]: {
 			name: 'Set Host',
@@ -614,24 +518,67 @@ export function GetActionsList(
 					type: 'textinput',
 					label: 'Connection Host',
 					id: 'host',
-					useVariables: { local: true },
+					useVariables: true,
 					default: config.host ?? '',
+					minLength: 1,
 					tooltip:
 						'The Hostname/IP of the Ember+ provider. Overrides any device selected by Bonjour. Leave empty to keep the current host.',
 				},
 				{
-					type: 'textinput',
+					type: 'number',
 					label: 'Connection Port',
 					id: 'port',
-					useVariables: { local: true },
-					default: (config.port ?? portDefault).toString(),
-					tooltip: 'The port of the Ember+ provider. Leave empty to keep the current port.',
+					default: config.port ?? portDefault,
+					tooltip: 'The port of the Ember+ provider. Use expression mode to set it from a variable',
+					min: 1,
+					max: 65535,
+					step: 1,
+					asInteger: true,
 				},
 			],
 			callback: setHostAction(self),
 			learn: learnSetHostActionOptions(config),
 		},
+		[ActionId.RampValue]: {
+			name: 'Ramp Value',
+			description: 'Fade an Integer or Real parameter to a value over a time, in steps sent by the module',
+			options: [
+				rampPathChoices(state),
+				{
+					...valueNumber(EmberModel.ParameterType.Real, 0.001),
+					label: 'Target Value',
+					tooltip:
+						"As displayed: the parameter's formula, or else its factor, converts it to the device's value. With Relative, the amount to change the displayed value by",
+				},
+				rampDuration,
+				rampEasing,
+				relative,
+				limit('min', EmberModel.ParameterType.Real, deviceUnitsNote),
+				limit('max', EmberModel.ParameterType.Real, deviceUnitsNote),
+				rampWaitNote,
+			],
+			callback: rampValue(self, emberClient, state),
+			subscribe: subscribeParameterAction(self),
+			learn: learnRampValue(state),
+			optionsToMonitorForSubscribe: ['path'],
+		},
+		[ActionId.StopRamp]: {
+			name: 'Stop Ramp',
+			description: 'Stop a ramp where it has reached',
+			options: [
+				{
+					type: 'checkbox',
+					label: 'All ramps',
+					id: 'all',
+					default: false,
+					disableAutoExpression: true,
+				},
+				{ ...rampPathChoices(state), isVisibleExpression: '!$(options:all)' },
+			],
+			callback: stopRamp(self),
+		},
 	}
-
+	// Without a matrix to work on (none configured, or none the provider has), the matrix actions aren't offered
+	if (state.matrices.size === 0) for (const id of MatrixActionIds) actions[id] = undefined
 	return actions
 }

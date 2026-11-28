@@ -1,6 +1,6 @@
 {
 	"name": "generic-emberplus",
-	"version": "2.9.2",
+	"version": "3.0.0-3",
 	"main": "dist/index.js",
 	"type": "module",
 	"scripts": {
@@ -16,7 +16,8 @@
 		"format": "prettier -w .",
 		"test": "vitest --run",
 		"test:watch": "vitest",
-		"test:coverage": "vitest run --coverage"
+		"test:coverage": "vitest run --coverage",
+		"test:types": "tsc -p tsconfig.json --noEmit"
 	},
 	"repository": {
 		"type": "git",
@@ -32,28 +33,29 @@
 		]
 	},
 	"engines": {
-		"node": "^22.15"
+		"node": "^26.13"
 	},
 	"dependencies": {
-		"@companion-module/base": "~1.14.1",
-		"emberplus-connection": "patch:emberplus-connection@npm%3A0.3.1#~/.yarn/patches/emberplus-connection-npm-0.3.1-a2439212e6.patch",
-		"es-toolkit": "^1.52.0",
-		"p-queue": "^9.3.3"
+		"@companion-module/base": "~2.2.2",
+		"@phillipivan/emberplus-connection": "~0.5.2",
+		"es-toolkit": "^1.53.2",
+		"p-queue": "^10.0.0"
 	},
 	"devDependencies": {
-		"@companion-module/tools": "^2.8.0",
-		"@types/node": "^22.20.4",
-		"@vitest/coverage-v8": "^5.0.2",
-		"eslint": "^10.11.0",
+		"@companion-app/expressions": "1.1.1",
+		"@companion-module/tools": "^3.2.1",
+		"@types/node": "^26.6.7",
+		"@vitest/coverage-v8": "5.1.1",
+		"eslint": "^10.15.0",
 		"husky": "^9.1.7",
-		"lint-staged": "^17.6.0",
-		"prettier": "^3.9.9",
-		"rimraf": "^6.1.3",
+		"lint-staged": "^17.6.2",
+		"prettier": "^3.10.1",
+		"rimraf": "^6.1.4",
 		"typescript": "~6.0.3",
-		"typescript-eslint": "^8.71.0",
-		"vite": "^8.3.3",
-		"vitest": "^5.0.2"
+		"typescript-eslint": "^8.74.0",
+		"vite": "^8.3.8",
+		"vitest": "5.1.1"
 	},
 	"prettier": "@companion-module/tools/.prettierrc.json",
-	"packageManager": "yarn@4.18.0"
+	"packageManager": "yarn@4.18.1"
 }

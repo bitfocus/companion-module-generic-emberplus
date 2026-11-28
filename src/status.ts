@@ -1,5 +1,5 @@
-import { InstanceBase, InstanceStatus } from '@companion-module/base'
-import type { EmberPlusConfig as ModuleConfig } from './config.js'
+import { createModuleLogger, type InstanceBase, InstanceStatus } from '@companion-module/base'
+import type { ModuleTypes } from './index.js'
 import { throttle } from 'es-toolkit'
 
 export interface Status {
@@ -16,16 +16,18 @@ export interface Status {
  *
  */
 
+const logger = createModuleLogger('Status Manager')
+
 export class StatusManager {
 	#currentStatus: Status = { status: InstanceStatus.Disconnected, message: '' }
 	#newStatus: Status = { status: InstanceStatus.Disconnected, message: '' }
-	#parentInstance!: InstanceBase<ModuleConfig>
+	#parentInstance!: InstanceBase<ModuleTypes>
 	#throttleTimeout: number = 1000
 	#isDestroyed: boolean = false
 	private setNewStatus!: ((newStatus?: Status) => void) & { flush: () => void }
 
 	constructor(
-		self: InstanceBase<ModuleConfig>,
+		self: InstanceBase<ModuleTypes>,
 		initStatus: Status = { status: InstanceStatus.Disconnected, message: null },
 		throttleTimeout: number = 2000,
 	) {
@@ -78,7 +80,7 @@ export class StatusManager {
 
 	public updateStatus(newStatus: InstanceStatus, newMsg: string | object | null = null): void {
 		if (this.#isDestroyed) {
-			console.log(
+			logger.warn(
 				`Module destroyed. Can't update status\n${newStatus}: ${typeof newMsg == 'object' ? JSON.stringify(newMsg) : newMsg}`,
 			)
 			return

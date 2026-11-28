@@ -1,10 +1,5 @@
 import { Regex } from '@companion-module/base'
-import type {
-	//CompanionActionContext,
-	CompanionActionInfo,
-	CompanionFeedbackInfo,
-	DropdownChoice,
-} from '@companion-module/base'
+import type { DropdownChoice } from '@companion-module/base'
 
 export enum NumberComparitor {
 	Equal = 'eq',
@@ -22,18 +17,18 @@ export const comparitorOptions = [
 	{ id: NumberComparitor.LessThanEqual, label: '<=' },
 	{ id: NumberComparitor.GreaterThan, label: '>' },
 	{ id: NumberComparitor.GreaterThanEqual, label: '>=' },
-] as const satisfies DropdownChoice[]
+] as const satisfies DropdownChoice<NumberComparitor>[]
 
-import { ActionId, type setValueActionOptions } from './actions.js'
+import { ActionId, type MatrixActionOptions, type SetValueOptions } from './actions.js'
 import type { EmberPlusConfig } from './config.js'
-import type { EmberPlusInstance } from './index.js'
+import type EmberPlusInstance from './index.js'
+import { isNToN, type MatrixInfo } from './matrices.js'
+import { NoSource } from './matrixOptions.js'
+import { withValidFactor } from './factor.js'
+import { elementLabel } from './identifiers.js'
+import { EmberNumberRange, type NumericParameterType } from './ranges.js'
 import { EmberPlusState } from './state.js'
-import { Model as EmberModel } from 'emberplus-connection'
-import { ElementType } from 'emberplus-connection/dist/model/index.js'
-import type { NumberedTreeNode, EmberElement } from 'emberplus-connection/dist/model/index.js'
-import type { EmberTypedValue } from 'emberplus-connection/dist/types/index.js'
-import type { Collection } from 'emberplus-connection/dist/types/types.js'
-import type { FunctionArgument } from 'emberplus-connection/dist/model/FunctionArgument.js'
+import { Model as EmberModel, type Types as EmberTypes } from '@phillipivan/emberplus-connection'
 
 export function assertUnreachable(_never: never): void {
 	// throw new Error('Unreachable')
@@ -115,23 +110,18 @@ export function filterPathChoices(
 	state: EmberPlusState,
 	isWriteable: boolean,
 	...paramFilter: EmberModel.ParameterType[]
-): DropdownChoice[] {
-	const choices: DropdownChoice[] = []
+): DropdownChoice<string>[] {
+	const choices: DropdownChoice<string>[] = []
 	//If not filter specified allow all types
 	if (paramFilter.length === 0) {
 		paramFilter = Object.values(EmberModel.ParameterType)
 	}
 	for (const [path, value] of state.parameters) {
-		let label = `${path}`
+		// By its path, and its path by identifiers, as its variable is named
+		const label = elementLabel(path, value, state.parameterElements.get(path))
 
 		paramFilter.forEach((element) => {
 			if (element === value.parameterType) {
-				if (value.identifier) {
-					label += `: ${value.identifier}`
-				}
-				if (value.description) {
-					label += ` (${value.description})`
-				}
 				if (isWriteable) {
 					if (
 						value.access === EmberModel.ParameterAccess.ReadWrite ||
@@ -149,6 +139,25 @@ export function filterPathChoices(
 }
 
 /**
+ * Whether a parameter is a stream parameter, such as a meter: one with a stream identifier, whose values a provider sends
+ * in stream collections, and only to consumers that subscribed to it
+ */
+export function isStreamParameter(parameter: EmberModel.Parameter | undefined): boolean {
+	return parameter?.streamIdentifier !== undefined
+}
+
+/**
+ * A number parameter's value as it is displayed: by its formula, or else divided by its factor (the library's
+ * displayValue; a factor only if it is a positive whole number). Undefined for a value that isn't a number, or none at
+ * present. Throws FormulaError for a formula that can't be computed.
+ */
+export function displayedNumber(parameter: EmberModel.Parameter | undefined): number | undefined {
+	if (!parameter) return undefined
+	const { value } = EmberModel.displayValue(withValidFactor(parameter))
+	return typeof value === 'number' ? value : undefined
+}
+
+/**
  * Conform numeric value to range defined by min and max
  */
 
@@ -157,22 +166,23 @@ export function checkNumberLimits(value: number, min: number, max: number): numb
 }
 
 /**
- * Calculate absloute numeric value from relative action
+ * Calculate absloute numeric value from relative action. The limits are numbers; one missing (an action saved without
+ * it) is no limit.
  */
 
 export function calcRelativeNumber(
 	value: number,
 	path: string,
-	min: string,
-	max: string,
-	type: EmberModel.ParameterType.Integer | EmberModel.ParameterType.Real | EmberModel.ParameterType.Enum,
+	min: number | undefined,
+	max: number | undefined,
+	type: NumericParameterType,
 	state: EmberPlusState,
 ): number {
 	let oldValue = Number(state.parameters.get(path)?.value)
 	if (isNaN(oldValue)) oldValue = 0
 	let newValue = value + oldValue
-	const minLimit = min.trim() === '' ? NaN : Number(min)
-	const maxLimit = max.trim() === '' ? NaN : Number(max)
+	const minLimit = Number(min ?? NaN)
+	const maxLimit = Number(max ?? NaN)
 	if (type === EmberModel.ParameterType.Integer) {
 		newValue = Math.round(newValue)
 	}
@@ -201,12 +211,9 @@ export function resolvePath(path: string): string {
 	return pathString
 }
 
-export function resolveEventPath(event: CompanionFeedbackInfo | CompanionActionInfo): string {
-	return resolvePath(
-		event.options['usePathVar']
-			? (event.options['pathVar']?.toString() ?? '')
-			: (event.options['path']?.toString() ?? ''),
-	)
+/** The path of an action or feedback. Companion has already resolved it when the field is an expression */
+export function resolveEventPath(event: { readonly options: { readonly path?: string } }): string {
+	return resolvePath(event.options.path?.toString() ?? '')
 }
 
 /**
@@ -247,17 +254,21 @@ export function isValidPort(port: number): boolean {
 	return Number.isInteger(port) && port >= 1 && port <= 0xffff
 }
 
-export const MinReconnectDelay = 5000
-export const MaxReconnectDelay = 60000
-
 /**
- * Exponential backoff for reconnection attempts: 5s, 10s, 20s, 40s, then capped at 60s
+ * The value a recorded action sets: a number as it is displayed, by the parameter's formula or factor, which the action
+ * converts back; anything else as it is. A formula that can't be computed leaves the value as it is.
  */
-
-export function nextReconnectDelay(consecutiveFailures: number): number {
-	if (consecutiveFailures <= 1) return MinReconnectDelay
-	const exponent = Math.min(consecutiveFailures - 1, 10)
-	return Math.min(MinReconnectDelay * 2 ** exponent, MaxReconnectDelay)
+function actionValue(
+	actionType: ActionId,
+	value: boolean | number | string,
+	parameter: EmberModel.Parameter | undefined,
+): boolean | number | string {
+	if (actionType !== ActionId.SetValueInt && actionType !== ActionId.SetValueReal) return value
+	try {
+		return displayedNumber(parameter) ?? value
+	} catch {
+		return value
+	}
 }
 
 export function recordParameterAction(
@@ -269,55 +280,39 @@ export function recordParameterAction(
 ): void {
 	const param = state.parameters.get(path)
 
-	const actOptions: setValueActionOptions = {
-		path: path,
-		pathVar: path,
-		usePathVar: false,
-		value: value,
-		variable: true,
-	}
+	// A recorded action isn't relative, but the user may turn it so: give it the parameter's limits, else none
+	const limits = (type: NumericParameterType): SetValueOptions => ({
+		relative: false,
+		min: param?.minimum ?? EmberNumberRange[type].min,
+		max: param?.maximum ?? EmberNumberRange[type].max,
+	})
 
+	let typeOptions: SetValueOptions
 	switch (actionType) {
 		case ActionId.SetValueBoolean:
-			actOptions.useVar = false
-			actOptions.valueVar = value.toString()
-			actOptions.toggle = false
+			typeOptions = { toggle: false }
 			break
-
-		case ActionId.SetValueEnum:
-			actOptions.useVar = false
-			actOptions.valueVar = value.toString()
-			actOptions.relative = false
-			actOptions.min = param?.minimum?.toString() ?? '0'
-			actOptions.max = param?.maximum?.toString() ?? ''
-			actOptions.asEnum = true
-			actOptions.enumValue = state.getCurrentEnumValue(path)
-			break
-
 		case ActionId.SetValueInt:
-			actOptions.useVar = false
-			actOptions.valueVar = value.toString()
-			actOptions.relative = false
-			actOptions.min = param?.minimum?.toString() ?? ''
-			actOptions.max = param?.maximum?.toString() ?? ''
-			actOptions.factor = param?.factor?.toString() ?? '1'
+			typeOptions = limits(EmberModel.ParameterType.Integer)
 			break
-
 		case ActionId.SetValueReal:
-			actOptions.useVar = false
-			actOptions.valueVar = value.toString()
-			actOptions.relative = false
-			actOptions.min = param?.minimum?.toString() ?? ''
-			actOptions.max = param?.maximum?.toString() ?? ''
+			typeOptions = limits(EmberModel.ParameterType.Real)
 			break
-
+		case ActionId.SetValueEnum:
+			typeOptions = {
+				...limits(EmberModel.ParameterType.Enum),
+				asEnum: true,
+				enumValue: state.getCurrentEnumValue(path),
+			}
+			break
 		case ActionId.SetValueString:
-			actOptions.parseEscapeChars = false
+			typeOptions = { parseEscapeChars: false }
 			break
-
 		default:
 			return
 	}
+
+	const actOptions: SetValueOptions = { path, value: actionValue(actionType, value, param), ...typeOptions }
 
 	self.recordAction(
 		{
@@ -328,78 +323,92 @@ export function recordParameterAction(
 	)
 }
 
-export function parseParameterValue(
-	path: string,
-	contents: EmberModel.Parameter,
-	state: EmberPlusState,
-): { actionType: ActionId | undefined; value: boolean | number | string } {
-	let value: boolean | number | string
-	let actionType: ActionId | undefined
+/**
+ * Record a Matrix Set Connection of a target's sources, as the provider reported them, which played back makes the
+ * target's connection just that, on any type of matrix: the matrix by its path, the target, and its sources, a list for
+ * an N:N matrix's multi-select (empty for none) or the one for any other's dropdown (None for none). Recorded once per
+ * target (`<path>:<target>`), so the latest change to a target replaces an earlier one, as a parameter's latest value
+ * does.
+ */
+export function recordMatrixSetConnectionAction(
+	self: EmberPlusInstance,
+	info: MatrixInfo,
+	target: number,
+	sources: number[],
+): void {
+	const options: MatrixActionOptions = { matrix: info.path }
+	options[`target_${info.key}`] = target
+	options[`sources_${info.key}`] = isNToN(info.node?.contents) ? sources : (sources[0] ?? NoSource)
+	self.recordAction({ actionId: ActionId.MatrixSetConnection, options }, `${info.path}:${target}`)
+}
 
+/**
+ * The action that sets a parameter of its type, for the action recorder, and its value: a number as the device has it
+ * (the recorder gives the action the displayed value, by the library's displayValue), a string with its control
+ * characters written out. A value may be null (Glow 2.50: none at present), which keeps the parameter's type; so may one
+ * a report left out. A parameter of another type has no action.
+ */
+export function parseParameterValue(contents: EmberModel.Parameter): {
+	actionType: ActionId | undefined
+	value: boolean | number | string | null
+} {
 	switch (contents.parameterType) {
 		case EmberModel.ParameterType.Boolean:
-			actionType = ActionId.SetValueBoolean
-			value = contents.value as boolean
-			break
+			return { actionType: ActionId.SetValueBoolean, value: contents.value ?? null }
 		case EmberModel.ParameterType.Integer:
-			actionType = ActionId.SetValueInt
-			value = Number(contents.value) / (state.parameters.get(path)?.factor ?? 1)
-			break
+			return { actionType: ActionId.SetValueInt, value: contents.value ?? null }
 		case EmberModel.ParameterType.Real:
-			actionType = ActionId.SetValueReal
-			value = contents.value as number
-			break
+			return { actionType: ActionId.SetValueReal, value: contents.value ?? null }
 		case EmberModel.ParameterType.Enum:
-			actionType = ActionId.SetValueEnum
-			value = contents.value as number
-			break
+			return { actionType: ActionId.SetValueEnum, value: contents.value ?? null }
 		case EmberModel.ParameterType.String:
-			actionType = ActionId.SetValueString
-			value = substituteEscapeCharacters(contents.value as string)
-			break
+			return {
+				actionType: ActionId.SetValueString,
+				value: isDefined(contents.value) ? substituteEscapeCharacters(contents.value) : null,
+			}
 		default:
-			value = contents.value as string
+			return { actionType: undefined, value: null }
 	}
-
-	return { actionType, value }
 }
 
 /**
  * Return array of dropdown choices of registered Ember+ functions
  */
-export function filterFunctionPathChoices(state: EmberPlusState): DropdownChoice[] {
-	const choices: DropdownChoice[] = []
+export function filterFunctionPathChoices(state: EmberPlusState): DropdownChoice<string>[] {
+	const choices: DropdownChoice<string>[] = []
 	for (const [path, func] of state.functions) {
-		let label = `${path}`
-		if (func.identifier) {
-			label += `: ${func.identifier}`
-		}
-		if (func.description) {
-			label += ` (${func.description})`
-		}
-		choices.push({ id: path, label })
+		choices.push({ id: path, label: elementLabel(path, func, state.emberElement.get(path)) })
 	}
 	return choices
+}
+
+/** Whether a value is a typed value as the library takes one: a parameter type, and a value of its form */
+function isEmberTypedValue(item: unknown): item is EmberTypes.EmberTypedValue {
+	if (typeof item !== 'object' || item === null || !('type' in item) || !('value' in item)) return false
+	const { type, value } = item
+	const types: unknown[] = Object.values(EmberModel.ParameterType)
+	return types.includes(type) && EmberModel.isValueOfType(type as EmberModel.ParameterType, value)
 }
 
 /**
  * Parse raw input arguments string into EmberTypedValue array for Ember+ function invocation.
  * Handles JSON array input, comma/line separated lists, and schema-based type casting.
  */
-export function parseFunctionArguments(rawArgsString: string, expectedArgs?: FunctionArgument[]): EmberTypedValue[] {
+export function parseFunctionArguments(
+	rawArgsString: string,
+	expectedArgs?: EmberModel.FunctionArgument[],
+): EmberTypes.EmberTypedValue[] {
 	const trimmed = rawArgsString.trim()
 	if (!trimmed) return []
 
 	// Try JSON parsing if argument input looks like a JSON array
 	if (trimmed.startsWith('[')) {
 		try {
-			const jsonParsed = JSON.parse(trimmed)
+			const jsonParsed: unknown = JSON.parse(trimmed)
 			if (Array.isArray(jsonParsed)) {
-				return jsonParsed.map((item, idx) => {
-					// Check if item is already an EmberTypedValue object ({ type, value })
-					if (typeof item === 'object' && item !== null && 'type' in item && 'value' in item) {
-						return item as EmberTypedValue
-					}
+				return jsonParsed.map((item: unknown, idx): EmberTypes.EmberTypedValue => {
+					// An item given as a typed value ({ type, value }) is taken as it is, if its value fits its type
+					if (isEmberTypedValue(item)) return item
 
 					const expected = expectedArgs?.[idx]
 					if (expected) {
@@ -410,12 +419,11 @@ export function parseFunctionArguments(rawArgsString: string, expectedArgs?: Fun
 						return { type: EmberModel.ParameterType.Boolean, value: item }
 					}
 					if (typeof item === 'number') {
-						return {
-							type: Number.isInteger(item) ? EmberModel.ParameterType.Integer : EmberModel.ParameterType.Real,
-							value: item,
-						}
+						return Number.isInteger(item)
+							? { type: EmberModel.ParameterType.Integer, value: item }
+							: { type: EmberModel.ParameterType.Real, value: item }
 					}
-					return { type: EmberModel.ParameterType.String, value: String(item) }
+					return { type: EmberModel.ParameterType.String, value: textOf(item) }
 				})
 			}
 		} catch {
@@ -429,7 +437,7 @@ export function parseFunctionArguments(rawArgsString: string, expectedArgs?: Fun
 		.map((t) => t.trim())
 		.filter((t) => t.length > 0)
 
-	return tokens.map((token, idx) => {
+	return tokens.map((token, idx): EmberTypes.EmberTypedValue => {
 		const expected = expectedArgs?.[idx]
 		if (expected) {
 			return castStringToType(token, expected.type)
@@ -445,7 +453,16 @@ export function parseFunctionArguments(rawArgsString: string, expectedArgs?: Fun
 	})
 }
 
-function castToEmberTypedValue(value: any, targetType: EmberModel.ParameterType): EmberTypedValue {
+/** A JSON value as text: a string as it is, anything else as JSON */
+function textOf(value: unknown): string {
+	return typeof value === 'string' ? value : JSON.stringify(value)
+}
+
+/**
+ * A JSON value as an argument of the type the function declares. The library refuses a value that doesn't fit its
+ * type, so each type gets a value of its form: an octet string the text's UTF-8 bytes, a null argument null.
+ */
+function castToEmberTypedValue(value: unknown, targetType: EmberModel.ParameterType): EmberTypes.EmberTypedValue {
 	switch (targetType) {
 		case EmberModel.ParameterType.Boolean:
 			return { type: targetType, value: Boolean(value) }
@@ -454,13 +471,25 @@ function castToEmberTypedValue(value: any, targetType: EmberModel.ParameterType)
 			return { type: targetType, value: Math.round(Number(value)) }
 		case EmberModel.ParameterType.Real:
 			return { type: targetType, value: Number(value) }
+		case EmberModel.ParameterType.Octets:
+			return { type: targetType, value: Buffer.from(textOf(value)) }
+		case EmberModel.ParameterType.Null:
+			return { type: targetType, value: null }
+		case EmberModel.ParameterType.Trigger:
+			return {
+				type: targetType,
+				value: typeof value === 'number' || typeof value === 'boolean' ? value : textOf(value),
+			}
 		case EmberModel.ParameterType.String:
+			return { type: targetType, value: textOf(value) }
 		default:
-			return { type: targetType, value: String(value) }
+			assertUnreachable(targetType)
+			return { type: EmberModel.ParameterType.String, value: textOf(value) }
 	}
 }
 
-function castStringToType(token: string, targetType: EmberModel.ParameterType): EmberTypedValue {
+/** A token of a comma or line separated list as an argument of the type the function declares */
+function castStringToType(token: string, targetType: EmberModel.ParameterType): EmberTypes.EmberTypedValue {
 	switch (targetType) {
 		case EmberModel.ParameterType.Boolean:
 			return {
@@ -476,27 +505,33 @@ function castStringToType(token: string, targetType: EmberModel.ParameterType): 
 			const parsed = Number.parseFloat(token)
 			return { type: targetType, value: Number.isNaN(parsed) ? 0 : parsed }
 		}
+		case EmberModel.ParameterType.Octets:
+			return { type: targetType, value: Buffer.from(token) }
+		case EmberModel.ParameterType.Null:
+			return { type: targetType, value: null }
+		case EmberModel.ParameterType.Trigger:
 		case EmberModel.ParameterType.String:
-		default:
 			return { type: targetType, value: token }
+		default:
+			assertUnreachable(targetType)
+			return { type: EmberModel.ParameterType.String, value: token }
 	}
 }
 
 /**
- * Recursively discover Function nodes from an Ember+ tree collection.
+ * Recursively discover Function nodes from an Ember+ tree: the client's tree, or an element's children, by number.
  */
 export function discoverFunctionsFromTree(
-	nodes: Collection<NumberedTreeNode<EmberElement>> | undefined,
+	nodes: EmberModel.Children | undefined,
 	state: EmberPlusState,
 	parentPath = '',
 ): void {
 	if (!nodes) return
 
-	for (const node of Object.values(nodes)) {
-		if (!node) continue
+	for (const node of nodes.values()) {
 		const currentPath = parentPath ? `${parentPath}.${node.number}` : `${node.number}`
 
-		if (node.contents?.type === ElementType.Function) {
+		if (node.contents.type === EmberModel.ElementType.Function) {
 			state.updateFunctionMap(currentPath, node)
 		}
 
