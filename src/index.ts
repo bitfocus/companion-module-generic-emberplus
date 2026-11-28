@@ -17,10 +17,12 @@ import {
 	EmberClient,
 	Model as EmberModel,
 	setDebugLogging,
+	TreeChangeKind,
 	type TreeChange,
 	type Types as EmberTypes,
 } from '@phillipivan/emberplus-connection'
 import { describe } from './logging.js'
+import { discoverTree, discoveryLimitDefault, DiscoveryPatterns, type Discovered } from './discovery.js'
 import {
 	applyLabelChanges,
 	changedTargets,
@@ -146,6 +148,17 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 	private matrixVariableDefinitions:
 		{ kinds: string; definitions: CompanionVariableDefinitions; serialised: string } | undefined
 	private statusManager = new StatusManager(this, { status: InstanceStatus.Connecting, message: 'Initialising' }, 2000)
+	/**
+	 * The parameters discovery added, by numeric path: those not registered otherwise. Their changes come through the
+	 * 'change' event, not a callback of their own, so registering them costs no request each
+	 */
+	private discoveredParameters: Set<string> = new Set()
+	/** The functions discovery added, by numeric path */
+	private discoveredFunctions: Set<string> = new Set()
+	/** Each discovery's number, so that one a config change or a newer discovery overtakes is dropped */
+	private discoveryGeneration = 0
+	/** A discovery asked for while disconnected, to run once reconnected */
+	private discoveryPending = false
 	/** The ramps running, which Ramp Value starts, and Stop Ramp, Set Value and a reconnect stop */
 	public readonly ramps = new RampEngine({
 		onStepError: (path, e) => this.log('debug', `Ramp on ${path}: a step failed: ${describe(e)}`),
@@ -256,6 +269,11 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 		this.labelsToRead.clear()
 		this.forgetMatrixUpdates()
 		this.recordedConnections.clear()
+		// state.clear has forgotten what they found; a walk under way is for the old client
+		this.discoveredParameters.clear()
+		this.discoveredFunctions.clear()
+		this.discoveryGeneration++
+		this.discoveryPending = false
 	}
 
 	/** Forget what was sent for the matrices, so that it is all sent again: the matrices are being loaded afresh */
@@ -290,6 +308,7 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 		// turned off, or a configured path removed
 		this.debouncedStreamSync()
 		await this.loadMatrices()
+		await this.discover()
 	}
 
 	/**
@@ -634,6 +653,7 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 			this.debouncedStreamSync()
 			// Their labels may have changed while disconnected, and a provider may have gained a matrix it lacked
 			await this.loadMatrices()
+			if (this.discoveryPending) await this.discover()
 		})().catch((e) => this.log('error', `Error registering again after reconnecting: ${describe(e)}`))
 	}
 
@@ -644,6 +664,7 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 	 */
 	private handleTreeChanges(client: EmberClient, changes: TreeChange[]): void {
 		if (!this.isCurrentClient(client)) return
+		this.followDiscoveredParameters(changes)
 		const { relabelled, reread } = applyLabelChanges(this.state.matrices.values(), changes)
 		for (const info of relabelled) this.matrixChanged(info.path)
 		for (const info of reread) {
@@ -654,6 +675,135 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 				if (this.isCurrentClient(client)) this.matrixChanged(info.path)
 			})
 		}
+	}
+
+	/**
+	 * A discovered parameter's changes, as the 'change' event reports them: handled as a callback's would be. One that
+	 * an action or feedback has since registered with a callback of its own is left to that
+	 */
+	private followDiscoveredParameters(changes: TreeChange[]): void {
+		for (const change of changes) {
+			if (change.kind !== TreeChangeKind.Updated) continue
+			if (!this.discoveredParameters.has(change.path) || this.pathCallbacks.has(change.path)) continue
+			if (change.element.contents.type !== EmberModel.ElementType.Parameter) continue
+			this.handleChangedValue(change.path, change.element).catch((e) =>
+				this.log('error', `Error handling parameter ${change.path}: ${describe(e)}`),
+			)
+		}
+	}
+
+	/**
+	 * Walk the tree for the parameters, functions and matrices the Discover Elements Matching patterns name: on
+	 * connecting, and after a config change (a walk of nodes already loaded sends nothing). After a reconnect the library
+	 * sends the walk's GetDirectories again, so the tree stays current without another walk.
+	 *
+	 * Parameters are listed in the dropdowns (state.parameters). With Parameter - Values they are also monitored, so they
+	 * get variables; a stream parameter is only listed, as discovery never subscribes to one. Their changes then come
+	 * through the 'change' event (followDiscoveredParameters), not a callback each, which would send a GetDirectory for
+	 * each, and again after every reconnect. Functions join the Invoke Function dropdown, and are never invoked.
+	 * Matrices are listed in the log, for the config, and not loaded.
+	 */
+	private async discover(): Promise<void> {
+		const client = this.emberClient
+		const generation = ++this.discoveryGeneration
+		const patterns = DiscoveryPatterns.parse(this.config.discoveryPatterns)
+		if (patterns.isEmpty || client === undefined) {
+			if (this.forgetDiscovered(new Set(), new Set())) this.updateDiscoveredDefinitions()
+			return
+		}
+		// The walk needs the provider: a config change while disconnected walks once the library has reconnected
+		if (!client.connected) {
+			this.discoveryPending = true
+			return
+		}
+		this.discoveryPending = false
+		const limits = {
+			nodes: this.config.discoveryNodeLimit ?? discoveryLimitDefault,
+			parameters: this.config.discoveryParameterLimit ?? discoveryLimitDefault,
+		}
+		const isCurrent = () => this.isCurrentClient(client) && generation === this.discoveryGeneration
+		const found = await discoverTree(client, patterns, limits, {
+			isCurrent,
+			onError: (path, e) => this.log('debug', `Discovery: ${path} could not be loaded: ${describe(e)}`),
+		})
+		if (found.abandoned || !isCurrent()) return
+
+		const parameters = new Set<string>()
+		const variables = this.parameterVariables.values
+		for (const { path, element } of found.parameters) {
+			// One registered otherwise (configured, or used) stays as it is
+			if (
+				!this.discoveredParameters.has(path) &&
+				(this.state.monitoredParameters.has(path) || this.pathCallbacks.has(path))
+			)
+				continue
+			parameters.add(path)
+			this.state.updateParameterMap(path, element)
+			const parameter = this.state.parameters.get(path) ?? element.contents
+			if (variables && !isStreamParameter(parameter)) {
+				this.state.monitoredParameters.add(path)
+				this.updateFeedbacksAndVariables(path, parameter)
+			}
+		}
+		const functions = new Set<string>()
+		for (const { path, element } of found.functions) {
+			if (!this.discoveredFunctions.has(path) && this.state.functions.has(path)) continue
+			functions.add(path)
+			this.state.updateFunctionMap(path, element)
+		}
+		this.forgetDiscovered(parameters, functions)
+		this.discoveredParameters = parameters
+		this.discoveredFunctions = functions
+		this.logDiscovery(found, limits)
+		this.updateDiscoveredDefinitions()
+	}
+
+	/**
+	 * Forget what an earlier discovery found and this one didn't, unless an action or feedback has registered it since.
+	 * Returns whether there was anything to forget
+	 */
+	private forgetDiscovered(parameters: ReadonlySet<string>, functions: ReadonlySet<string>): boolean {
+		let forgot = false
+		for (const path of this.discoveredParameters) {
+			if (parameters.has(path)) continue
+			forgot = true
+			if (this.pathCallbacks.has(path) || this.state.getFeedbacksByPath(path).size > 0) continue
+			this.state.forgetElement(path)
+		}
+		for (const path of this.discoveredFunctions) {
+			if (functions.has(path)) continue
+			forgot = true
+			if (!this.pathCallbacks.has(path)) this.state.forgetElement(path)
+		}
+		if (parameters.size === 0) this.discoveredParameters.clear()
+		if (functions.size === 0) this.discoveredFunctions.clear()
+		return forgot
+	}
+
+	/** What a discovery found, in the log: a summary, the matrices by path for the config, and a limit reached */
+	private logDiscovery(found: Discovered, limits: { nodes: number; parameters: number }): void {
+		this.log(
+			'info',
+			`Discovered ${found.parameters.length} parameters, ${found.functions.length} functions and ${found.matrices.length} matrices, walking ${found.nodesWalked} nodes`,
+		)
+		if (found.matrices.length > 0) {
+			const matrices = found.matrices.map(({ path, identifierPath }) => `${path} (${identifierPath})`).join(', ')
+			this.log('info', `Discovered matrices, to add to Paths to matrices if wanted: ${matrices}`)
+		}
+		if (found.stopped) {
+			const limit =
+				found.stopped === 'nodes'
+					? `Discovery Node Limit (${limits.nodes} nodes)`
+					: `Discovery Parameter Limit (${limits.parameters} parameters)`
+			const message = `Discovery stopped at the ${limit}: narrow the patterns, or raise the limit`
+			this.log('warn', message)
+			this.statusManager.updateStatus(InstanceStatus.UnknownWarning, message)
+		}
+	}
+
+	/** The definitions that list what discovery found: the dropdowns, presets and variables */
+	private updateDiscoveredDefinitions(): void {
+		this.updateCompanionBits({ updateActions: true, updateFeedbacks: true, updatePresets: true, updateVariables: true })
 	}
 
 	private handleDisconnected(client: EmberClient): void {
@@ -838,7 +988,8 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 		const client = this.emberClient
 		for (const path of this.state.monitoredParameters ?? []) {
 			if (!this.isCurrentClient(client)) return
-			if (path === '') continue
+			// Registered by discovery: its node is subscribed, and its changes come through the 'change' event
+			if (path === '' || this.discoveredParameters.has(path)) continue
 			this.log('debug', `Attempt to subscribe to ${path}`)
 			await this.emberQueue
 				.add(async () => {
@@ -1050,7 +1201,9 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 			if (!valueOnly || this.state.feedbackReadsValue(fbId)) this.feedbacksToCheck.add(fbId)
 		}
 
-		if (hasParameterVariables(parameter, this.parameterVariables)) {
+		// A parameter discovery only listed (not monitored) has no variable to set
+		const listedOnly = this.discoveredParameters.has(path) && !this.state.monitoredParameters.has(path)
+		if (!listedOnly && hasParameterVariables(parameter, this.parameterVariables)) {
 			const varId = sanitiseVariableId(path)
 			this.variableValueUpdates[varId] = parameterVariableValue(parameter, Boolean(this.config.factor))
 			if (parameter.parameterType === EmberModel.ParameterType.Enum) {

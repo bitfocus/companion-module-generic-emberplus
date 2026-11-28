@@ -24,6 +24,22 @@ Defines matrix behaviour.
 
 Paths defined here will be registed with the host on initialisation, for use in actions and feedbacks. With **Parameter - Values** selected in Connection Variables they also get variables, and stream parameters among them with **Parameter - Streams**.
 
+### Discover Elements Matching
+
+Rather than typing every path, the module can walk the device's tree and find the parameters, functions and matrices whose paths match patterns given here, separated by commas. Empty, nothing is discovered.
+
+- Each pattern is a path, its elements separated by `.` or `/`. An element is matched by its identifier, where `*` stands for any text (`Channel*`), or by its number. `*` alone is any one element; `**` is any number of elements, none included.
+- A pattern starting with `!` excludes, whatever the order: `Mixer.**, !Mixer.*.Meters.**` finds everything below Mixer but its meters. An exclude ending in `**` also keeps the walk out of what it covers.
+- Matching is exact, element by element, and case-sensitive: `1.1.**` doesn't take in `1.10`, and `In*` doesn't match `Main`.
+
+What is found:
+
+- **Parameters** are listed in the actions' and feedbacks' path dropdowns, and get presets. With **Parameter - Values** selected in Connection Variables they also get variables, kept up to date; without it, a parameter is only listed until an action or feedback uses it. A stream parameter, such as a meter, is listed but never subscribed to by discovery: only while a feedback reads it, as for any stream.
+- **Functions** are listed in Invoke Function's dropdown. Discovery never invokes one.
+- **Matrices** are listed in the log, with their paths, to add to Paths to matrices if wanted. They aren't loaded.
+
+The walk runs on connecting and after the config is saved, breadth-first, and only into the parts of the tree the patterns lead to. Each node walked is a request to the device, which then reports changes below it for as long as the connection lasts, so keep the patterns narrow on a large device. **Discovery Node Limit** and **Discovery Parameter Limit**, 2048 each by default, stop the walk with a warning in the log and the connection status. A summary is logged after each walk.
+
 ### Connection Variables
 
 What the connection makes variables for:

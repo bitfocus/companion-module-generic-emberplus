@@ -1,4 +1,5 @@
 import type { DropdownChoice, SomeCompanionConfigField } from '@companion-module/base'
+import { discoveryLimitDefault } from './discovery.js'
 import { rampIntervalDefault } from './ramps.js'
 
 export const portDefault = 9000
@@ -41,6 +42,12 @@ export type EmberPlusConfig = {
 	verbose: boolean
 	/** How often a ramp sends a step, in ms. A config from before the setting has none: rampIntervalDefault */
 	rampInterval?: number
+	/** The Discover Elements Matching patterns: empty, or none, for no discovery */
+	discoveryPatterns?: string
+	/** The most nodes a discovery walks. A config without it has discoveryLimitDefault */
+	discoveryNodeLimit?: number
+	/** The most parameters a discovery keeps. A config without it has discoveryLimitDefault */
+	discoveryParameterLimit?: number
 }
 
 export function GetConfigFields(): SomeCompanionConfigField[] {
@@ -109,6 +116,49 @@ export function GetConfigFields(): SomeCompanionConfigField[] {
 			tooltip: 'Please separate by comma',
 			width: 12,
 			multiline: true,
+		},
+		{
+			type: 'textinput',
+			id: 'discoveryPatterns',
+			label: 'Discover Elements Matching',
+			tooltip:
+				'Walk the device tree for the parameters, functions and matrices whose paths match these patterns, separated by commas. Each element by its identifier or number; * is any text, or any one element; ** any number of elements. Start a pattern with ! to exclude. Empty: no discovery',
+			width: 12,
+			multiline: true,
+		},
+		{
+			type: 'static-text',
+			id: 'discoveryExample',
+			label: '',
+			width: 12,
+			value:
+				'Example: Inputs.*.Gain, Mixer.**, !Mixer.*.Meters.** finds every input gain, and everything below Mixer but its meters. Discovered parameters are listed in the actions and feedbacks; with Parameter - Values, they also get variables',
+		},
+		{
+			type: 'number',
+			id: 'discoveryNodeLimit',
+			label: 'Discovery Node Limit',
+			tooltip: 'The most nodes discovery walks: each one is a request, and the device then reports its changes',
+			width: 6,
+			min: 20,
+			max: 100000,
+			step: 1,
+			default: discoveryLimitDefault,
+			isVisibleExpression: `!!$(options:discoveryPatterns)`,
+			asInteger: true,
+		},
+		{
+			type: 'number',
+			id: 'discoveryParameterLimit',
+			label: 'Discovery Parameter Limit',
+			tooltip: 'The most parameters discovery keeps, for the dropdowns and variables',
+			width: 6,
+			min: 20,
+			max: 100000,
+			step: 1,
+			default: discoveryLimitDefault,
+			isVisibleExpression: `!!$(options:discoveryPatterns)`,
+			asInteger: true,
 		},
 		{
 			type: 'multidropdown',

@@ -1370,3 +1370,31 @@ describe('ramps', () => {
 		await instance.destroy()
 	})
 })
+
+// ---------------------------------------------------------------------------
+// Discovery: a config change while disconnected walks once the library has reconnected
+// ---------------------------------------------------------------------------
+
+describe('discovery while disconnected', () => {
+	it('waits for the connection, and walks when the library reconnects', async () => {
+		const instance = makeInstance() as any
+		const parameter = {
+			number: 1,
+			contents: { type: ElementType.Parameter, parameterType: ParameterType.Integer, identifier: 'Gain', value: 0 },
+		}
+		const client = fakeClient({ connected: false, tree: new Map([[1, parameter]]) })
+		instance.emberClient = client
+		instance.treeLoaded = true
+		instance.config.discoveryPatterns = 'Gain'
+
+		await instance.discover()
+		expect(instance.discoveryPending).toBe(true)
+		expect(instance.state.parameters.has('1')).toBe(false)
+
+		client.connected = true
+		instance.registerAgain(client)
+		await vi.waitFor(() => expect(instance.state.parameters.has('1')).toBe(true))
+		expect(instance.discoveryPending).toBe(false)
+		await instance.destroy()
+	})
+})

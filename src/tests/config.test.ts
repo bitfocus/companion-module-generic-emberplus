@@ -37,3 +37,25 @@ describe('Ramp Step Interval config option', () => {
 		})
 	})
 })
+
+describe('discovery config options', () => {
+	const fields = GetConfigFields()
+	const field = (id: string) => fields.find((f) => f.id === id)
+
+	it('takes the patterns as text, empty meaning no discovery', () => {
+		expect(field('discoveryPatterns')).toMatchObject({ type: 'textinput', label: 'Discover Elements Matching' })
+		expect(field('discoveryPatterns')).not.toHaveProperty('default')
+	})
+
+	// The user's call, 2026-11-28
+	it.each(['discoveryNodeLimit', 'discoveryParameterLimit'])(
+		'%s is a number, 2048 by default, shown with patterns',
+		(id) => {
+			expect(field(id)).toMatchObject({
+				type: 'number',
+				default: 2048,
+				isVisibleExpression: '!!$(options:discoveryPatterns)',
+			})
+		},
+	)
+})

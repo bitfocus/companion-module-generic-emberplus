@@ -265,6 +265,15 @@ export class EmberPlusState {
 		return this.parameters.has(path)
 	}
 
+	/** Forget a parameter or function: one discovery found, and a later discovery didn't */
+	public forgetElement(path: string): void {
+		this.parameters.delete(path)
+		this.functions.delete(path)
+		this.emberElement.delete(path)
+		this.parameterElements.delete(path)
+		this.monitoredParameters.delete(path)
+	}
+
 	/**
 	 * Clear cached ember elements
 	 */
