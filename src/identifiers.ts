@@ -36,3 +36,21 @@ export function identifierPath(
 ): string {
 	return identifiersOf(node, path)?.names.join('.') ?? path
 }
+
+/**
+ * An element's label, for a dropdown or a variable's name: its path, then its path by identifiers (its own and every
+ * node's above it, as the tree has them), so a long list reads by where each element is, then its description: eg
+ * `1.3.2: Inputs.Ch1.Gain (Input gain)`. Its own identifier alone without its tree element; the path alone where
+ * nothing has an identifier
+ */
+export function elementLabel(
+	path: string,
+	contents: { identifier?: string; description?: string } | undefined,
+	element: EmberModel.TreeElement<EmberModel.EmberElement> | undefined,
+): string {
+	const identifiers = element ? identifierPath(element, path) : contents?.identifier
+	let label = path
+	if (identifiers && identifiers !== path) label += `: ${identifiers}`
+	if (contents?.description) label += ` (${contents.description})`
+	return label
+}

@@ -150,6 +150,12 @@ export interface WalkOptions {
 	onError?: (path: string, error: unknown) => void
 	/** How many GetDirectories to have waiting at once */
 	concurrency?: number
+	/**
+	 * The nodes a walk has loaded already, with every field: a later walk sends nothing for them. One the tree has
+	 * children for otherwise, as a path lookup loads them (with the provider's default fields, which may leave out the
+	 * values), is loaded again
+	 */
+	loaded?: WeakSet<object>
 }
 
 interface Walking {
@@ -166,8 +172,8 @@ function pathElement(node: EmberModel.NumberedTreeNode<EmberModel.EmberElement>)
 
 /**
  * Walk the provider's tree breadth-first from the top, as far as the patterns lead: a node is walked only while some
- * pattern could match below it, and none excludes all of it. Each node walked is loaded with a GetDirectory, unless the
- * tree has its children already, and stays subscribed. A node reporting itself offline isn't walked; one that doesn't
+ * pattern could match below it, and none excludes all of it. Each node walked is loaded with a GetDirectory asking for
+ * every field, unless an earlier walk loaded it (`loaded`), and stays subscribed. A node reporting itself offline isn't walked; one that doesn't
  * say is online, the Glow DTD's default. Breadth-first, so a limit cuts off the deepest levels everywhere, and each
  * level's GetDirectories go a few at a time. Templates aren't followed.
  */
@@ -250,11 +256,13 @@ export async function discoverTree(
 			while (index < walking.length) {
 				const { node, path } = walking[index++]
 				found.nodesWalked++
-				if (node.children && node.children.size > 0) continue
+				if (options.loaded?.has(node)) continue
 				try {
+					// Every field: with the default, a provider may send the children without their values
 					await (
-						await client.getDirectory(node)
+						await client.getDirectory(node, EmberModel.FieldFlags.All)
 					).response
+					options.loaded?.add(node)
 				} catch (e) {
 					options.onError?.(path, e)
 				}

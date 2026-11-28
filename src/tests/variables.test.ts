@@ -40,6 +40,31 @@ describe('GetVariablesList', () => {
 	})
 
 	// Without Parameter - Values or Streams in Connection Variables, the Parameter Property feedback gives the value
+	// In a long list, where each parameter is: its path by identifiers, the nodes' above it too
+	it('names a variable by its path, its path by identifiers, and its description', () => {
+		const state = new EmberPlusState()
+		const inputs = new EmberModel.NumberedTreeNodeImpl(1, new EmberModel.EmberNodeImpl('Inputs'))
+		const channel = new EmberModel.NumberedTreeNodeImpl(3, new EmberModel.EmberNodeImpl('Ch1'))
+		channel.parent = inputs
+		const gain = new EmberModel.NumberedTreeNodeImpl(2, parameter({ identifier: 'Gain', description: 'Input gain' }))
+		gain.parent = channel
+		state.monitoredParameters.add('1.3.2')
+		state.updateParameterMap('1.3.2', gain)
+		expect(GetVariablesList(state, { values: true, streams: false })['1.3.2']).toEqual({
+			name: '1.3.2: Inputs.Ch1.Gain (Input gain)',
+		})
+	})
+
+	it('names a variable by its path alone where nothing has an identifier', () => {
+		const state = new EmberPlusState()
+		const node = new EmberModel.NumberedTreeNodeImpl(1, new EmberModel.EmberNodeImpl())
+		const level = new EmberModel.NumberedTreeNodeImpl(2, parameter({}))
+		level.parent = node
+		state.monitoredParameters.add('1.2')
+		state.updateParameterMap('1.2', level)
+		expect(GetVariablesList(state, { values: true, streams: false })['1.2']).toEqual({ name: '1.2' })
+	})
+
 	it('defines only the host and port with neither on', () => {
 		const variables = GetVariablesList(stateWith(level, meter), { values: false, streams: false })
 		expect(Object.keys(variables)).toEqual(['host', 'port'])

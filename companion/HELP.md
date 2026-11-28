@@ -38,7 +38,7 @@ What is found:
 - **Functions** are listed in Invoke Function's dropdown.
 - **Matrices** are listed in the log, with their paths, to add to Paths to matrices if wanted. They aren't loaded.
 
-The walk runs on connecting and after the config is saved, breadth-first, and only into the parts of the tree the patterns lead to. Each node walked is a request to the device, which then reports changes below it for as long as the connection lasts, so keep the patterns narrow on a large device. **Discovery Node Limit** and **Discovery Parameter Limit**, 2048 each by default, stop the walk with a warning in the log and the connection status. A summary is logged after each walk.
+The walk runs on connecting and after the config is saved, breadth-first, and only into the parts of the tree the patterns lead to. Each node walked is a request to the device, which then reports changes below it for as long as the connection lasts, so keep the patterns narrow on a large device. **Discovery Node Limit** and **Discovery Parameter Limit**, 2048 each by default, stop the walk with a warning in the log. A summary is logged after each walk.
 
 ### Connection Variables
 

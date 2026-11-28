@@ -4,6 +4,7 @@ import { EmberServer, Model as EmberModel } from '@phillipivan/emberplus-connect
 import EmberPlusInstance from '../index.js'
 import type { EmberPlusConfig } from '../config.js'
 import { captureLogs } from './logs.js'
+import { StatusManager } from '../status.js'
 
 // Discovery against the library's own provider, over TCP: the walk, what it lists, what gets variables, and changes
 // followed through the 'change' event. Only Companion's side, InstanceBase, is faked.
@@ -128,6 +129,21 @@ function variables(instance: any): Record<string, unknown> {
 	return Object.assign({}, ...instance.setVariableValues.mock.calls.map(([values]: [object]) => values))
 }
 
+/**
+ * Whether a variable got a value only once defined, as the module host needs: it drops, as a deletion, a value for a
+ * variable it has no definition of
+ */
+function valuesAfterDefinition(instance: any, id: string): boolean {
+	const definitions = instance.setVariableDefinitions.mock
+	const values = instance.setVariableValues.mock
+	const defined = definitions.calls.findIndex(([variables]: [object]) => id in variables)
+	if (defined < 0) return false
+	const definedAt = definitions.invocationCallOrder[defined]
+	const set = values.calls.map(([v]: [object], i: number) => [v, values.invocationCallOrder[i]] as const)
+	const withValue = set.filter(([v]: readonly [object, number]) => id in v)
+	return withValue.length > 0 && withValue.every(([, at]: readonly [object, number]) => at > definedAt)
+}
+
 /** The ids of a definition's path dropdown */
 function pathChoices(definitions: Record<string, any>, id: string): string[] {
 	return definitions[id].options.find((o: any) => o.id === 'path').choices.map((c: any) => c.id)
@@ -153,7 +169,11 @@ describe('discovery against a provider', () => {
 			const { instance, server, ch1Gain } = await connect({ discoveryPatterns: 'device.Inputs.*.Gain' })
 			await vi.waitFor(() => expect(Object.keys(latest(instance.setVariableDefinitions))).toContain('1.1.1.1'))
 			expect(Object.keys(latest(instance.setVariableDefinitions))).toContain('1.1.2.1')
+			await vi.waitFor(() => expect(variables(instance)['1.1.2.1']).toBe(0))
 			expect(variables(instance)['1.1.1.1']).toBe(0)
+			// Each value sent once its variable was defined, or the host would have dropped it
+			expect(valuesAfterDefinition(instance, '1.1.1.1')).toBe(true)
+			expect(valuesAfterDefinition(instance, '1.1.2.1')).toBe(true)
 
 			server.update(ch1Gain, { value: 7 })
 			await vi.waitFor(() => expect(variables(instance)['1.1.1.1']).toBe(7))
@@ -238,12 +258,18 @@ describe('discovery against a provider', () => {
 		expect(instance.state.parameters.has('1.1.1.1')).toBe(false)
 	})
 
-	it('stops at the node limit, and warns', async () => {
+	// In the log only: the connection is fine, and the status is about the connection (the user's call, 2026-11-28)
+	it('stops at the node limit, and warns in the log, leaving the status', async () => {
+		const status = vi.spyOn(StatusManager.prototype, 'updateStatus')
 		const { instance } = await connect({ discoveryPatterns: '**', discoveryNodeLimit: 2 })
 		await vi.waitFor(() =>
 			expect(logged(instance, 'Discovery stopped at the Discovery Node Limit', 'warn')).toBeDefined(),
 		)
 		expect(logged(instance, 'Discovered ')).toContain('walking 2 nodes')
+		expect(status.mock.calls.some(([, message]) => typeof message === 'string' && message.includes('Discovery'))).toBe(
+			false,
+		)
+		status.mockRestore()
 	})
 
 	it('walks nothing without patterns', async () => {

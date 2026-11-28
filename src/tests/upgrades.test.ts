@@ -53,6 +53,9 @@ function upgrade(
 	return { actions, feedbacks, config: currentConfig, updated }
 }
 
+/** The discovery config fields every upgraded config ends with (discoveryConfigAdded) */
+const discoveryAdded = { discoveryPatterns: '', discoveryNodeLimit: 2048, discoveryParameterLimit: 2048 }
+
 /** The index of the API 2 script, so a test can start from a connection last upgraded by 2.9 */
 const API2 = UpgradeScripts.findIndex((script) => script.name === 'v300')
 
@@ -303,7 +306,14 @@ describe('API 2 upgrade, from a 2.9 connection', () => {
 	])('turns the log level %j into Verbose Logs %j', (logging, verbose) => {
 		const old = { host: '10.0.0.1', port: 9000, factor: true, logging } as unknown as EmberPlusConfig
 		const { config } = upgrade({ config: old }, API2)
-		expect(config).toEqual({ host: '10.0.0.1', port: 9000, factor: true, verbose, variables: ['parameterValues'] })
+		expect(config).toEqual({
+			host: '10.0.0.1',
+			port: 9000,
+			factor: true,
+			verbose,
+			variables: ['parameterValues'],
+			...discoveryAdded,
+		})
 	})
 
 	// Parameter values, so the configured paths keep the variables they had
@@ -441,6 +451,7 @@ describe('the upgrade scripts written before API 2, on wrapped options', () => {
 			factor: false,
 			verbose: false,
 			variables: ['parameterValues'],
+			...discoveryAdded,
 		})
 	})
 })
@@ -778,5 +789,53 @@ describe('the Set Value Integer Factor upgrade (3.0)', () => {
 			FACTOR,
 		)
 		expect(updated.actions.size).toBe(0)
+	})
+})
+
+describe('the discovery config upgrade (3.0)', () => {
+	/** The index of the script, so a test can start from a connection last upgraded by a 3.0 pre-release */
+	const DISCOVERY = UpgradeScripts.findIndex((script) => script.name === 'discoveryConfigAdded')
+	const before: EmberPlusConfig = {
+		host: '10.0.0.1',
+		port: 9000,
+		factor: true,
+		verbose: false,
+		variables: ['parameterValues'],
+	}
+
+	it('adds the patterns empty, and the limits at their default, keeping the rest', () => {
+		const { config } = upgrade({ config: before }, DISCOVERY)
+		expect(config).toEqual({
+			...before,
+			discoveryPatterns: '',
+			discoveryNodeLimit: 2048,
+			discoveryParameterLimit: 2048,
+		})
+	})
+
+	it('leaves the fields a config has', () => {
+		const set = { ...before, discoveryPatterns: 'Inputs.**', discoveryNodeLimit: 100, discoveryParameterLimit: 50 }
+		const script = UpgradeScripts[DISCOVERY]
+		const result = script({ currentConfig: set }, { config: set, secrets: null, actions: [], feedbacks: [] })
+		expect(result.updatedConfig).toBeNull()
+		const some = { ...before, discoveryPatterns: 'Inputs.**' }
+		expect(upgrade({ config: some }, DISCOVERY).config).toEqual({
+			...some,
+			discoveryNodeLimit: 2048,
+			discoveryParameterLimit: 2048,
+		})
+	})
+
+	// Buttons imported into a connection already upgraded come without a config
+	it('changes nothing without a config', () => {
+		const script = UpgradeScripts[DISCOVERY]
+		const result = script({ currentConfig: before }, { config: null, secrets: null, actions: [], feedbacks: [] })
+		expect(result.updatedConfig).toBeNull()
+	})
+
+	// From 2.x the whole chain runs: the config ends with the fields too
+	it('adds them to a config upgraded from before 3.0', () => {
+		const { config } = upgrade({ config: { host: '10.0.0.1', port: 9000, logging: 2 } as never })
+		expect(config).toMatchObject({ discoveryPatterns: '', discoveryNodeLimit: 2048, discoveryParameterLimit: 2048 })
 	})
 })

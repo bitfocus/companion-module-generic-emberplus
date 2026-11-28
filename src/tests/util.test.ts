@@ -48,6 +48,8 @@ vi.mock('../actions', () => ({
 function makeState(params: Map<string, any> = new Map()): EmberPlusState {
 	return {
 		parameters: params,
+		parameterElements: new Map(),
+		emberElement: new Map(),
 		getCurrentEnumValue: vi.fn().mockReturnValue('enumLabel'),
 	} as unknown as EmberPlusState
 }
@@ -180,6 +182,22 @@ describe('substituteEscapeCharacters', () => {
 // ---------------------------------------------------------------------------
 
 describe('filterPathChoices', () => {
+	// As its variable is named: where each parameter is, in a long list
+	it('labels a parameter by its path, its path by identifiers, and its description', () => {
+		const inputs = new EmberModel.NumberedTreeNodeImpl(1, new EmberModel.EmberNodeImpl('Inputs'))
+		const gain = new EmberModel.NumberedTreeNodeImpl(
+			2,
+			new EmberModel.ParameterImpl(EmberModel.ParameterType.Integer, 'Gain', 'Input gain', 0),
+		)
+		gain.parent = inputs
+		gain.contents.access = EmberModel.ParameterAccess.ReadWrite
+		const state = makeState(new Map([['1.2', gain.contents]]))
+		state.parameterElements.set('1.2', gain)
+		expect(filterPathChoices(state, true, EmberModel.ParameterType.Integer)).toEqual([
+			{ id: '1.2', label: '1.2: Inputs.Gain (Input gain)' },
+		])
+	})
+
 	const makeParam = (parameterType: string, access: string, identifier?: string, description?: string) => ({
 		parameterType,
 		access,
@@ -694,6 +712,14 @@ describe('parseParameterValue', () => {
 // ---------------------------------------------------------------------------
 
 describe('filterFunctionPathChoices', () => {
+	it('labels a function by its path by identifiers, where its tree element is cached', () => {
+		const device = new EmberModel.NumberedTreeNodeImpl(1, new EmberModel.EmberNodeImpl('Device'))
+		const recall = new EmberModel.NumberedTreeNodeImpl(2, new EmberModel.EmberFunctionImpl('Recall'))
+		recall.parent = device
+		const mockState: any = { functions: new Map([['1.2', recall.contents]]), emberElement: new Map([['1.2', recall]]) }
+		expect(filterFunctionPathChoices(mockState)).toEqual([{ id: '1.2', label: '1.2: Device.Recall' }])
+	})
+
 	it('returns formatted choices for registered functions', () => {
 		const mockState: any = {
 			functions: new Map([
@@ -701,6 +727,7 @@ describe('filterFunctionPathChoices', () => {
 				['1.2.4', { identifier: 'Unmute' }],
 				['1.2.5', {}],
 			]),
+			emberElement: new Map(),
 		}
 
 		const choices = filterFunctionPathChoices(mockState)

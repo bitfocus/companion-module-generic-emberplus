@@ -159,6 +159,8 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 	private discoveryGeneration = 0
 	/** A discovery asked for while disconnected, to run once reconnected */
 	private discoveryPending = false
+	/** The nodes discovery has loaded with every field, on the current client: a later walk sends nothing for them */
+	private discoveryLoaded: WeakSet<object> = new WeakSet()
 	/** The ramps running, which Ramp Value starts, and Stop Ramp, Set Value and a reconnect stop */
 	public readonly ramps = new RampEngine({
 		onStepError: (path, e) => this.log('debug', `Ramp on ${path}: a step failed: ${describe(e)}`),
@@ -274,6 +276,7 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 		this.discoveredFunctions.clear()
 		this.discoveryGeneration++
 		this.discoveryPending = false
+		this.discoveryLoaded = new WeakSet()
 	}
 
 	/** Forget what was sent for the matrices, so that it is all sent again: the matrices are being loaded afresh */
@@ -724,11 +727,13 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 		const isCurrent = () => this.isCurrentClient(client) && generation === this.discoveryGeneration
 		const found = await discoverTree(client, patterns, limits, {
 			isCurrent,
+			loaded: this.discoveryLoaded,
 			onError: (path, e) => this.log('debug', `Discovery: ${path} could not be loaded: ${describe(e)}`),
 		})
 		if (found.abandoned || !isCurrent()) return
 
 		const parameters = new Set<string>()
+		const withVariables: string[] = []
 		const variables = this.parameterVariables.values
 		for (const { path, element } of found.parameters) {
 			// One registered otherwise (configured, or used) stays as it is
@@ -742,7 +747,7 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 			const parameter = this.state.parameters.get(path) ?? element.contents
 			if (variables && !isStreamParameter(parameter)) {
 				this.state.monitoredParameters.add(path)
-				this.updateFeedbacksAndVariables(path, parameter)
+				withVariables.push(path)
 			}
 		}
 		const functions = new Set<string>()
@@ -755,7 +760,12 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 		this.discoveredParameters = parameters
 		this.discoveredFunctions = functions
 		this.logDiscovery(found, limits)
+		// The definitions first: the module host drops a value for a variable it has no definition of yet
 		this.updateDiscoveredDefinitions()
+		for (const path of withVariables) {
+			const parameter = this.state.parameters.get(path)
+			if (parameter) this.updateFeedbacksAndVariables(path, parameter)
+		}
 	}
 
 	/**
@@ -795,9 +805,8 @@ export default class EmberPlusInstance extends InstanceBase<ModuleTypes> {
 				found.stopped === 'nodes'
 					? `Discovery Node Limit (${limits.nodes} nodes)`
 					: `Discovery Parameter Limit (${limits.parameters} parameters)`
-			const message = `Discovery stopped at the ${limit}: narrow the patterns, or raise the limit`
-			this.log('warn', message)
-			this.statusManager.updateStatus(InstanceStatus.UnknownWarning, message)
+			// In the log only: the connection is fine, and the status is about the connection (the user's call)
+			this.log('warn', `Discovery stopped at the ${limit}: narrow the patterns, or raise the limit`)
 		}
 	}
 

@@ -15,6 +15,7 @@ import {
 	type MatrixInfo,
 	type SignalKind,
 } from './matrices.js'
+import { elementLabel } from './identifiers.js'
 import type { EmberPlusState } from './state.js'
 import { displayedNumber, isStreamParameter, sanitiseVariableId, substituteEscapeCharacters } from './util.js'
 import { Model as EmberModel } from '@phillipivan/emberplus-connection'
@@ -48,9 +49,8 @@ export function GetVariablesList(state: EmberPlusState, kinds: ParameterVariable
 		const parameter = state.parameters.get(path)
 		if (!hasParameterVariables(parameter, kinds)) return []
 		const id = sanitiseVariableId(path)
-		let name = path
-		if (parameter?.identifier) name += `: ${parameter.identifier}`
-		if (parameter?.description) name += ` (${parameter.description})`
+		// As the dropdowns list it: by its path, and its path by identifiers
+		const name = elementLabel(path, parameter, state.parameterElements.get(path))
 		if (parameter?.parameterType === EmberModel.ParameterType.Enum) {
 			return [
 				{ id, name },

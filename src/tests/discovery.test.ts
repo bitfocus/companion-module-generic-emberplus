@@ -105,6 +105,7 @@ type Spec =
 function fakeClient(top: Spec[], { failing = [] as string[] } = {}) {
 	const pending = new Map<EmberModel.NumberedTreeNode<EmberModel.EmberElement>, Spec[]>()
 	const requests: string[] = []
+	const masks: Array<EmberModel.FieldFlags | undefined> = []
 	const build = (specs: Spec[], parent?: EmberModel.NumberedTreeNode<EmberModel.EmberElement>, prefix = '') =>
 		new Map(
 			specs.map((spec, i) => {
@@ -132,16 +133,17 @@ function fakeClient(top: Spec[], { failing = [] as string[] } = {}) {
 	const tree = build(top)
 	const client = {
 		tree,
-		getDirectory: async (node: EmberModel.NumberedTreeNode<EmberModel.EmberElement>) => {
+		getDirectory: async (node: EmberModel.NumberedTreeNode<EmberModel.EmberElement>, mask?: EmberModel.FieldFlags) => {
 			const path = (node as unknown as { path: string }).path
 			requests.push(path)
+			masks.push(mask)
 			if (failing.includes(path)) return { sentOk: true, response: Promise.reject(new Error('timed out')) }
 			const children = pending.get(node)
 			if (children) node.children = build(children, node, path)
 			return { sentOk: true, response: Promise.resolve(node) }
 		},
 	}
-	return { client: client as unknown as Parameters<typeof discoverTree>[0], requests }
+	return { client: client as unknown as Parameters<typeof discoverTree>[0], requests, masks }
 }
 
 /** Inputs (1) with channels 1 and 2, each a Gain and Trim; Outputs (2) with a Level; a Recall function; a Router */
@@ -200,14 +202,32 @@ describe('discoverTree', () => {
 		expect(requests).toEqual(['2'])
 	})
 
-	it('sends nothing for a node whose children are loaded already', async () => {
-		const { client, requests } = fakeClient(device())
+	// A provider may leave the values out of the children it lists for the default fields: they are the variables'
+	it('asks for every field of what is below each node', async () => {
+		const { client, masks } = fakeClient(device())
 		await discoverTree(client, DiscoveryPatterns.parse('**'), limits, current)
+		expect(masks.length).toBeGreaterThan(0)
+		expect(masks.every((mask) => mask === EmberModel.FieldFlags.All)).toBe(true)
+	})
+
+	it('sends nothing for a node an earlier walk loaded', async () => {
+		const { client, requests } = fakeClient(device())
+		const loaded = new WeakSet<object>()
+		await discoverTree(client, DiscoveryPatterns.parse('**'), limits, { ...current, loaded })
 		requests.length = 0
-		const again = await discoverTree(client, DiscoveryPatterns.parse('**'), limits, current)
+		const again = await discoverTree(client, DiscoveryPatterns.parse('**'), limits, { ...current, loaded })
 		expect(requests).toEqual([])
 		expect(again.parameters).toHaveLength(5)
 		expect(again.nodesWalked).toBe(4)
+	})
+
+	// A path lookup loads a node with the default fields, which may lack the values
+	it('loads again a node it has children for that no walk loaded', async () => {
+		const { client, requests } = fakeClient(device())
+		await discoverTree(client, DiscoveryPatterns.parse('**'), limits, current)
+		requests.length = 0
+		await discoverTree(client, DiscoveryPatterns.parse('**'), limits, { ...current, loaded: new WeakSet() })
+		expect(requests).toEqual(['1', '2', '1.1', '1.2'])
 	})
 
 	// Breadth-first: the limit cuts the deepest level everywhere, rather than finishing one branch

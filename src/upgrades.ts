@@ -12,6 +12,7 @@ import {
 } from '@companion-module/base'
 import { ActionId } from './actions.js'
 import type { EmberPlusConfig } from './config.js'
+import { discoveryLimitDefault } from './discovery.js'
 import { FeedbackId } from './feedback.js'
 import { matrixOptionKey, matrixPaths } from './matrices.js'
 import { comparitorOptions, resolvePath } from './util.js'
@@ -784,6 +785,21 @@ function setValueFactorRemoved(_context: Context, props: Props): Result {
 	return result
 }
 
+// 3.0, tree discovery: its three config fields, for a connection made before them. The patterns empty (no
+// discovery, as before), the limits at their default. A separate script, so that a connection already upgraded by a
+// 3.0 pre-release gets it too.
+function discoveryConfigAdded(_context: Context, props: Props): Result {
+	const result = emptyResult()
+	const config = props.config
+	if (!config) return result
+	const added: Partial<EmberPlusConfig> = {}
+	if (config.discoveryPatterns === undefined) added.discoveryPatterns = ''
+	if (config.discoveryNodeLimit === undefined) added.discoveryNodeLimit = discoveryLimitDefault
+	if (config.discoveryParameterLimit === undefined) added.discoveryParameterLimit = discoveryLimitDefault
+	if (Object.keys(added).length > 0) result.updatedConfig = { ...config, ...added }
+	return result
+}
+
 export const UpgradeScripts: CompanionStaticUpgradeScript<EmberPlusConfig>[] = [
 	v250,
 	v260,
@@ -794,4 +810,5 @@ export const UpgradeScripts: CompanionStaticUpgradeScript<EmberPlusConfig>[] = [
 	matricesByPath,
 	valuePropertiesMoved,
 	setValueFactorRemoved,
+	discoveryConfigAdded,
 ]

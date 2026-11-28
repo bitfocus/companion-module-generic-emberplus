@@ -25,6 +25,7 @@ import type EmberPlusInstance from './index.js'
 import { isNToN, type MatrixInfo } from './matrices.js'
 import { NoSource } from './matrixOptions.js'
 import { withValidFactor } from './factor.js'
+import { elementLabel } from './identifiers.js'
 import { EmberNumberRange, type NumericParameterType } from './ranges.js'
 import { EmberPlusState } from './state.js'
 import { Model as EmberModel, type Types as EmberTypes } from '@phillipivan/emberplus-connection'
@@ -116,16 +117,11 @@ export function filterPathChoices(
 		paramFilter = Object.values(EmberModel.ParameterType)
 	}
 	for (const [path, value] of state.parameters) {
-		let label = `${path}`
+		// By its path, and its path by identifiers, as its variable is named
+		const label = elementLabel(path, value, state.parameterElements.get(path))
 
 		paramFilter.forEach((element) => {
 			if (element === value.parameterType) {
-				if (value.identifier) {
-					label += `: ${value.identifier}`
-				}
-				if (value.description) {
-					label += ` (${value.description})`
-				}
 				if (isWriteable) {
 					if (
 						value.access === EmberModel.ParameterAccess.ReadWrite ||
@@ -381,14 +377,7 @@ export function parseParameterValue(contents: EmberModel.Parameter): {
 export function filterFunctionPathChoices(state: EmberPlusState): DropdownChoice<string>[] {
 	const choices: DropdownChoice<string>[] = []
 	for (const [path, func] of state.functions) {
-		let label = `${path}`
-		if (func.identifier) {
-			label += `: ${func.identifier}`
-		}
-		if (func.description) {
-			label += ` (${func.description})`
-		}
-		choices.push({ id: path, label })
+		choices.push({ id: path, label: elementLabel(path, func, state.emberElement.get(path)) })
 	}
 	return choices
 }
