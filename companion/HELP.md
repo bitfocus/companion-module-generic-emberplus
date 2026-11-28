@@ -26,7 +26,7 @@ Paths defined here will be registed with the host on initialisation, for use in 
 
 ### Discover Elements Matching
 
-Rather than typing every path, the module can walk the device's tree and find the parameters, functions and matrices whose paths match patterns given here, separated by commas. Empty, nothing is discovered.
+Rather than typing every path, the module can walk the device's tree and find the parameters, functions and matrices whose paths match patterns given here, separated by commas.
 
 - Each pattern is a path, its elements separated by `.` or `/`. An element is matched by its identifier, where `*` stands for any text (`Channel*`), or by its number. `*` alone is any one element; `**` is any number of elements, none included.
 - A pattern starting with `!` excludes, whatever the order: `Mixer.**, !Mixer.*.Meters.**` finds everything below Mixer but its meters. An exclude ending in `**` also keeps the walk out of what it covers.
@@ -35,7 +35,7 @@ Rather than typing every path, the module can walk the device's tree and find th
 What is found:
 
 - **Parameters** are listed in the actions' and feedbacks' path dropdowns, and get presets. With **Parameter - Values** selected in Connection Variables they also get variables, kept up to date; without it, a parameter is only listed until an action or feedback uses it. A stream parameter, such as a meter, is listed but never subscribed to by discovery: only while a feedback reads it, as for any stream.
-- **Functions** are listed in Invoke Function's dropdown. Discovery never invokes one.
+- **Functions** are listed in Invoke Function's dropdown.
 - **Matrices** are listed in the log, with their paths, to add to Paths to matrices if wanted. They aren't loaded.
 
 The walk runs on connecting and after the config is saved, breadth-first, and only into the parts of the tree the patterns lead to. Each node walked is a request to the device, which then reports changes below it for as long as the connection lasts, so keep the patterns narrow on a large device. **Discovery Node Limit** and **Discovery Parameter Limit**, 2048 each by default, stop the walk with a warning in the log and the connection status. A summary is logged after each walk.
@@ -58,7 +58,7 @@ On, the variables of number parameters hold the value as it is displayed: by the
 
 ### Streams
 
-A stream parameter, such as an audio meter, is one the device sends values for many times a second, and only to a consumer that subscribed to it. The module subscribes while a feedback reads the parameter, or while it has a variable (Parameter - Streams), and unsubscribes once neither is so; an action doesn't keep a stream, as it reads the value when it runs. Feedbacks are rechecked, and variables set, at most every 10 ms. Stream values aren't recorded by the Action Recorder.
+A stream parameter, such as an audio meter, is one the device sends values for many times a second, and only to a consumer that subscribed to it. The module subscribes while a feedback reads the parameter, or while it has a variable (`Parameter - Streams`), and unsubscribes once neither is so.
 
 ### Ramp Step Interval
 
@@ -66,7 +66,7 @@ How often a Ramp Value action sends a step, in milliseconds, from 20 to 1000; 50
 
 ### Verbose Logs
 
-Logs the Ember+ library's debug output, under the source `ember plus`, the full contents of each parameter as it is registered, and each value as it arrives. The module's own debug messages are always logged; Companion's log view shows them when its Debug level is selected.
+Logs the Ember+ library's debug output, under the source `ember plus`, the full contents of each parameter as it is registered, and each value as it arrives. The module's own debug messages are always logged.
 
 ## Paths
 
@@ -105,11 +105,9 @@ Any value field can be switched to expression mode to set it from variables or a
 ## Ramps
 
 - **Ramp Value** fades an Integer or Real parameter to a value over a time. The value is as displayed, converted by the parameter's formula or factor, as for Set Value Integer and Set Value Real, and the ramp moves through the displayed values (dB, Hz), so a parameter with a formula fades evenly as displayed. With **Relative**, the value is an amount to change the displayed value by, within the Minimum and Maximum, which are the device's values, as for Set Value. **Learn** fills in the parameter's current displayed value.
-- **Easing** sets how the value moves over the time: Linear, or Quadratic, Cubic, Quartic, Quintic, Sinusoidal, Exponential or Circular, each In (starting slowly), Out (ending slowly) or In/Out (both). Every curve moves steadily from start to target, never past it.
+- **Easing** sets how the value moves over the time: Linear, or Quadratic, Cubic, Quartic, Quintic, Sinusoidal, Exponential or Circular, each In (starting slowly), Out (ending slowly) or In/Out (both).
 - A duration of one Ramp Step Interval or less sets the value at once.
-- **Stop Ramp** stops the ramp on a parameter, or every ramp, where it has reached.
-
-The module sends the steps itself, one every Ramp Step Interval, so a ramp works with any device. But it is a series of steps, not the device's own ramp: on audio, a parameter the device doesn't smooth may give audible steps, and an Integer with few values moves in visible jumps. A device's own ramp function, such as Lawo's `RampMotorFader`, can be called with Invoke Function instead.
+- **Stop Ramp** stops the ramp on a parameter, or every ramp, immediately.
 
 A new ramp on a parameter stops the one running there, and starts from where it had reached; a relative ramp adds its change to that point. A Set Value on the parameter, a reconnection, and saving the module config also stop its ramp. A ramp doesn't notice the value changed another way, such as a fader moved by hand: its next step overwrites it.
 
